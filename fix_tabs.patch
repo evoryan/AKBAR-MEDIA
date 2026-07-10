@@ -1,0 +1,53 @@
+--- app/src/main/java/com/example/ui/screens/BillingScreen.kt
++++ app/src/main/java/com/example/ui/screens/BillingScreen.kt
+@@ -10,6 +10,7 @@
+ import androidx.compose.foundation.shape.CircleShape
+ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material.icons.Icons
++import androidx.compose.ui.graphics.RectangleShape
+ import androidx.compose.material.icons.automirrored.filled.ArrowBack
+ import androidx.compose.material.icons.filled.ArrowBack
+@@ -100,19 +101,19 @@
+             Row(
+                 modifier = Modifier
+                     .fillMaxWidth()
+-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+-                    .clip(RoundedCornerShape(24.dp))
+-                    .background(cardBg)
+-                    .border(1.dp, cardBorder, RoundedCornerShape(24.dp))
++                    .padding(horizontal = 16.dp, vertical = 16.dp)
++                    .clip(RectangleShape)
++                    .background(cardBg)
++                    .border(1.dp, successGreen, RectangleShape)
+             ) {
+                 val tabs = listOf("BELUM BAYAR", "SUDAH BAYAR")
+                 tabs.forEachIndexed { index, title ->
+                     val isSelected = selectedTabIndex == index
+                     Box(
+                         modifier = Modifier
+                             .weight(1f)
+-                            .clip(RoundedCornerShape(24.dp))
+-                            .background(if (isSelected) neonCyan else Color.Transparent)
++                            .clip(RectangleShape)
++                            .background(if (isSelected) successGreen else Color.Transparent)
+                             .clickable { selectedTabIndex = index }
+                             .padding(vertical = 12.dp),
+                         contentAlignment = Alignment.Center
+@@ -207,7 +208,7 @@
+                         modifier = Modifier
+                             .fillMaxWidth()
+                             .clip(RoundedCornerShape(12.dp))
+-                            .background(cardBg)
++                            .background(errorRed.copy(alpha = 0.2f))
+                             .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                             .padding(16.dp)
+                     ) {
+@@ -245,7 +246,7 @@
+                         modifier = Modifier
+                             .fillMaxWidth()
+                             .clip(RoundedCornerShape(12.dp))
+-                            .background(cardBg)
++                            .background(neonCyan.copy(alpha = 0.2f))
+                             .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                             .padding(16.dp)
+                     ) {

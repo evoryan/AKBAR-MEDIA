@@ -1,0 +1,173 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RangkumanScreen(onBack: () -> Unit) {
+    val bgMain = Color(0xFF05050A)
+    val textMain = Color(0xFFFFFFFF)
+    val textSecondary = Color(0xFFAAAAAA)
+    val headerBg = Color(0xFF1F0216)
+    val cardBg = Color(0xFF11111A)
+    
+    val primaryCyan = Color(0xFF00FFFF)
+    val neonGreen = Color(0xFF00FF4D)
+    val neonRed = Color(0xFFFF003C)
+    val neonYellow = Color(0xFFFFC107)
+
+    var selectedMonth by remember { mutableStateOf("Juli 2026") }
+    var monthDropdownExpanded by remember { mutableStateOf(false) }
+    val months = listOf("Mei 2026", "Juni 2026", "Juli 2026", "Agustus 2026")
+
+    Scaffold(
+        containerColor = bgMain,
+        topBar = {
+            TopAppBar(
+                title = { Text("Rangkuman", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Rangkuman Pembukuan",
+                color = textMain,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Box {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .clickable { monthDropdownExpanded = true }
+                        .padding(4.dp)
+                ) {
+                    Text(
+                        selectedMonth,
+                        color = primaryCyan,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        Icons.Default.DateRange,
+                        contentDescription = "Calendar",
+                        tint = primaryCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                
+                DropdownMenu(
+                    expanded = monthDropdownExpanded,
+                    onDismissRequest = { monthDropdownExpanded = false },
+                    containerColor = Color(0xFF11111A)
+                ) {
+                    months.forEach { month ->
+                        DropdownMenuItem(
+                            text = { Text(month, color = Color.White) },
+                            onClick = {
+                                selectedMonth = month
+                                monthDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, primaryCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Pembayaran Tunai", color = textSecondary, fontSize = 14.sp)
+                        Text("Rp. 12.100.000", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Pemasukkan Lain-lain", color = textSecondary, fontSize = 14.sp)
+                        Text("Rp. 0", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Pengeluaran", color = neonRed, fontSize = 14.sp)
+                        Text("Rp. 0", color = neonRed, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    
+                    Divider(color = Color(0xFF333333), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total", color = textSecondary, fontSize = 14.sp)
+                        Text("Rp. 12.100.000", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, primaryCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Uang Belum di Setor", color = textSecondary, fontSize = 14.sp)
+                        Text("Rp. 12.100.000", color = neonYellow, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Sudah di Setor", color = textSecondary, fontSize = 14.sp)
+                        Text("Rp. 0", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text(
+                text = "Catatan : Untuk mengganti Tahun silahkan ganti tahun dari Halaman Beranda :v",
+                color = textSecondary,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}

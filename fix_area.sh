@@ -1,0 +1,230 @@
+#!/bin/bash
+cat << 'PATCH' > update_area.patch
+--- app/src/main/java/com/example/ui/screens/AreaScreen.kt
++++ app/src/main/java/com/example/ui/screens/AreaScreen.kt
+@@ -1,8 +1,10 @@
+ package com.example.ui.screens
+ 
++import androidx.compose.animation.AnimatedVisibility
+ import androidx.compose.foundation.background
+ import androidx.compose.foundation.border
++import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
+@@ -31,12 +33,16 @@
+ import androidx.compose.ui.unit.sp
+ import androidx.compose.ui.window.Dialog
+ import androidx.compose.ui.window.DialogProperties
++import kotlinx.coroutines.delay
++import kotlinx.coroutines.launch
+ import java.util.UUID
+ 
+ data class Area(
+     val id: String,
+     val name: String,
+-    val description: String = ""
++    val description: String = "",
++    val customerCount: Int = 0,
++    val mikrotikApiAddress: String = ""
+ )
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+@@ -56,9 +62,9 @@
+ 
+     val areas = remember {
+         mutableStateListOf(
+-            Area("1", "Talun", "Area cakupan desa Talun dan sekitarnya"),
+-            Area("2", "Kedung", "Area cakupan desa Kedung"),
+-            Area("3", "Bate", "Area cakupan desa Bate, wilayah timur")
++            Area("1", "Talun", "Area cakupan desa Talun dan sekitarnya", 15, "192.168.1.1:8728"),
++            Area("2", "Kedung", "Area cakupan desa Kedung", 8, "192.168.2.1:8728"),
++            Area("3", "Bate", "Area cakupan desa Bate, wilayah timur", 24, "192.168.3.1:8728")
+         )
+     }
+ 
+@@ -142,48 +148,68 @@
+     onDelete: () -> Unit
+ ) {
+     var showDeleteConfirm by remember { mutableStateOf(false) }
++    var expanded by remember { mutableStateOf(false) }
+ 
+     Box(
+         modifier = Modifier
+             .fillMaxWidth()
+             .clip(RoundedCornerShape(16.dp))
+             .background(cardBg)
+             .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
++            .clickable { expanded = !expanded }
+             .padding(16.dp)
+     ) {
+-        Row(
+-            modifier = Modifier.fillMaxWidth(),
+-            horizontalArrangement = Arrangement.SpaceBetween,
+-            verticalAlignment = Alignment.CenterVertically
+-        ) {
+-            Row(verticalAlignment = Alignment.CenterVertically) {
+-                Box(
+-                    modifier = Modifier
+-                        .size(48.dp)
+-                        .clip(CircleShape)
+-                        .background(neonCyan.copy(alpha = 0.1f))
+-                        .border(1.dp, neonCyan.copy(alpha = 0.5f), CircleShape),
+-                    contentAlignment = Alignment.Center
+-                ) {
+-                    Icon(Icons.Default.Map, contentDescription = null, tint = neonCyan)
+-                }
+-                Spacer(modifier = Modifier.width(16.dp))
+-                Column {
+-                    Text(area.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+-                    if (area.description.isNotEmpty()) {
+-                        Spacer(modifier = Modifier.height(4.dp))
+-                        Text(area.description, color = textSecondary, fontSize = 14.sp)
++        Column {
++            Row(
++                modifier = Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically
++            ) {
++                Row(verticalAlignment = Alignment.CenterVertically) {
++                    Box(
++                        modifier = Modifier
++                            .size(48.dp)
++                            .clip(CircleShape)
++                            .background(neonCyan.copy(alpha = 0.1f))
++                            .border(1.dp, neonCyan.copy(alpha = 0.5f), CircleShape),
++                        contentAlignment = Alignment.Center
++                    ) {
++                        Icon(Icons.Default.Map, contentDescription = null, tint = neonCyan)
++                    }
++                    Spacer(modifier = Modifier.width(16.dp))
++                    Column {
++                        Text(area.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 18.sp)
++                        if (area.description.isNotEmpty()) {
++                            Spacer(modifier = Modifier.height(4.dp))
++                            Text(area.description, color = textSecondary, fontSize = 14.sp)
++                        }
+                     }
+                 }
+-            }
+-            
+-            Row {
+-                IconButton(onClick = onEdit) {
+-                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan)
++                
++                Row {
++                    IconButton(onClick = onEdit) {
++                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan)
++                    }
++                    IconButton(onClick = { showDeleteConfirm = true }) {
++                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = errorRed)
++                    }
+                 }
+-                IconButton(onClick = { showDeleteConfirm = true }) {
+-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = errorRed)
++            }
++
++            AnimatedVisibility(visible = expanded) {
++                Column(modifier = Modifier.padding(top = 16.dp)) {
++                    HorizontalDivider(color = cardBorder, modifier = Modifier.padding(bottom = 12.dp))
++                    
++                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Text("Pelanggan Terintegrasi", color = textSecondary, fontSize = 12.sp)
++                        Text("${area.customerCount} Pelanggan", color = textMain, fontSize = 12.sp)
++                    }
++                    Spacer(modifier = Modifier.height(8.dp))
++                    
++                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Text("API Mikrotik", color = textSecondary, fontSize = 12.sp)
++                        Text(if(area.mikrotikApiAddress.isEmpty()) "-" else area.mikrotikApiAddress, color = textMain, fontSize = 12.sp)
++                    }
+                 }
+             }
+         }
+@@ -226,7 +252,11 @@
+ ) {
+     var name by remember { mutableStateOf(initialArea?.name ?: "") }
+     var description by remember { mutableStateOf(initialArea?.description ?: "") }
++    var mikrotikApi by remember { mutableStateOf(initialArea?.mikrotikApiAddress ?: "") }
++    var testResult by remember { mutableStateOf<String?>(null) }
++    var isTesting by remember { mutableStateOf(false) }
+     val title = if (initialArea == null) "Tambah Area Baru" else "Edit Area"
++    val coroutineScope = rememberCoroutineScope()
+ 
+     Dialog(
+         onDismissRequest = onDismiss,
+@@ -275,6 +305,51 @@
+                     )
+ 
+                     OutlinedTextField(
++                        value = mikrotikApi,
++                        onValueChange = { mikrotikApi = it },
++                        label = { Text("Alamat API Mikrotik (IP:Port)", color = textSecondary) },
++                        placeholder = { Text("Contoh: 192.168.1.1:8728", color = textSecondary.copy(alpha = 0.5f)) },
++                        modifier = Modifier.fillMaxWidth(),
++                        colors = OutlinedTextFieldDefaults.colors(
++                            focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary,
++                            focusedTextColor = textMain, unfocusedTextColor = textMain
++                        ),
++                        singleLine = true
++                    )
++                    
++                    Row(
++                        modifier = Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.End
++                    ) {
++                        Button(
++                            onClick = {
++                                isTesting = true
++                                testResult = null
++                                coroutineScope.launch {
++                                    delay(1500)
++                                    if (mikrotikApi.isNotEmpty() && mikrotikApi.contains(":")) {
++                                        testResult = "Koneksi ke $mikrotikApi berhasil!"
++                                    } else {
++                                        testResult = "Koneksi gagal. Periksa kembali format (IP:Port)."
++                                    }
++                                    isTesting = false
++                                }
++                            },
++                            colors = ButtonDefaults.buttonColors(containerColor = cardBg, contentColor = neonCyan),
++                            border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan),
++                            enabled = !isTesting
++                        ) {
++                            if (isTesting) {
++                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = neonCyan, strokeWidth = 2.dp)
++                                Spacer(modifier = Modifier.width(8.dp))
++                                Text("Menguji...", fontSize = 12.sp)
++                            } else {
++                                Text("Test Mikrotik", fontSize = 12.sp)
++                            }
++                        }
++                    }
++                    
++                    if (testResult != null) {
++                        val isSuccess = testResult!!.contains("berhasil")
++                        Text(
++                            text = testResult!!,
++                            color = if (isSuccess) Color(0xFF00FF00) else errorRed,
++                            fontSize = 12.sp,
++                            modifier = Modifier.fillMaxWidth()
++                        )
++                    }
++
++                    OutlinedTextField(
+                         value = description,
+                         onValueChange = { description = it },
+                         label = { Text("Deskripsi", color = textSecondary) },
+@@ -303,7 +378,9 @@
+                                 onSave(Area(
+                                     id = "",
+                                     name = name,
+-                                    description = description
++                                    description = description,
++                                    mikrotikApiAddress = mikrotikApi,
++                                    customerCount = initialArea?.customerCount ?: 0
+                                 ))
+                             },
+                             colors = ButtonDefaults.buttonColors(containerColor = primaryPurple, contentColor = textMain),
+PATCH
+patch -p0 < update_area.patch

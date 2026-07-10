@@ -1,0 +1,433 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.ui.data.UserSession
+import com.example.ui.data.UserRole
+import androidx.lifecycle.viewmodel.compose.viewModel
+
+@Composable
+fun DashboardScreen(
+    onNavigateToCustomers: () -> Unit,
+    onNavigateToBilling: () -> Unit,
+    onNavigateToMikrotik: () -> Unit,
+    onNavigateToPackages: () -> Unit,
+    onNavigateToArea: () -> Unit,
+    onNavigateToAcs: () -> Unit,
+    onNavigateToBotWa: () -> Unit,
+    onNavigateToPembukuan: () -> Unit,
+    onNavigateToStockBarang: () -> Unit,
+    onNavigateToSetting: () -> Unit,
+    viewModel: DashboardViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val currentUser by UserSession.currentUser.collectAsState()
+
+    
+    var selectedMonth by remember { mutableStateOf("Agustus") }
+    var selectedYear by remember { mutableStateOf("2026") }
+    var expandedMonth by remember { mutableStateOf(false) }
+    var expandedYear by remember { mutableStateOf(false) }
+    
+    val months = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    val years = listOf("2023", "2024", "2025", "2026", "2027")
+
+    val bgMain = Color(0xFF0A0A0A)
+    val headerBg = Color(0xFF1F0216)
+    val textMain = Color(0xFFFFFFFF)
+    val primaryBg = Color(0xFF00FFFF)
+    val textSecondary = Color(0xFFAAAAAA)
+    val cardBg = Color(0xFF11111A)
+    val cardBorder = Color(0xFF333333)
+    val gridSuccessBg = Color(0xFF00FF4D).copy(alpha = 0.1f)
+    val gridSuccessBorder = Color(0xFF00FF4D).copy(alpha = 0.3f)
+    val iconSuccess = Color(0xFF00FF4D)
+    val gridErrorBg = Color(0xFFFF003C).copy(alpha = 0.1f)
+    val gridErrorBorder = Color(0xFFFF003C).copy(alpha = 0.3f)
+    val iconError = Color(0xFFFF003C)
+    val textErrorPrimary = Color(0xFFFF003C)
+    val textErrorSecondary = Color(0xFFFF003C).copy(alpha = 0.7f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(bgMain)
+            .statusBarsPadding()
+            .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Akbar Media", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Halo, Admin", fontSize = 16.sp, color = textSecondary)
+            }
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(cardBg)
+                    .border(1.dp, cardBorder, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Person, contentDescription = "Profile", tint = textMain, modifier = Modifier.size(32.dp))
+            }
+        }
+        
+        // Stack Informasi (Rectangle Shape)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(cardBg)
+                .border(1.dp, primaryBg.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                .padding(16.dp)
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = primaryBg, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Informasi Sistem", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textMain)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("• Pemeliharaan server pada 12 Agustus 2026", color = textSecondary, fontSize = 12.sp)
+                Text("• Tersedia update router firmware", color = textSecondary, fontSize = 12.sp)
+            }
+        }
+
+        
+        // Filter Bulan & Tahun
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Dropdown Bulan
+            Box(modifier = Modifier.weight(1f)) {
+                OutlinedButton(
+                    onClick = { expandedMonth = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textMain),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(selectedMonth, color = textMain, fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textMain)
+                    }
+                }
+                DropdownMenu(
+                    expanded = expandedMonth,
+                    onDismissRequest = { expandedMonth = false },
+                    modifier = Modifier.background(cardBg).border(1.dp, cardBorder)
+                ) {
+                    months.forEach { month ->
+                        DropdownMenuItem(
+                            text = { Text(month, color = textMain) },
+                            onClick = {
+                                selectedMonth = month
+                                expandedMonth = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            // Dropdown Tahun
+            Box(modifier = Modifier.weight(1f)) {
+                OutlinedButton(
+                    onClick = { expandedYear = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textMain),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(selectedYear, color = textMain, fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textMain)
+                    }
+                }
+                DropdownMenu(
+                    expanded = expandedYear,
+                    onDismissRequest = { expandedYear = false },
+                    modifier = Modifier.background(cardBg).border(1.dp, cardBorder)
+                ) {
+                    years.forEach { year ->
+                        DropdownMenuItem(
+                            text = { Text(year, color = textMain) },
+                            onClick = {
+                                selectedYear = year
+                                expandedYear = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Total Pendapatan Bulan Terkait
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(28.dp))
+                .padding(20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(primaryBg.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = primaryBg, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Total Pendapatan ($selectedMonth $selectedYear)", fontWeight = FontWeight.Medium, fontSize = 14.sp, color = textSecondary)
+                }
+                
+                when (val state = uiState) {
+                    is DashboardState.Loading -> Text("Rp ...", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = textMain)
+                    is DashboardState.Success -> {
+                        val format = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("id-ID"))
+                        format.maximumFractionDigits = 0
+                        Text(format.format(state.data.monthlyRevenue), fontWeight = FontWeight.Bold, fontSize = 32.sp, color = primaryBg)
+                    }
+                    is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = textMain)
+                }
+            }
+        }
+
+        // Summary Grid
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Active Customers
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(gridSuccessBg)
+                    .border(1.dp, gridSuccessBorder, RoundedCornerShape(28.dp))
+                    .padding(20.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = iconSuccess, modifier = Modifier.size(24.dp))
+                    Column {
+                        when (val state = uiState) {
+                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                            is DashboardState.Success -> Text("${state.data.totalCustomers}", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                        }
+                        Text("Aktif", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = textSecondary)
+                    }
+                }
+            }
+
+            // Overdue Payments
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(gridErrorBg)
+                    .border(1.dp, gridErrorBorder, RoundedCornerShape(28.dp))
+                    .padding(20.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.Error, contentDescription = null, tint = iconError, modifier = Modifier.size(24.dp))
+                    Column {
+                        when (val state = uiState) {
+                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textErrorPrimary)
+                            is DashboardState.Success -> Text("${state.data.unpaidCustomers}", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textErrorPrimary)
+                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textErrorPrimary)
+                        }
+                        Text("Belum Bayar", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = textErrorSecondary)
+                    }
+                }
+            }
+        }
+        
+        // Shortcut Menu Cepat
+        Text("Akses Cepat", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ShortcutItem(Icons.Default.PersonAdd, "Tambah\nPelanggan", primaryBg, modifier = Modifier.weight(1f), onClick = onNavigateToCustomers)
+            ShortcutItem(Icons.Default.Payment, "Bayar\nTagihan", gridSuccessBg, modifier = Modifier.weight(1f), onClick = onNavigateToBilling)
+            ShortcutItem(Icons.Default.BugReport, "Lapor\nGangguan", gridErrorBg, modifier = Modifier.weight(1f), onClick = {})
+        }
+
+        // Menu Utama Card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(28.dp))
+                .padding(20.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("Menu Utama", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain, modifier = Modifier.padding(bottom = 16.dp))
+                
+                // Grid 1
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    MenuItem(icon = Icons.Default.Group, title = "Pelanggan", tint = primaryBg, onClick = onNavigateToCustomers)
+                    MenuItem(icon = Icons.Default.Receipt, title = "Tagihan", tint = textErrorPrimary, onClick = onNavigateToBilling)
+                    MenuItem(icon = Icons.Default.Inventory, title = "Paket", tint = primaryBg, onClick = onNavigateToPackages)
+                    MenuItem(icon = Icons.Default.Map, title = "Area", tint = primaryBg, onClick = onNavigateToArea)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Grid 2
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    MenuItem(icon = Icons.Default.Router, title = "Mikrotik", tint = primaryBg, onClick = onNavigateToMikrotik)
+                    MenuItem(icon = Icons.Default.Dns, title = "ACS", tint = primaryBg, onClick = onNavigateToAcs)
+                    MenuItem(icon = Icons.Default.Chat, title = "Bot WA", tint = Color(0xFF00FF4D), onClick = onNavigateToBotWa)
+                    MenuItem(icon = Icons.Default.Report, title = "Pengaduan", tint = textErrorPrimary, onClick = {})
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Grid 3
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                    MenuItem(icon = Icons.Default.Book, title = "Pembukuan", tint = primaryBg, onClick = onNavigateToPembukuan)
+                    MenuItem(icon = Icons.Default.Storage, title = "Stock Barang", tint = primaryBg, onClick = onNavigateToStockBarang)
+                    MenuItem(icon = Icons.Default.Settings, title = "Setting", tint = primaryBg, onClick = onNavigateToSetting)
+                    Box(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        
+        // PPPoE Offline Users
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(28.dp))
+                .padding(20.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Text("PPPoE Offline", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
+                    Text("Lihat Semua", fontSize = 12.sp, color = primaryBg, modifier = Modifier.clickable { onNavigateToMikrotik() })
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (uiState is DashboardState.Success) {
+                    val offlineUsers = (uiState as DashboardState.Success).offlinePppoe
+                    if (offlineUsers.isEmpty()) {
+                        Text("Tidak ada PPPoE offline", color = textSecondary, fontSize = 14.sp)
+                    } else {
+                        offlineUsers.take(5).forEach { user ->
+                            OfflineUserItem(user.name, user.lastLogoff)
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(100.dp)) // Extra padding for floating nav bar
+    }
+}
+
+@Composable
+fun RowScope.MenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, tint: Color, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.weight(1f).clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF1E1E1E))
+                .border(1.dp, Color(0xFF333333), RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(title, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+fun ShortcutItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, bgColor: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF11111A))
+            .border(1.dp, Color(0xFF333333), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(title, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+fun OfflineUserItem(username: String, time: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFF003C).copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.PersonOff, contentDescription = null, tint = Color(0xFFFF003C), modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(username, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        }
+        Text(time, color = Color(0xFFAAAAAA), fontSize = 12.sp)
+    }
+}
