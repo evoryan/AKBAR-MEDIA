@@ -48,7 +48,7 @@ data class AcsDevice(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AcsScreen(onBack: () -> Unit) {
+fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
     val bgMain = Color(0xFF05050A)
     val headerBg = Color(0xFF1F0216)
     val textMain = Color(0xFFFFFFFF)
@@ -59,7 +59,7 @@ fun AcsScreen(onBack: () -> Unit) {
     val errorRed = Color(0xFFFF003C)
     val warningYellow = Color(0xFFFFB800)
 
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf(initialSearchQuery) }
     var showOnlyOffline by remember { mutableStateOf(false) }
     
     var allDevices by remember { mutableStateOf<List<AcsDevice>>(emptyList()) }

@@ -36,6 +36,7 @@ fun SettingScreen(
     onNavigateToOdc: () -> Unit,
     onNavigateToOdp: () -> Unit,
     onNavigateToGatewayPayment: () -> Unit,
+    onNavigateToCompanySettings: () -> Unit,
     onLogout: () -> Unit
 ) {
     val bgMain = Color(0xFF0A0A0A)
@@ -111,6 +112,23 @@ fun SettingScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+            
+            // TAMPILAN
+            if (currentUser?.role == UserRole.SUPER_ADMIN) {
+                Text("TAMPILAN", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(cardBg)
+                        .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                ) {
+                    Column {
+                        SettingItem(icon = Icons.Default.Edit, title = "Tampilan Aplikasi", subtitle = "Ubah nama perusahaan & info dashboard", iconTint = textMain, onClick = onNavigateToCompanySettings)
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
             
             // Lain-Lain
             if (currentUser?.role == UserRole.SUPER_ADMIN) {

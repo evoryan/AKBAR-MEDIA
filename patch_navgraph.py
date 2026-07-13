@@ -3,26 +3,24 @@ import re
 with open('app/src/main/java/com/example/ui/navigation/NavGraph.kt', 'r') as f:
     content = f.read()
 
-replacement = """            composable<SplashRoute> {
-                SplashScreen(
-                    onNavigateToLogin = {
-                        navController.navigate(LoginRoute) {
-                            popUpTo(SplashRoute) { inclusive = true }
-                        }
-                    },
-                    onNavigateToDashboard = {
-                        navController.navigate(DashboardRoute) {
-                            popUpTo(SplashRoute) { inclusive = true }
-                        }
-                    }
+old_route = """            composable<CustomerDetailRoute> {
+                val route = it.toRoute<CustomerDetailRoute>()
+                CustomerDetailScreen(
+                    customerId = route.customerId,
+                    onBack = { navController.popBackStack() }
                 )
             }"""
 
-content = re.sub(
-    r'composable<SplashRoute> \{\s*SplashScreen\(\s*onNavigateToLogin = \{\s*navController.navigate\(LoginRoute\) \{\s*popUpTo\(SplashRoute\) \{ inclusive = true \}\s*\}\s*\}\s*\)\s*\}',
-    replacement,
-    content
-)
+new_route = """            composable<CustomerDetailRoute> {
+                val route = it.toRoute<CustomerDetailRoute>()
+                CustomerDetailScreen(
+                    customerId = route.customerId,
+                    onBack = { navController.popBackStack() },
+                    onNavigateToPayment = { id -> navController.navigate(PaymentRoute(id)) }
+                )
+            }"""
+
+content = content.replace(old_route, new_route)
 
 with open('app/src/main/java/com/example/ui/navigation/NavGraph.kt', 'w') as f:
     f.write(content)

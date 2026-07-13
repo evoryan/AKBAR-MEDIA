@@ -1,5 +1,6 @@
 package com.example.ui.data.remote
 
+
 import com.example.ui.data.AdminUser
 import com.example.ui.screens.Customer
 import com.example.ui.screens.AcsDevice
@@ -9,11 +10,7 @@ import com.example.ui.data.OdpItem
 import com.example.ui.data.CategoryItem
 import com.example.ui.data.InventoryItem
 import com.example.ui.data.StockHistory
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.DELETE
-import retrofit2.http.Path
-import retrofit2.http.Body
+import retrofit2.http.*
 import com.example.data.DashboardSummaryResponse
 
 
@@ -40,6 +37,11 @@ data class MikrotikStatus(val cpuLoad: String, val uptime: String, val activePpp
 data class OfflinePppoeUser(val name: String, val lastLogoff: String, val area: String)
 data class PaymentRequest(val customerId: String, val adminName: String, val totalAmount: Double)
 data class DeleteBillingRequest(val customerId: String)
+
+data class MikrotikProfile(
+    val id: String,
+    val name: String
+)
 
 interface ApiService {
     @GET("api/dashboard/pppoe-offline")
@@ -118,6 +120,10 @@ interface ApiService {
     @POST("api/customers")
     suspend fun addCustomer(@Body customer: com.example.ui.screens.Customer): ApiResponse
 
+    @GET("api/customers/{id}/history")
+    suspend fun getCustomerHistory(@Path("id") id: String): List<PaymentHistory>
+
+
     @GET("api/packages")
     suspend fun getPackages(): List<com.example.ui.screens.InternetPackage>
 
@@ -139,6 +145,12 @@ interface ApiService {
     @POST("api/odp")
     suspend fun addOdp(@Body item: com.example.ui.data.OdpItem): ApiResponse
 
+    @PUT("api/odc/{id}")
+    suspend fun updateOdc(@Path("id") id: String, @Body item: com.example.ui.data.OdcItem): ApiResponse
+
+    @PUT("api/odp/{id}")
+    suspend fun updateOdp(@Path("id") id: String, @Body item: com.example.ui.data.OdpItem): ApiResponse
+
     @POST("api/inventory")
     suspend fun addInventory(@Body item: com.example.ui.data.InventoryItem): ApiResponse
 
@@ -151,14 +163,25 @@ interface ApiService {
     @GET("api/mikrotik/status/{id}")
     suspend fun getMikrotikStatus(@Path("id") id: String): MikrotikStatus
 
+    
+
+    @GET("api/mikrotik/profiles/{id}")
+    suspend fun getMikrotikProfiles(@Path("id") id: String): List<MikrotikProfile>
+
     @GET("api/mikrotik/secrets/{id}")
     suspend fun getMikrotikSecrets(@Path("id") id: String): List<com.example.ui.screens.PPPoESecret>
+
+    @POST("api/mikrotik/secrets/{id}")
+    suspend fun addMikrotikSecret(@Path("id") id: String, @Body request: Map<String, String>): ApiResponse
+
 
     @GET("api/acs/devices")
     suspend fun getAcsDevices(): List<AcsDevice>
     
     @POST("api/acs/devices/{id}/action")
     suspend fun acsAction(@Path("id") id: String, @Body request: Map<String, String>): ApiResponse
+    @GET("api/ping")
+    suspend fun ping(): PingResponse
 }
 
 @kotlinx.serialization.Serializable
@@ -175,3 +198,16 @@ data class PengeluaranRequest(
     val amount: Long,
     val description: String
 )
+
+data class PaymentHistory(
+    val id: String,
+    val type: String,
+    val amount: String,
+    val description: String,
+    @com.squareup.moshi.Json(name = "created_at") val createdAt: String? = null
+)
+
+
+
+
+data class PingResponse(val status: String)

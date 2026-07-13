@@ -1,36 +1,35 @@
-with open('VPS/server.js', 'r') as f:
+import re
+
+with open('app/src/main/java/com/example/ui/screens/DashboardScreen.kt', 'r') as f:
     content = f.read()
 
-dashboard_endpoint = """
-app.get('/api/dashboard/summary', async (req, res) => {
-    try {
-        const [customers] = await pool.query('SELECT COUNT(*) as total FROM customers');
-        const [paidCustomers] = await pool.query('SELECT COUNT(*) as paid FROM customers WHERE status = "Aktif"');
-        const [unpaidCustomers] = await pool.query('SELECT COUNT(*) as unpaid FROM customers WHERE status != "Aktif"');
-        const [pembukuan] = await pool.query('SELECT type, SUM(amount) as total FROM pembukuan GROUP BY type');
-        
-        let monthlyRevenue = 0;
-        pembukuan.forEach(row => {
-            if (row.type === 'pemasukan') monthlyRevenue += Number(row.total);
-        });
+# Make sure Toast is imported
+if "import android.widget.Toast" not in content:
+    content = content.replace("import androidx.compose.ui.unit.sp\n", "import androidx.compose.ui.unit.sp\nimport android.widget.Toast\nimport androidx.compose.ui.platform.LocalContext\n")
 
-        res.json({
-            totalCustomers: customers[0].total,
-            monthlyRevenue: monthlyRevenue,
-            activePPPoE: customers[0].total, // simplified
-            activeHotspot: 0,
-            paidCustomers: paidCustomers[0].paid,
-            unpaidCustomers: unpaidCustomers[0].unpaid
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
-"""
+old_header = """            Column {
+                Text(com.example.ui.data.SettingsManager.companyName, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Halo, Admin", fontSize = 16.sp, color = textSecondary)
+            }
+            Box("""
+new_header = """            Column {
+                val context = LocalContext.current
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(com.example.ui.data.SettingsManager.companyName, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = { 
+                        viewModel.fetchData(context)
+                        Toast.makeText(context, "Refreshing data...", Toast.LENGTH_SHORT).show()
+                    }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = textSecondary)
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Halo, Admin", fontSize = 16.sp, color = textSecondary)
+            }
+            Box("""
+content = content.replace(old_header, new_header)
 
-if "/api/dashboard/summary" not in content:
-    content = content.replace("// Endpoints", "// Endpoints\n" + dashboard_endpoint)
-    with open('VPS/server.js', 'w') as f:
-        f.write(content)
-
+with open('app/src/main/java/com/example/ui/screens/DashboardScreen.kt', 'w') as f:
+    f.write(content)

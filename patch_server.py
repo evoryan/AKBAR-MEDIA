@@ -1,36 +1,64 @@
+import re
+
 with open('VPS/server.js', 'r') as f:
     content = f.read()
 
-endpoints = """
-app.get('/api/pengeluaran', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT category, amount, description, updated_at FROM pengeluaran');
-        res.json(rows);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
+# 1. Add additionalCost1 and additionalCost2 to ALTER TABLEs
+alter_str = """
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});"""
 
-app.post('/api/pengeluaran', async (req, res) => {
-    try {
-        const { category, amount, description } = req.body;
-        await pool.query(
-            'INSERT INTO pengeluaran (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = VALUES(amount), description = VALUES(description)',
-            [category, amount || 0, description || '']
-        );
-        res.json({ message: "Pengeluaran diupdate" });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
+content = content.replace("""
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(err=>{});""", alter_str)
 
-"""
+# Global alter table (for masterPool/tPool)
+global_alter = """
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});"""
+content = content.replace("        await masterPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});", global_alter)
 
-# Insert right before app.get('/api/areas'
-content = content.replace("app.get('/api/areas'", endpoints + "app.get('/api/areas'")
+global_alter_tpool = """
+            await tPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});"""
+content = content.replace("            await tPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});", global_alter_tpool)
 
-# Note: The total "pengeluaran" in PembukuanScreen still needs to sum these up, OR we can fetch them separately in the frontend.
+init_alter = """
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`); } catch(e) {}"""
+content = content.replace("            try { await pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`); } catch(e) {}", init_alter)
+
+
+# 2. Update INSERT logic
+old_insert = """            [result] = await req.pool.query(
+                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
+            );"""
+
+new_insert = """            [result] = await req.pool.query(
+                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
+            );"""
+
+content = content.replace(old_insert, new_insert)
+
+# 3. Update UPDATE logic in PUT /api/customers/:id
+# We need to find the PUT method
+import re
+put_pattern = r"app\.put\('/api/customers/:id', async \(req, res\) => \{.*?\};"
+# Wait, maybe simpler to just replace the UPDATE query directly
 with open('VPS/server.js', 'w') as f:
     f.write(content)

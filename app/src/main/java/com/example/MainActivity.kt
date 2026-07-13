@@ -11,6 +11,7 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     com.example.ui.data.remote.ApiClient.init(applicationContext)
+    com.example.ui.data.SettingsManager.init(applicationContext)
     enableEdgeToEdge()
     setContent { 
         AppTheme { 

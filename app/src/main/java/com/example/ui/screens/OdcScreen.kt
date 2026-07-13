@@ -21,6 +21,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import android.util.Log
 import androidx.compose.ui.unit.sp
 import com.example.ui.data.remote.ApiClient
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +34,7 @@ import com.example.ui.data.OdcItem
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OdcScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     val currentUser by UserSession.currentUser.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val bgMain = Color(0xFF0A0A0A)
@@ -45,7 +49,11 @@ fun OdcScreen(onBack: () -> Unit) {
         try {
             val res = ApiClient.apiService.getOdcList()
             odcList = res
-        } catch (e: Exception) {
+        } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdcScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
         }
     }
     var showDialog by remember { mutableStateOf(false) }
@@ -109,6 +117,9 @@ fun OdcScreen(onBack: () -> Unit) {
                                     Text(item.name, color = textMain, fontWeight = FontWeight.Medium, fontSize = 16.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(item.location, color = textSecondary, fontSize = 14.sp)
+                                    if (item.portCount > 0) {
+                                        Text("Port: ${item.portCount} | Input: ${item.portInput}", color = primaryBg, fontSize = 12.sp)
+                                    }
                                 }
                             }
                             Row {
@@ -125,7 +136,11 @@ fun OdcScreen(onBack: () -> Unit) {
                 try {
                     ApiClient.apiService.deleteOdc(item.id)
                     odcList = odcList.filter { it.id != item.id }
-                } catch (e: Exception) {
+                } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdcScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
                 }
             }
         
@@ -144,6 +159,8 @@ fun OdcScreen(onBack: () -> Unit) {
     if (showDialog) {
         var name by remember { mutableStateOf(editItem?.name ?: "") }
         var location by remember { mutableStateOf(editItem?.location ?: "") }
+        var portCount by remember { mutableStateOf(editItem?.portCount?.toString() ?: "") }
+        var portInput by remember { mutableStateOf(editItem?.portInput ?: "") }
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
@@ -175,6 +192,28 @@ fun OdcScreen(onBack: () -> Unit) {
                             unfocusedTextColor = textMain
                         )
                     )
+                    OutlinedTextField(
+                        value = portCount,
+                        onValueChange = { portCount = it },
+                        label = { Text("Jumlah Port") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        )
+                    )
+                    OutlinedTextField(
+                        value = portInput,
+                        onValueChange = { portInput = it },
+                        label = { Text("Sumber Port Input") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        )
+                    )
                 }
             },
             confirmButton = {
@@ -185,18 +224,45 @@ fun OdcScreen(onBack: () -> Unit) {
                                 val newItem = OdcItem(
                                     id = "",
                                     name = name,
-                                    location = location
+                                    location = location,
+                                    portCount = portCount.toIntOrNull() ?: 0,
+                                    portInput = portInput
                                 )
                                 ApiClient.apiService.addOdc(newItem)
                                 odcList = ApiClient.apiService.getOdcList()
-                            } catch(e: Exception) {}
+                                showDialog = false
+                            } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdcScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch(e: Exception) {
+                                Log.e("OdcScreen", "Error adding ODC", e)
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     } else {
-                        odcList = odcList.map {
-                            if (it.id == (editItem?.id ?: "")) it.copy(name = name, location = location) else it
+                        coroutineScope.launch {
+                            try {
+                                val updatedItem = OdcItem(
+                                    id = editItem!!.id,
+                                    name = name,
+                                    location = location,
+                                    portCount = portCount.toIntOrNull() ?: 0,
+                                    portInput = portInput
+                                )
+                                ApiClient.apiService.updateOdc(updatedItem.id, updatedItem)
+                                odcList = ApiClient.apiService.getOdcList()
+                                showDialog = false
+                            } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdcScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
+                                Log.e("OdcScreen", "Error updating ODC", e)
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
-                    showDialog = false
                 }) {
                     Text("Simpan", color = primaryBg)
                 }

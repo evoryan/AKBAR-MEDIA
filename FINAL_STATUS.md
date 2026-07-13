@@ -1,3 +1,11 @@
-- **Penyebab Error**: Error `Table 'akbar_media_master.users' doesn't exist` terjadi karena pada pembaruan sebelumnya kita mengubah arsitektur menjadi Multi-Tenant, di mana proses login sekarang terpusat pada database `akbar_media_master`. Namun, database dan tabel tersebut belum dibuat di server MySQL VPS Anda.
-- **Solusi (File SQL Master)**: Saya telah membuatkan file `init_master.sql` di dalam folder `VPS/`. Anda perlu menjalankan script SQL ini di database MySQL VPS Anda untuk membuat database `akbar_media_master`, membuat tabel `users`, dan menambahkan 1 akun *Super Admin* default (`akbar2026` / `08Delapan`) yang akan diarahkan ke tenant `app_db`.
-- **Daftar File VPS**: Semua file yang ditujukan untuk sisi VPS berada di dalam folder `VPS/`. Anda bisa menyalin isi folder tersebut (terutama `server.js` yang sudah diperbarui dengan middleware Multi-Tenant, `package.json` terbaru dengan dependensi `jsonwebtoken`, dan `init_master.sql`) ke server VPS Anda, jalankan `npm install`, dan restart *service* PM2 Anda.
+Halo! Masalah pada form tambah ODC dan ODP yang tidak bisa menyimpan data kemungkinan besar disebabkan oleh **kolom database yang belum diupdate di server VPS live Anda**.
+
+Sebelumnya, kita telah menambahkan fitur kolom `portCount` dan `portInput` pada ODC dan ODP. Jika kode Android mengirimkan data ini tetapi database MySQL di VPS lama Anda belum memiliki kolom-kolom tersebut, server akan mengalami *Error 500* secara diam-diam.
+
+Saya sudah **memperbaiki masalah ini** secara menyeluruh dengan:
+1. **Auto-Update Schema di Server:** Menambahkan logika di dalam `VPS/server.js` agar secara otomatis menjalankan `ALTER TABLE` pada saat server node di-restart. Fitur ini otomatis menambahkan kolom `portCount` dan `portInput` ke MySQL Anda bila belum ada.
+2. **Validasi ODP:** Menambahkan pesan peringatan pada form ODP apabila belum ada ODC yang dipilih, sehingga mencegah error penyimpanan kosong.
+3. **Pesan Error Interaktif:** Menambahkan notifikasi (`Toast`) pada aplikasi Android, sehingga apabila di masa depan terjadi kegagalan server, Anda akan langsung melihat peringatan (contoh: *Error: Timeout*) bukan layar yang terdiam begitu saja.
+
+**Langkah yang WAJIB Anda lakukan sekarang:**
+Tolong upload ulang semua perubahan kode terbaru yang ada di folder `VPS` ini (terutama file `server.js`) ke server `103.253.245.25`, dan **restart proses NodeJS** (`pm2 restart all` atau `npm start`). Setelah server VPS menyala kembali menggunakan `server.js` yang baru, aplikasi Android ini akan bisa menyimpan ODC dan ODP dengan lancar!

@@ -56,7 +56,7 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
 
     val adminList = listOf(
         AdminData(
-            name = "PT.Akbar Media Group",
+            name = com.example.ui.data.SettingsManager.companyName,
             totalDiterima = "Rp. 125.000",
             setor = "Rp. 0",
             sisa = "Rp. 0",

@@ -9,6 +9,8 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.get('/api/ping', (req, res) => res.json({ status: 'ok' }));
+
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-akbar';
 
@@ -38,6 +40,10 @@ function getTenantPool(dbName) {
             connectionLimit: 10,
             queueLimit: 0
         });
+        
+        // Auto-update schema for tenant database
+        tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
     }
     return tenantPools[dbName];
 }
@@ -45,7 +51,7 @@ function getTenantPool(dbName) {
 // Middleware to extract tenant context
 const tenantContext = (req, res, next) => {
     // Skip auth for login
-    if (req.path === '/api/login') {
+    if (req.path === '/api/login' || req.path === '/api/fix-db') {
         return next();
     }
     
@@ -69,6 +75,116 @@ const tenantContext = (req, res, next) => {
         return res.status(401).json({ error: "Akses ditolak, token tidak ditemukan" });
     }
 };
+
+
+// Auto-update schema to avoid errors if user doesn't run init.sql
+async function updateSchema() {
+    try {
+        await masterPool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); await masterPool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        console.log("Schema checked/updated.");
+    } catch(e) {
+        console.error("Schema update error:", e.message);
+    }
+}
+updateSchema();
+
+
+app.get('/api/fix-db', async (req, res) => {
+    try {
+        let results = [];
+        const pools = { master: masterPool, ...tenantPools };
+        for (const [name, pool] of Object.entries(pools)) {
+            try {
+                await pool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`);
+                results.push(`${name}: odc_list portCount added`);
+            } catch(e) { results.push(`${name}: odc_list portCount err: ${e.message}`); }
+            
+            try {
+                await pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`);
+                results.push(`${name}: odc_list portInput added`);
+            } catch(e) { results.push(`${name}: odc_list portInput err: ${e.message}`); }
+            
+            try {
+                await pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`);
+                results.push(`${name}: odp_list portCount added`);
+            } catch(e) { results.push(`${name}: odp_list portCount err: ${e.message}`); }
+            
+            try {
+                await pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`);
+                results.push(`${name}: odp_list portInput added`);
+            } catch(e) { results.push(`${name}: odp_list portInput err: ${e.message}`); }
+
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`); } catch(e) {}
+
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`); } catch(e) {}
+        }
+        res.json({ message: "Database schema check completed", details: results });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
+// Auto update all schemas on startup
+async function initAllDatabases() {
+    try {
+        console.log("Checking and updating schemas for all databases...");
+        
+        // 1. Update master
+        await masterPool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`).catch(e=>{});
+
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
+        
+        // 2. Find all tenant databases
+        const [dbs] = await masterPool.query("SHOW DATABASES LIKE 'akbar_%'");
+        for (const row of dbs) {
+            const dbName = Object.values(row)[0];
+            if (dbName === 'akbar_media_master') continue;
+            
+            console.log(`Updating schema for tenant: ${dbName}`);
+            const tPool = getTenantPool(dbName);
+            await tPool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
+            await tPool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
+            await tPool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+
+            await tPool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`).catch(e=>{});
+
+            await tPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
+        }
+        console.log("Schema update complete!");
+    } catch (e) {
+        console.error("Init databases error:", e.message);
+    }
+}
+initAllDatabases();
 
 app.use(tenantContext);
 app.get('/api/dashboard/pppoe-offline', async (req, res) => {
@@ -126,17 +242,27 @@ app.post('/api/billing/pay', async (req, res) => {
         await req.pool.query('UPDATE customers SET status = "LUNAS CASH" WHERE id = ?', [customerId]);
 
         // Add to pembukuan
-        await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
-            ['pemasukan', totalAmount || 0, `Pembayaran tagihan pelanggan ${customerName}`, 'Transaksi Cash']);
+        try {
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
+                ['pemasukan', totalAmount || 0, `Pembayaran tagihan pelanggan ${customerName}`, 'Transaksi Cash']);
+        } catch (e) {
+            console.error("Warning: category column might be missing in pembukuan", e.message);
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)', 
+                ['pemasukan', totalAmount || 0, `Pembayaran tagihan pelanggan ${customerName}`]);
+        }
 
         // Add notification
         const notifMsg = `Pembayaran "${customerName}" di terima oleh "${adminName}"`;
-        await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
+        try {
+            await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
+        } catch (e) {
+            console.error("Warning: notifications table might be missing", e.message);
+        }
 
         res.json({ message: "Pembayaran berhasil dicatat" });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
+        console.error("Payment API Error:", error);
+        res.status(500).json({ error: "Terjadi kesalahan server: " + error.message });
     }
 });
 
@@ -167,8 +293,8 @@ app.post('/api/billing/delete', async (req, res) => {
 app.get('/api/dashboard/summary', async (req, res) => {
     try {
         const [customers] = await req.pool.query('SELECT COUNT(*) as total FROM customers');
-        const [paidCustomers] = await req.pool.query('SELECT COUNT(*) as paid FROM customers WHERE status = "Aktif"');
-        const [unpaidCustomers] = await req.pool.query('SELECT COUNT(*) as unpaid FROM customers WHERE status != "Aktif"');
+        const [paidCustomers] = await req.pool.query('SELECT COUNT(*) as paid FROM customers WHERE status = "LUNAS CASH"');
+        const [unpaidCustomers] = await req.pool.query('SELECT COUNT(*) as unpaid FROM customers WHERE status != "LUNAS CASH"');
         const [pembukuan] = await req.pool.query('SELECT type, SUM(amount) as total FROM pembukuan GROUP BY type');
         
         let monthlyRevenue = 0;
@@ -221,7 +347,7 @@ app.post('/api/login', async (req, res) => {
         }
     } catch (error) {
         console.error("Login error:", error);
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 app.get('/api/customers', async (req, res) => {
@@ -271,10 +397,17 @@ app.get('/api/pembukuan', async (req, res) => {
 app.post('/api/pembukuan', async (req, res) => {
     try {
         const { type, amount, description, category } = req.body;
-        await req.pool.query(
-            'INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)',
-            [type, amount || 0, description || '', category || 'Lain-lain']
-        );
+        try {
+            await req.pool.query(
+                'INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)',
+                [type, amount || 0, description || '', category || 'Lain-lain']
+            );
+        } catch (e) {
+            await req.pool.query(
+                'INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)',
+                [type, amount || 0, description || '']
+            );
+        }
         res.json({ message: "Pembukuan ditambahkan" });
     } catch (error) {
         console.error(error);
@@ -401,7 +534,7 @@ app.delete('/api/admins/:id', async (req, res) => {
         await req.pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
         res.json({ message: "Admin berhasil dihapus" });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -410,7 +543,7 @@ app.delete('/api/categories/:id', async (req, res) => {
         await req.pool.query('DELETE FROM categories WHERE id = ?', [req.params.id]);
         res.json({ message: "Kategori berhasil dihapus" });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -419,7 +552,64 @@ app.delete('/api/inventory/:id', async (req, res) => {
         await req.pool.query('DELETE FROM inventory WHERE id = ?', [req.params.id]);
         res.json({ message: "Inventory berhasil dihapus" });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+    }
+});
+
+app.put('/api/odc/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, location, portCount, portInput } = req.body;
+        const parsedPortCount = parseInt(portCount) || 0;
+        try {
+            await req.pool.query(
+                'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ? WHERE id = ?',
+                [name, location, parsedPortCount, portInput || '', id]
+            );
+        } catch(e) {
+            if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(
+                    'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ? WHERE id = ?',
+                    [name, location, parsedPortCount, portInput || '', id]
+                );
+            } else {
+                throw e;
+            }
+        }
+        res.json({ message: "ODC diupdate" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan" });
+    }
+});
+
+app.put('/api/odp/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { odcId, name, portCount, portInput } = req.body;
+        const parsedOdcId = parseInt(odcId) || 0;
+        const parsedPortCount = parseInt(portCount) || 0;
+        try {
+            await req.pool.query(
+                'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ? WHERE id = ?',
+                [name, parsedOdcId, parsedPortCount, portInput || '', id]
+            );
+        } catch(e) {
+            if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(
+                    'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ? WHERE id = ?',
+                    [name, parsedOdcId, parsedPortCount, portInput || '', id]
+                );
+            } else {
+                throw e;
+            }
+        }
+        res.json({ message: "ODP diupdate" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan" });
     }
 });
 
@@ -428,7 +618,7 @@ app.delete('/api/odc/:id', async (req, res) => {
         await req.pool.query('DELETE FROM odc_list WHERE id = ?', [req.params.id]);
         res.json({ message: "ODC berhasil dihapus" });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -437,10 +627,25 @@ app.delete('/api/odp/:id', async (req, res) => {
         await req.pool.query('DELETE FROM odp_list WHERE id = ?', [req.params.id]);
         res.json({ message: "ODP berhasil dihapus" });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
+
+
+app.get('/api/customers/:id/history', async (req, res) => {
+    try {
+        const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [req.params.id]);
+        if (customers.length === 0) return res.status(404).json({ error: "Customer not found" });
+        const customerName = customers[0].name;
+        const [rows] = await req.pool.query('SELECT * FROM pembukuan WHERE description LIKE ? ORDER BY created_at DESC', [`%${customerName}%`]);
+        const history = rows.map(r => ({ ...r, id: r.id.toString(), amount: r.amount.toString() }));
+        res.json(history);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
 
 app.delete('/api/customers/:id', async (req, res) => {
     try {
@@ -453,13 +658,57 @@ app.delete('/api/customers/:id', async (req, res) => {
 
 app.post('/api/customers', async (req, res) => {
     try {
-        const { name, phone, area, username, billingDate, status, price, discount } = req.body;
-        const [result] = await req.pool.query(
-            'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, phone, area, username, billingDate, status, price, discount]
-        );
+        const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
+        const registerDate = req.body.registerDate || req.body.register_date;
+        const isolateDate = req.body.isolateDate || req.body.isolate_date;
+        const packageName = req.body.packageName || req.body.package_name;
+        const pppoeSecret = req.body.pppoeSecret || req.body.pppoe_secret;
+        const odpId = req.body.odpId || req.body.odp_id;
+        const odpPort = req.body.odpPort || req.body.odp_port;
+        
+        const parsedOdpId = (odpId !== undefined && odpId !== null && odpId !== '') ? parseInt(odpId) : null;
+        let result;
+        try {
+            [result] = await req.pool.query(
+                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
+            );
+        } catch (e) {
+            if (e.message && e.message.includes("Unknown column")) {
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                
+                [result] = await req.pool.query(
+                    'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
+                );
+            } else {
+                throw e;
+            }
+        }
+        
+        // Handle additional costs
+        const addCost1 = parseFloat(additionalCost1) || 0;
+        const addCost2 = parseFloat(additionalCost2) || 0;
+        
+        if (addCost1 > 0 || addCost2 > 0) {
+            const totalCost = addCost1 + addCost2;
+            const description = `Biaya tambahan pendaftaran ${name}`;
+            await req.pool.query(
+                'INSERT INTO pembukuan (type, category, amount, description) VALUES (?, ?, ?, ?)',
+                ['pemasukan', 'Pemasukan Lain-lain', totalCost, description]
+            );
+        }
+
         res.json({ message: "Pelanggan berhasil ditambahkan", id: result.insertId.toString() });
     } catch (error) {
+        console.error("Error adding customer:", error);
         res.status(500).json({ error: "Terjadi kesalahan saat menambahkan pelanggan" });
     }
 });
@@ -470,7 +719,7 @@ app.get('/api/packages', async (req, res) => {
         const packages = rows.map(r => ({ ...r, id: r.id.toString(), price: Number(r.price), taxRate: Number(r.taxRate) }));
         res.json(packages);
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -483,7 +732,7 @@ app.post('/api/packages', async (req, res) => {
         );
         res.json({ message: "Paket ditambahkan", id: result.insertId.toString() });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -498,7 +747,7 @@ app.put('/api/packages/:id', async (req, res) => {
         );
         res.json({ message: "Paket diupdate" });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -507,7 +756,7 @@ app.delete('/api/packages/:id', async (req, res) => {
         await req.pool.query('DELETE FROM packages WHERE id = ?', [req.params.id]);
         res.json({ message: "Paket dihapus" });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -611,7 +860,7 @@ app.get('/api/acs/devices', async (req, res) => {
         res.json(allDevices);
     } catch (error) {
         console.error("Error fetching ACS devices:", error);
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -622,7 +871,7 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
         // In a real app we'd POST to /tasks for the specific device ID.
         res.json({ message: `Aksi ${action} diproses` });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -635,33 +884,64 @@ app.post('/api/areas', async (req, res) => {
         );
         res.json({ message: "Area ditambahkan", id: result.insertId.toString() });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
 app.post('/api/odc', async (req, res) => {
     try {
-        const { code, name, capacity, maxOdp, portCount, status, area, location } = req.body;
-        const [result] = await req.pool.query(
-            'INSERT INTO odc_list (code, name, capacity, maxOdp, portCount, status, area, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [code, name, capacity, maxOdp, portCount, status, area, location]
-        );
+        const { name, location, portCount, portInput } = req.body;
+        const parsedPortCount = parseInt(portCount) || 0;
+        let result;
+        try {
+            [result] = await req.pool.query(
+                'INSERT INTO odc_list (name, location, portCount, portInput) VALUES (?, ?, ?, ?)',
+                [name, location, parsedPortCount, portInput || '']
+            );
+        } catch(e) {
+            if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                [result] = await req.pool.query(
+                    'INSERT INTO odc_list (name, location, portCount, portInput) VALUES (?, ?, ?, ?)',
+                    [name, location, parsedPortCount, portInput || '']
+                );
+            } else {
+                throw e;
+            }
+        }
         res.json({ message: "ODC ditambahkan", id: result.insertId.toString() });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan" });
     }
 });
 
 app.post('/api/odp', async (req, res) => {
     try {
-        const { odcId, code, name, portCount, status, location } = req.body;
-        const [result] = await req.pool.query(
-            'INSERT INTO odp_list (odcId, code, name, portCount, status, location) VALUES (?, ?, ?, ?, ?, ?)',
-            [odcId, code, name, portCount, status, location]
-        );
+        const { odcId, name, portCount, portInput } = req.body;
+        const parsedOdcId = parseInt(odcId) || 0;
+        const parsedPortCount = parseInt(portCount) || 0;
+        let result;
+        try {
+            [result] = await req.pool.query(
+                'INSERT INTO odp_list (name, odcId, portCount, portInput) VALUES (?, ?, ?, ?)',
+                [name, parsedOdcId, parsedPortCount, portInput || '']
+            );
+        } catch(e) {
+            if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                [result] = await req.pool.query(
+                    'INSERT INTO odp_list (name, odcId, portCount, portInput) VALUES (?, ?, ?, ?)',
+                    [name, parsedOdcId, parsedPortCount, portInput || '']
+                );
+            } else {
+                throw e;
+            }
+        }
         res.json({ message: "ODP ditambahkan", id: result.insertId.toString() });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan" });
     }
 });
 
@@ -674,7 +954,7 @@ app.post('/api/categories', async (req, res) => {
         );
         res.json({ message: "Kategori ditambahkan", id: result.insertId.toString() });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -687,7 +967,7 @@ app.post('/api/inventory', async (req, res) => {
         );
         res.json({ message: "Inventory ditambahkan", id: result.insertId.toString() });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -700,7 +980,7 @@ app.post('/api/admins', async (req, res) => {
         );
         res.json({ message: "Admin ditambahkan", id: result.insertId.toString() });
     } catch (error) {
-        res.status(500).json({ error: "Terjadi kesalahan" });
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -749,6 +1029,84 @@ app.get('/api/mikrotik/status/:id', async (req, res) => {
     } catch (error) {
         console.error("Mikrotik error:", error.message);
         res.status(500).json({ error: "Failed to connect to Mikrotik: " + error.message });
+    }
+});
+
+app.post('/api/mikrotik/secrets/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, password, profile } = req.body;
+        
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+        
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+        
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+
+        const api = await client.connect();
+        
+        await api.write('/ppp/secret/add', [
+            `=name=${name}`,
+            `=password=${password}`,
+            `=profile=${profile || 'default'}`,
+            `=service=pppoe`
+        ]);
+        
+        client.close();
+        res.json({ message: "Secret berhasil ditambahkan" });
+    } catch (error) {
+        console.error("Error adding Mikrotik secret:", error);
+        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+    }
+});
+
+app.get('/api/mikrotik/profiles/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+        
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+        
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+
+        const api = await client.connect();
+        
+        const pppProfileMenu = api.menu('/ppp/profile');
+        const allProfiles = await pppProfileMenu.get();
+        
+        client.close();
+        
+        const profiles = allProfiles.map(p => ({
+            id: p['.id'],
+            name: p.name
+        }));
+        
+        res.json(profiles);
+    } catch (error) {
+        console.error("Error fetching Mikrotik profiles:", error);
+        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
     }
 });
 
@@ -805,7 +1163,7 @@ app.get('/api/mikrotik/secrets/:id', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 4500;
+const PORT = 4500;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });

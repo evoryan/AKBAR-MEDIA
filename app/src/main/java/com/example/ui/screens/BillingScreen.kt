@@ -82,9 +82,11 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     val unpaidCustomers = filteredBySearch.filter { it.status != "LUNAS CASH" }
     val paidCustomers = filteredBySearch.filter { it.status == "LUNAS CASH" }
     
-    // Hardcoded sum for demonstration
-    val totalUnpaid = "Rp. ${unpaidCustomers.size * 100}.000"
-    val totalPaid = "Rp. ${paidCustomers.size * 100}.000"
+    val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+    val unpaidSum = unpaidCustomers.sumOf { it.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L }
+    val paidSum = paidCustomers.sumOf { it.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L }
+    val totalUnpaid = "Rp. ${formatter.format(unpaidSum)}"
+    val totalPaid = "Rp. ${formatter.format(paidSum)}"
 
     Scaffold(containerColor = bgMain,
         topBar = {

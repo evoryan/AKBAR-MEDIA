@@ -15,12 +15,32 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
+import kotlinx.coroutines.delay
+import com.example.ui.data.remote.ApiClient
 import com.example.ui.components.FloatingNavBar
 import com.example.ui.screens.*
 
 @Composable
 fun AkbarMediaNavGraph() {
     val navController = rememberNavController()
+    var isServerOnline by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        while(true) {
+            try {
+                ApiClient.apiService.ping()
+                isServerOnline = true
+            } catch(e: Exception) {
+                isServerOnline = false
+            }
+            delay(5000)
+        }
+    }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination?.route
 
@@ -69,7 +89,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToMikrotik = { navController.navigate(MikrotikRoute) },
                     onNavigateToPackages = { navController.navigate(PackagesRoute) },
                     onNavigateToArea = { navController.navigate(AreaRoute) },
-                    onNavigateToAcs = { navController.navigate(AcsRoute) },
+                    onNavigateToAcs = { navController.navigate(AcsRoute()) },
                     onNavigateToBotWa = { navController.navigate(BotWaRoute) },
                     onNavigateToPembukuan = { navController.navigate(PembukuanRoute) },
                     onNavigateToStockBarang = { navController.navigate(StockBarangRoute) },
@@ -97,7 +117,9 @@ fun AkbarMediaNavGraph() {
                 val route = backStackEntry.toRoute<CustomerDetailRoute>()
                 CustomerDetailScreen(
                     customerId = route.customerId,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onNavigateToPayment = { id -> navController.navigate(PaymentRoute(id)) },
+                    onNavigateToAcs = { query -> navController.navigate(AcsRoute(query)) }
                 )
             }
 
@@ -159,8 +181,9 @@ fun AkbarMediaNavGraph() {
             }
 
 
-            composable<AcsRoute> {
-                AcsScreen(onBack = { navController.popBackStack() })
+            composable<AcsRoute> { backStackEntry ->
+                val query = backStackEntry.toRoute<AcsRoute>().searchQuery
+                AcsScreen(onBack = { navController.popBackStack() }, initialSearchQuery = query)
             }
             composable<BotWaRoute> {
                 BotWaScreen(onBack = { navController.popBackStack() })
@@ -222,6 +245,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToOdc = { navController.navigate(OdcRoute) },
                     onNavigateToOdp = { navController.navigate(OdpRoute) },
                     onNavigateToGatewayPayment = { navController.navigate(GatewayPaymentRoute) },
+                    onNavigateToCompanySettings = { navController.navigate(CompanySettingsRoute) },
                                         onLogout = {
                         val context = navController.context
                         com.example.ui.data.UserSession.clearSession(context)
@@ -249,6 +273,7 @@ fun AkbarMediaNavGraph() {
             composable<OdcRoute> { OdcScreen(onBack = { navController.popBackStack() }) }
             composable<OdpRoute> { OdpScreen(onBack = { navController.popBackStack() }) }
             composable<GatewayPaymentRoute> { GatewayPaymentScreen(onBack = { navController.popBackStack() }) }
+            composable<CompanySettingsRoute> { com.example.ui.screens.CompanySettingsScreen(onBack = { navController.popBackStack() }) }
             composable<ManageSecretsRoute> {
                 val route = it.toRoute<ManageSecretsRoute>()
                 ManageSecretsScreen(areaId = route.areaId, onBack = { navController.popBackStack() })
@@ -271,6 +296,21 @@ fun AkbarMediaNavGraph() {
                     onNavigateToSettings = { navController.navigate(SettingRoute) }
                 )
             }
+        }
+        
+        // Online/Offline Indicator (Visible on all screens)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 16.dp)
+                .statusBarsPadding()
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(if (isServerOnline) Color.Green else Color.Red)
+            )
         }
     }
 }

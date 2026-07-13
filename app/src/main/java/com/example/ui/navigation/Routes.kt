@@ -21,7 +21,7 @@ data class BillingRoute(val initialTab: Int = 0)
 object MikrotikRoute
 
 @Serializable
-object AcsRoute
+data class AcsRoute(val searchQuery: String = "")
 
 @Serializable
 data class ManageSecretsRoute(val areaId: String)
@@ -62,7 +62,6 @@ data class SemuaPembukuanRoute(val initialType: String = "")
 @Serializable
 object RangkumanRoute
 
-
 @Serializable
 object StockBarangRoute
 
@@ -80,17 +79,27 @@ object SettingRoute
 
 @Serializable
 object UpdateEmailRoute
+
 @Serializable
 object UpdateProfilRoute
+
 @Serializable
 object GantiPasswordRoute
+
 @Serializable
 object GantiPinRoute
+
 @Serializable
 object DaftarAdminRoute
+
 @Serializable
 object OdcRoute
+
 @Serializable
 object OdpRoute
+
 @Serializable
 object GatewayPaymentRoute
+
+@Serializable
+object CompanySettingsRoute

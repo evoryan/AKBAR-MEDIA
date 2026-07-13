@@ -1,19 +1,17 @@
-import re
-filepath = 'app/src/main/java/com/example/ui/data/remote/ApiService.kt'
-with open(filepath, 'r') as f:
+with open('app/src/main/java/com/example/ui/data/remote/ApiService.kt', 'r') as f:
     content = f.read()
 
-endpoints = """
-    @DELETE("api/customers/{id}")
-    suspend fun deleteCustomer(@Path("id") id: String)
-
-    @POST("api/customers")
-    suspend fun addCustomer(@Body customer: com.example.ui.screens.Customer): com.example.ui.screens.Customer
+payment_history = """data class PaymentHistory(
+    val id: String,
+    val type: String,
+    val amount: String,
+    val description: String,
+    @com.squareup.moshi.Json(name = "created_at") val createdAt: String? = null
+)
 """
 
-content = content.rstrip()
-if content.endswith('}'):
-    content = content[:-1] + endpoints + "\n}"
+content = content.replace(payment_history, "")
+content = content + "\n" + payment_history
 
-with open(filepath, 'w') as f:
+with open('app/src/main/java/com/example/ui/data/remote/ApiService.kt', 'w') as f:
     f.write(content)

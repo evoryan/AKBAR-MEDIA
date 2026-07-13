@@ -1,20 +1,12 @@
-filepath = 'app/src/main/java/com/example/ui/screens/CustomersScreen.kt'
-with open(filepath, 'r') as f:
-    lines = f.readlines()
+import re
 
-new_lines = []
-skip = False
-for i, line in enumerate(lines):
-    if line.strip() == ',' and "Customer(" in lines[i+1]:
-        skip = True
-        continue
-    if skip:
-        if line.strip() == ')':
-            skip = False
-        continue
-    new_lines.append(line)
+with open('app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt', 'r') as f:
+    content = f.read()
 
-content = "".join(new_lines)
-with open(filepath, 'w') as f:
+bad_str = 'Toast.makeText(context, "ACS Data:\nRxPower: ${acsDevice?.rxPower}\nSSID: ${acsDevice?.ssid}\nConnected: ${acsDevice?.connectedUsers}", Toast.LENGTH_LONG).show()'
+good_str = 'Toast.makeText(context, "ACS Data:\\nRxPower: ${acsDevice?.rxPower}\\nSSID: ${acsDevice?.ssid}\\nConnected: ${acsDevice?.connectedUsers}", Toast.LENGTH_LONG).show()'
+
+content = content.replace(bad_str, good_str)
+
+with open('app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt', 'w') as f:
     f.write(content)
-

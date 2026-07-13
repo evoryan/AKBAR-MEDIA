@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.data.UserSession
 import com.example.ui.data.UserRole
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -84,7 +86,17 @@ fun DashboardScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text("Akbar Media", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                val context = LocalContext.current
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(com.example.ui.data.SettingsManager.companyName, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = { 
+                        viewModel.fetchDashboardSummary()
+                        Toast.makeText(context, "Refreshing data...", Toast.LENGTH_SHORT).show()
+                    }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = textSecondary)
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("Halo, Admin", fontSize = 16.sp, color = textSecondary)
             }
@@ -116,8 +128,8 @@ fun DashboardScreen(
                     Text("Informasi Sistem", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textMain)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Pemeliharaan server pada 12 Agustus 2026", color = textSecondary, fontSize = 12.sp)
-                Text("• Tersedia update router firmware", color = textSecondary, fontSize = 12.sp)
+                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo1}", color = textSecondary, fontSize = 12.sp)
+                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo2}", color = textSecondary, fontSize = 12.sp)
             }
         }
 

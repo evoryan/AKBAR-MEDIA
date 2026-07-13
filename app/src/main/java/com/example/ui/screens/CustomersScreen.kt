@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.squareup.moshi.Json
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,10 +13,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 
@@ -31,6 +34,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,8 +66,15 @@ fun CustomersScreen(
     
     val areas = listOf("Semua") + customers.map { it.area }.distinct().sorted()
     var selectedArea by remember { mutableStateOf("Semua") }
-    
-    val filteredCustomers = if (selectedArea == "Semua") customers else customers.filter { it.area == selectedArea }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
+
+    val filteredByArea = if (selectedArea == "Semua") customers else customers.filter { it.area == selectedArea }
+    val filteredCustomers = if (searchQuery.isBlank()) filteredByArea else filteredByArea.filter { 
+        it.name.contains(searchQuery, ignoreCase = true) || 
+        it.username.contains(searchQuery, ignoreCase = true) || 
+        it.phone.contains(searchQuery, ignoreCase = true)
+    }
 
     val bgMain = Color(0xFF0A0A0A)
     val headerBg = Color(0xFF1F0216)
@@ -76,18 +88,41 @@ fun CustomersScreen(
         containerColor = bgMain,
         topBar = {
             TopAppBar(
-                title = { Text("Daftar Pelanggan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                title = { 
+                    if (isSearchActive) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Cari pelanggan...", color = textMain.copy(alpha = 0.5f), fontSize = 14.sp) },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = textMain, fontSize = 14.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                cursorColor = neonCyan
+                            ),
+                            singleLine = true
+                        )
+                    } else {
+                        Text("Daftar Pelanggan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) 
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /*TODO*/ }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = textMain)
+                    IconButton(onClick = { 
+                        isSearchActive = !isSearchActive 
+                        if (!isSearchActive) searchQuery = ""
+                    }) {
+                        Icon(if (isSearchActive) Icons.Default.Close else Icons.Default.Search, contentDescription = "Search", tint = textMain)
                     }
-                    IconButton(onClick = { /*TODO*/ }) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = textMain)
+                    if (!isSearchActive) {
+                        IconButton(onClick = { /*TODO*/ }) {
+                            Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = textMain)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -212,7 +247,7 @@ fun CustomersScreen(
 }
 
 data class Customer(
-    val id: String,
+    val id: String = "",
     val name: String,
     val phone: String,
     val area: String,
@@ -220,11 +255,20 @@ data class Customer(
     val billingDate: String,
     val status: String,
     val price: String,
-    val discount: String
+    val discount: String,
+    @Json(name = "register_date") val registerDate: String? = null,
+    @Json(name = "isolate_date") val isolateDate: String? = null,
+    @Json(name = "package_name") val packageName: String? = null,
+    val additionalCost1: String? = null,
+    val additionalCost2: String? = null,
+    @Json(name = "pppoe_secret") val pppoeSecret: String? = null,
+    @Json(name = "odp_id") val odpId: String? = null,
+    @Json(name = "odp_port") val odpPort: String? = null
 )
 
 @Composable
 fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit) {
+    val context = LocalContext.current
     val cardBg = Color(0xFF121212)
     val cardBorder = Color(0xFF333333)
     val textMain = Color(0xFFFFFFFF)
@@ -260,6 +304,9 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
             // Right Column
             Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { Toast.makeText(context, "Fitur edit pelanggan akan segera hadir", Toast.LENGTH_SHORT).show() }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan)
+                    }
                     IconButton(onClick = { onDeleteCustomer(customer) }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = errorRed)
                     }
@@ -278,12 +325,6 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(text = customer.price, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textMain)
                 Text(text = customer.discount, fontSize = 12.sp, color = greenText)
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.LocationOn, contentDescription = "Location", tint = yellowBadge, modifier = Modifier.size(20.dp))
-                    Icon(Icons.Default.Router, contentDescription = "Device", tint = neonCyan, modifier = Modifier.size(20.dp))
-                }
             }
         }
     }

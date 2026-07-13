@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,6 +16,13 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.net.Uri
+import com.example.ui.data.remote.ApiClient
+import com.example.ui.screens.Customer
+import android.widget.Toast
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +38,21 @@ import java.util.*
 
 @Composable
 fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String, onFinish: () -> Unit) {
+    val context = LocalContext.current
+    var customer by remember { mutableStateOf<Customer?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    
+    LaunchedEffect(customerId) {
+        try {
+            val custs = ApiClient.apiService.getCustomers()
+            customer = custs.find { it.id == customerId }
+        } catch(e: Exception) {
+            Toast.makeText(context, "Gagal memuat data pelanggan", Toast.LENGTH_SHORT).show()
+        } finally {
+            isLoading = false
+        }
+    }
+
     val bgMain = Color(0xFF05050A)
     val headerBg = Color(0xFF1F0216)
     val textMain = Color(0xFFFFFFFF)
@@ -92,7 +116,7 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
                     Text("AMG", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
-                Text("PT.Akbar Media Group", color = neonCyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(com.example.ui.data.SettingsManager.companyName, color = neonCyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -134,7 +158,7 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
             DividerLine()
             ReceiptRow("Keterangan", "L U N A S", successGreen, isBold = true)
             DividerLine()
-            ReceiptRow("Admin By", "PT.Akbar Media Group", textMain)
+            ReceiptRow("Admin By", com.example.ui.data.SettingsManager.companyName, textMain)
             
             Spacer(modifier = Modifier.height(32.dp))
             Text(
@@ -153,9 +177,38 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            ActionIconBtn(Icons.Default.Print, "Cetak", cardBg, neonCyan)
-            ActionIconBtn(Icons.Default.Message, "Kirim WA", cardBg, neonCyan)
-            ActionIconBtn(Icons.Default.Share, "Bagikan", cardBg, neonCyan)
+            ActionIconBtn(Icons.Default.Print, "Cetak", cardBg, neonCyan) {
+                Toast.makeText(context, "Fitur cetak belum tersedia", Toast.LENGTH_SHORT).show()
+            }
+            ActionIconBtn(Icons.AutoMirrored.Filled.Message, "Kirim WA", cardBg, neonCyan) {
+                val phone = customer?.phone
+                if (!phone.isNullOrBlank()) {
+                    try {
+                        var formattedPhone = phone
+                        if (formattedPhone.startsWith("0")) {
+                            formattedPhone = "62" + formattedPhone.substring(1)
+                        }
+                        val text = "Halo ${customer?.name},\nTerima kasih, pembayaran tagihan internet untuk bulan ${months} sejumlah ${formattedAmount} telah kami terima dan lunas.\n\nSalam,\n${com.example.ui.data.SettingsManager.companyName}"
+                        val intent = Intent(Intent.ACTION_VIEW)
+                        intent.data = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=${Uri.encode(text)}")
+                        context.startActivity(intent)
+                    } catch(e: Exception) {
+                        Toast.makeText(context, "Tidak dapat membuka WhatsApp", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(context, "Nomor pelanggan tidak tersedia", Toast.LENGTH_SHORT).show()
+                }
+            }
+            ActionIconBtn(Icons.Default.Share, "Bagikan", cardBg, neonCyan) {
+                val text = "Bukti Pembayaran Tagihan Internet\nNama: ${customer?.name}\nTotal: $formattedAmount\nBulan: $months\nStatus: LUNAS"
+                val sendIntent = Intent().apply {
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_TEXT, text)
+                    type = "text/plain"
+                }
+                val shareIntent = Intent.createChooser(sendIntent, null)
+                context.startActivity(shareIntent)
+            }
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -200,13 +253,14 @@ fun DividerLine() {
 }
 
 @Composable
-fun ActionIconBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, bg: Color, contentColor: Color) {
+fun ActionIconBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, bg: Color, contentColor: Color, onClick: () -> Unit = {}) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(bg)
             .border(1.dp, contentColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+            .clickable { onClick() }
             .padding(vertical = 8.dp, horizontal = 24.dp)
     ) {
         Icon(icon, contentDescription = label, tint = contentColor)

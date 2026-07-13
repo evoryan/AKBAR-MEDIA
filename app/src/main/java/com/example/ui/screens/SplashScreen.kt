@@ -71,7 +71,7 @@ fun SplashScreen(onNavigateToLogin: () -> Unit, onNavigateToDashboard: () -> Uni
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "Akbar Media",
+                text = com.example.ui.data.SettingsManager.companyName,
                 fontWeight = FontWeight.Bold,
                 fontSize = 32.sp,
                 color = Color.White

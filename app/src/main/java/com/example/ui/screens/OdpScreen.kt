@@ -21,6 +21,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import android.util.Log
 import androidx.compose.ui.unit.sp
 import com.example.ui.data.remote.ApiClient
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +34,7 @@ import com.example.ui.data.OdpItem
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OdpScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     val currentUser by UserSession.currentUser.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val bgMain = Color(0xFF0A0A0A)
@@ -45,7 +49,11 @@ fun OdpScreen(onBack: () -> Unit) {
         try {
             val res = ApiClient.apiService.getOdpList()
             odpList = res
-        } catch (e: Exception) {
+        } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdpScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
         }
     }
     
@@ -54,7 +62,11 @@ fun OdpScreen(onBack: () -> Unit) {
         try {
             val res = ApiClient.apiService.getOdcList()
             odcList = res
-        } catch (e: Exception) {
+        } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdpScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
         }
     }
 
@@ -121,7 +133,7 @@ fun OdpScreen(onBack: () -> Unit) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text("ODC: ${odc?.name ?: "Unknown"}", color = textSecondary, fontSize = 14.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text("Port: ${item.portCount}", color = primaryBg, fontSize = 14.sp)
+                                    Text("Port: ${item.portCount} | Input: ${item.portInput}", color = primaryBg, fontSize = 14.sp)
                                 }
                             }
                             Row {
@@ -138,7 +150,11 @@ fun OdpScreen(onBack: () -> Unit) {
                 try {
                     ApiClient.apiService.deleteOdp(item.id)
                     odpList = odpList.filter { it.id != item.id }
-                } catch (e: Exception) {
+                } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdpScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
                 }
             }
         
@@ -157,6 +173,7 @@ fun OdpScreen(onBack: () -> Unit) {
     if (showDialog) {
         var name by remember { mutableStateOf(editItem?.name ?: "") }
         var portCount by remember { mutableStateOf(editItem?.portCount?.toString() ?: "") }
+        var portInput by remember { mutableStateOf(editItem?.portInput ?: "") }
         var selectedOdc by remember { mutableStateOf(editItem?.odcId ?: odcList.firstOrNull()?.id ?: "") }
         var expanded by remember { mutableStateOf(false) }
 
@@ -183,6 +200,17 @@ fun OdpScreen(onBack: () -> Unit) {
                         value = portCount,
                         onValueChange = { portCount = it },
                         label = { Text("Jumlah Port") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        )
+                    )
+                    OutlinedTextField(
+                        value = portInput,
+                        onValueChange = { portInput = it },
+                        label = { Text("Sumber Port Input") },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryBg,
                             unfocusedBorderColor = cardBorder,
@@ -222,6 +250,10 @@ fun OdpScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     val port = portCount.toIntOrNull() ?: 0
+                    if (selectedOdc.isEmpty()) {
+                        Toast.makeText(context, "Silakan pilih ODC terlebih dahulu", Toast.LENGTH_SHORT).show()
+                        return@TextButton
+                    }
                     if (editItem == null) {
                         coroutineScope.launch {
                             try {
@@ -229,18 +261,44 @@ fun OdpScreen(onBack: () -> Unit) {
                                     id = "",
                                     name = name,
                                     odcId = selectedOdc,
-                                    portCount = port
+                                    portCount = port,
+                                    portInput = portInput
                                 )
                                 ApiClient.apiService.addOdp(newItem)
                                 odpList = ApiClient.apiService.getOdpList()
-                            } catch(e: Exception) {}
+                                showDialog = false
+                            } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdpScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch(e: Exception) {
+                                Log.e("OdpScreen", "Error adding ODP", e)
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     } else {
-                        odpList = odpList.map {
-                            if (it.id == (editItem?.id ?: "")) it.copy(name = name, odcId = selectedOdc, portCount = port) else it
+                        coroutineScope.launch {
+                            try {
+                                val updatedItem = OdpItem(
+                                    id = editItem!!.id,
+                                    name = name,
+                                    odcId = selectedOdc,
+                                    portCount = port,
+                                    portInput = portInput
+                                )
+                                ApiClient.apiService.updateOdp(updatedItem.id, updatedItem)
+                                odpList = ApiClient.apiService.getOdpList()
+                                showDialog = false
+                            } catch(e: retrofit2.HttpException) {
+                                val errBody = e.response()?.errorBody()?.string()
+                                Log.e("OdpScreen", "HTTP Error: $errBody", e)
+                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
+                                Log.e("OdpScreen", "Error updating ODP", e)
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
-                    showDialog = false
                 }) {
                     Text("Simpan", color = primaryBg)
                 }

@@ -1,53 +1,47 @@
 import re
-import os
 
-def update_odc():
-    filepath = 'app/src/main/java/com/example/ui/screens/OdcScreen.kt'
-    if not os.path.exists(filepath): return
-    with open(filepath, 'r') as f:
-        content = f.read()
+with open('VPS/server.js', 'r') as f:
+    content = f.read()
 
-    if "import com.example.ui.data.remote.ApiClient" not in content:
-        content = content.replace("import androidx.compose.ui.unit.sp", "import androidx.compose.ui.unit.sp\nimport com.example.ui.data.remote.ApiClient\nimport androidx.compose.runtime.LaunchedEffect")
+# Update ODC POST
+old_odc_post = """app.post('/api/odc', async (req, res) => {
+    try {
+        const { code, name, capacity, maxOdp, portCount, status, area, location } = req.body;
+        const [result] = await req.pool.query(
+            'INSERT INTO odc_list (code, name, capacity, maxOdp, portCount, status, area, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [code, name, capacity, maxOdp, portCount, status, area, location]
+        );"""
 
-    # Replace `val odcList by MockOdcOdpData.odcList.collectAsState()`
-    pattern = re.compile(r"val\s+odcList\s+by\s+MockOdcOdpData\.odcList\.collectAsState\(\)", re.DOTALL)
-    replacement = """var odcList by remember { mutableStateOf<List<com.example.ui.data.OdcItem>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        try {
-            val res = ApiClient.apiService.getOdcList()
-            odcList = res
-        } catch (e: Exception) {
-        }
-    }"""
-    content = pattern.sub(replacement, content, count=1)
+new_odc_post = """app.post('/api/odc', async (req, res) => {
+    try {
+        const { code, name, capacity, maxOdp, portCount, status, area, location, portInput } = req.body;
+        const [result] = await req.pool.query(
+            'INSERT INTO odc_list (name, location, portCount, portInput) VALUES (?, ?, ?, ?)',
+            [name, location, portCount || 0, portInput || '']
+        );"""
 
-    with open(filepath, 'w') as f:
-        f.write(content)
+content = content.replace(old_odc_post, new_odc_post)
 
-def update_odp():
-    filepath = 'app/src/main/java/com/example/ui/screens/OdpScreen.kt'
-    if not os.path.exists(filepath): return
-    with open(filepath, 'r') as f:
-        content = f.read()
+# Update ODP POST
+old_odp_post = """app.post('/api/odp', async (req, res) => {
+    try {
+        const { odcId, code, name, portCount, status, location } = req.body;
+        const [result] = await req.pool.query(
+            'INSERT INTO odp_list (odcId, code, name, portCount, status, location) VALUES (?, ?, ?, ?, ?, ?)',
+            [odcId, code, name, portCount, status, location]
+        );"""
 
-    if "import com.example.ui.data.remote.ApiClient" not in content:
-        content = content.replace("import androidx.compose.ui.unit.sp", "import androidx.compose.ui.unit.sp\nimport com.example.ui.data.remote.ApiClient\nimport androidx.compose.runtime.LaunchedEffect")
+new_odp_post = """app.post('/api/odp', async (req, res) => {
+    try {
+        const { odcId, code, name, portCount, status, location, portInput } = req.body;
+        const [result] = await req.pool.query(
+            'INSERT INTO odp_list (odcId, name, portCount, portInput) VALUES (?, ?, ?, ?)',
+            [odcId, name, portCount || 0, portInput || '']
+        );"""
 
-    # Replace `val odpList by MockOdcOdpData.odpList.collectAsState()`
-    pattern = re.compile(r"val\s+odpList\s+by\s+MockOdcOdpData\.odpList\.collectAsState\(\)", re.DOTALL)
-    replacement = """var odpList by remember { mutableStateOf<List<com.example.ui.data.OdpItem>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        try {
-            val res = ApiClient.apiService.getOdpList()
-            odpList = res
-        } catch (e: Exception) {
-        }
-    }"""
-    content = pattern.sub(replacement, content, count=1)
+content = content.replace(old_odp_post, new_odp_post)
 
-    with open(filepath, 'w') as f:
-        f.write(content)
-
-update_odc()
-update_odp()
+# Also update GET endpoints for ODC and ODP to select the new fields
+# Wait, let's see what they currently select. They probably do `SELECT *`.
+with open('VPS/server.js', 'w') as f:
+    f.write(content)

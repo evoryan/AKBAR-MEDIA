@@ -17,7 +17,10 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.example.ui.data.remote.ApiClient
+import com.example.ui.screens.Customer
 import com.example.ui.data.remote.PaymentRequest
 import kotlinx.coroutines.launch
 import com.example.ui.data.UserSession
@@ -32,6 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -48,11 +53,29 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
     val neonCyan = Color(0xFF00FFFF)
     val successGreen = Color(0xFF00FF00)
 
-    val monthsToPay = remember { mutableStateListOf("Mei 2026", "Juli 2026") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var customer by remember { mutableStateOf<Customer?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    
+    val monthsToPay = remember { mutableStateListOf("Tagihan Bulan Ini") }
     var showConfirmDialog by remember { mutableStateOf(false) }
-
-    val monthlyFee = 125000
+    
+    val monthlyFee = customer?.price?.replace(Regex("\\.0$"), "")?.replace(Regex("[^0-9]"), "")?.toIntOrNull() ?: 0
     val totalAmount = monthsToPay.size * monthlyFee
+    
+    androidx.compose.runtime.LaunchedEffect(customerId) {
+        try {
+            val custs = ApiClient.apiService.getCustomers()
+            customer = custs.find { it.id == customerId }
+            if (customer == null) {
+                android.widget.Toast.makeText(context, "Pelanggan tidak ditemukan", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } catch(e: Exception) {
+            android.widget.Toast.makeText(context, "Gagal memuat pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+        } finally {
+            isLoading = false
+        }
+    }
     val formatter = NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
     val coroutineScope = rememberCoroutineScope()
     val currentUser by UserSession.currentUser.collectAsState()
@@ -82,15 +105,20 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
             )
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(bgMain)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = neonCyan)
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(bgMain)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -122,8 +150,8 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Customer $customerId", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("628787965", color = Color.Black.copy(alpha = 0.7f), fontSize = 14.sp)
+                        Text(customer?.name ?: "Loading...", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(customer?.phone ?: "-", color = Color.Black.copy(alpha = 0.7f), fontSize = 14.sp)
                     }
                     Box(
                         modifier = Modifier
@@ -149,18 +177,20 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 Text("Pembayaran", color = textSecondary, fontSize = 12.sp)
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Reguler", color = textMain, fontSize = 14.sp)
-                    Text("Rp. 125.000", color = textMain, fontSize = 14.sp)
+                    Text(customer?.packageName ?: "Reguler", color = textMain, fontSize = 14.sp)
+                    Text(customer?.price ?: "Rp. 0", color = textMain, fontSize = 14.sp)
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("PPN 0%", color = textMain, fontSize = 14.sp)
-                    Text("Rp. 0", color = textMain, fontSize = 14.sp)
+                if (!customer?.discount.isNullOrEmpty() && customer?.discount != "0") {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Diskon", color = textMain, fontSize = 14.sp)
+                        Text("- ${customer?.discount}", color = Color.Green, fontSize = 14.sp)
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Biaya Perbulannya", color = textSecondary, fontSize = 14.sp)
-                    Text("Rp. 125.000", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(customer?.price ?: "Rp. 0", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -259,13 +289,20 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 }
             }
 
+            val isPaid = customer?.status?.contains("LUNAS", ignoreCase = true) ?: false
             Button(
                 onClick = { showConfirmDialog = true },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = Color.Black),
+                enabled = !isPaid,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF00FFFF), 
+                    contentColor = Color.Black,
+                    disabledContainerColor = Color.DarkGray,
+                    disabledContentColor = Color.LightGray
+                ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("BAYAR SEKARANG", fontWeight = FontWeight.Bold)
+                Text(if (isPaid) "SUDAH LUNAS" else "BAYAR SEKARANG", fontWeight = FontWeight.Bold)
             }
         }
         
@@ -279,7 +316,19 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     Button(
                         onClick = { 
                             showConfirmDialog = false 
-                            onNavigateToSuccess(customerId, totalAmount.toString(), monthsToPay.joinToString(", "))
+                            coroutineScope.launch {
+                                try {
+                                    val req = com.example.ui.data.remote.PaymentRequest(
+                                        customerId = customerId,
+                                        adminName = currentUser?.name ?: "Admin",
+                                        totalAmount = totalAmount.toDouble()
+                                    )
+                                    ApiClient.apiService.payBilling(req)
+                                    onNavigateToSuccess(customerId, totalAmount.toString(), monthsToPay.joinToString(", "))
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Pembayaran gagal: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = Color.Black)
                     ) {
@@ -294,4 +343,6 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
             )
         }
     }
+}
+
 }
