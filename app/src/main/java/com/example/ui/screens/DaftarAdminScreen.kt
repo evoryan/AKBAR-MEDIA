@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,12 +31,12 @@ import com.example.ui.data.UserSession
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DaftarAdminScreen(onBack: () -> Unit) {
-    val bgMain = Color(0xFF0A0A0A)
-    val textMain = Color(0xFFFFFFFF)
-    val primaryBg = Color(0xFF00FFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
-    val cardBorder = Color(0xFF333333)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val primaryBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0)
 
     
     val adminList = remember { mutableStateListOf<AdminUser>() }
@@ -151,6 +152,7 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
     if (showDialog) {
         var name by remember { mutableStateOf(editItem?.name ?: "") }
         var username by remember { mutableStateOf(editItem?.username ?: "") }
+        var password by remember { mutableStateOf("") }
         var selectedRole by remember { mutableStateOf(editItem?.role ?: UserRole.ADMIN) }
         var roleExpanded by remember { mutableStateOf(false) }
 
@@ -177,6 +179,19 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                         value = username,
                         onValueChange = { username = it },
                         label = { Text("Username") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        )
+                    )
+                    
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password (kosongkan jika tidak diubah)") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryBg,
                             unfocusedBorderColor = cardBorder,
@@ -225,7 +240,14 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                                     username = username,
                                     role = selectedRole
                                 )
-                                ApiClient.apiService.addAdmin(newItem)
+                                // Send password as well if needed. Since AdminUser data class doesn't have password, we can create a temporary map or similar.
+                                val adminMap = mapOf(
+                                    "name" to name,
+                                    "username" to username,
+                                    "role" to selectedRole.name,
+                                    "password" to password
+                                )
+                                ApiClient.apiService.addAdminMap(adminMap)
                                 val res = ApiClient.apiService.getAdmins()
                                 adminList.clear()
                                 adminList.addAll(res)
@@ -236,7 +258,18 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                         if (index != -1) {
                             val current = editItem
                             if (current != null) {
-                                adminList[index] = current.copy(name = name, username = username, role = selectedRole)
+                                val adminMap = mapOf(
+                                    "name" to name,
+                                    "username" to username,
+                                    "role" to selectedRole.name,
+                                    "password" to password
+                                )
+                                coroutineScope.launch {
+                                    try {
+                                        ApiClient.apiService.updateAdminMap(current.id, adminMap)
+                                        adminList[index] = current.copy(name = name, username = username, role = selectedRole)
+                                    } catch(e: Exception) {}
+                                }
                             }
                         }
                     }

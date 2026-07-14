@@ -1,28 +1,21 @@
-with open('app/src/main/java/com/example/ui/data/remote/ApiService.kt', 'r') as f:
+import re
+
+with open("app/src/main/java/com/example/ui/data/remote/ApiService.kt", "r") as f:
     content = f.read()
 
-old_pembukuan_res = """data class PembukuanResponse(
-    val pemasukan: Long,
-    val pengeluaran: Long
-)"""
+target = """    @POST("api/admins")
+    suspend fun addAdmin(@Body item: com.example.ui.data.AdminUser): ApiResponse"""
 
-new_pembukuan_res = """data class PembukuanResponse(
-    val pemasukan: Long,
-    val pengeluaran: Long,
-    val categories: Map<String, Long> = emptyMap()
-)
+rep = """    @POST("api/admins")
+    suspend fun addAdmin(@Body item: com.example.ui.data.AdminUser): ApiResponse
 
-data class PembukuanRequest(
-    val type: String,
-    val category: String,
-    val amount: Double,
-    val description: String
-)"""
+    @POST("api/admins")
+    suspend fun addAdminMap(@Body req: Map<String, String>): ApiResponse
 
-content = content.replace(old_pembukuan_res, new_pembukuan_res)
+    @PUT("api/admins/{id}")
+    suspend fun updateAdminMap(@Path("id") id: String, @Body req: Map<String, String>): ApiResponse"""
 
-if "addPembukuan" not in content:
-    content = content.replace("suspend fun getPembukuan(): PembukuanResponse", "suspend fun getPembukuan(): PembukuanResponse\n\n    @POST(\"api/pembukuan\")\n    suspend fun addPembukuan(@Body request: PembukuanRequest): ApiResponse")
+content = content.replace(target, rep)
 
-with open('app/src/main/java/com/example/ui/data/remote/ApiService.kt', 'w') as f:
+with open("app/src/main/java/com/example/ui/data/remote/ApiService.kt", "w") as f:
     f.write(content)

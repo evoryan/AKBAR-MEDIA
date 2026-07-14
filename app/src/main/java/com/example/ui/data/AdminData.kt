@@ -2,6 +2,8 @@ package com.example.ui.data
 
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.google.firebase.messaging.FirebaseMessaging
+import android.util.Log
 
 enum class UserRole {
     SUPER_ADMIN, ADMIN, TEKNISI, COLLECTOR
@@ -28,6 +30,22 @@ object UserSession {
             putString("user_db_name", user.db_name)
             apply()
         }
+        
+        user.db_name?.let { dbName ->
+            val safeTopic = dbName.replace(Regex("[^a-zA-Z0-9-_~]"), "")
+            val topicName = "tenant_$safeTopic"
+            FirebaseMessaging.getInstance().subscribeToTopic(topicName)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        Log.d("FCM", "Berhasil subscribe ke topik $topicName")
+                    } else {
+                        Log.e("FCM", "Gagal subscribe ke topik $topicName")
+                    }
+                }
+        }
+        if (user.role == UserRole.SUPER_ADMIN) {
+            FirebaseMessaging.getInstance().subscribeToTopic("tenant_superadmin")
+        }
     }
     
     fun loadSession(context: Context): Boolean {
@@ -46,14 +64,32 @@ object UserSession {
                 UserRole.ADMIN
             }
             currentUser.value = AdminUser(id, name, username, role, token, dbName)
+            dbName?.let {
+                val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
+                val topicName = "tenant_$safeTopic"
+                FirebaseMessaging.getInstance().subscribeToTopic(topicName)
+            }
+            if (role == UserRole.SUPER_ADMIN) {
+                FirebaseMessaging.getInstance().subscribeToTopic("tenant_superadmin")
+            }
             return true
         }
         return false
     }
     
     fun clearSession(context: Context) {
+        val dbName = currentUser.value?.db_name
+        val role = currentUser.value?.role
         currentUser.value = null
         val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        dbName?.let {
+            val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
+            val topicName = "tenant_$safeTopic"
+            FirebaseMessaging.getInstance().unsubscribeFromTopic(topicName)
+        }
+        if (role == UserRole.SUPER_ADMIN) {
+            FirebaseMessaging.getInstance().unsubscribeFromTopic("tenant_superadmin")
+        }
         sharedPrefs.edit().clear().apply()
     }
 }

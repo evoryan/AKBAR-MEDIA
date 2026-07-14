@@ -13,10 +13,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.ContactsContract
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -35,11 +40,11 @@ fun AddCustomerScreen(
     onBack: () -> Unit
 ) {
     val bgDark = Color(0xFF000000)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
     val primaryPurple = Color(0xFF9D00FF)
     val errorRed = Color(0xFFFF5555)
-    val neonCyan = Color(0xFF00FFFF)
+    val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
     val successGreen = Color(0xFF00FF00)
     val context = LocalContext.current
 
@@ -69,7 +74,59 @@ fun AddCustomerScreen(
     var isNameError by remember { mutableStateOf(false) }
     var isPhoneError by remember { mutableStateOf(false) }
 
+
     val coroutineScope = rememberCoroutineScope()
+
+    val contactPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickContact(),
+        onResult = { uri ->
+            if (uri != null) {
+                val cursor = context.contentResolver.query(uri, null, null, null, null)
+                if (cursor != null && cursor.moveToFirst()) {
+                    val idIndex = cursor.getColumnIndex(ContactsContract.Contacts._ID)
+                    val hasPhoneIndex = cursor.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER)
+                    if (idIndex != -1 && hasPhoneIndex != -1) {
+                        val id = cursor.getString(idIndex)
+                        val hasPhone = cursor.getString(hasPhoneIndex)
+                        if (hasPhone.toInt() > 0) {
+                            val phones = context.contentResolver.query(
+                                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                                null,
+                                ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = ?",
+                                arrayOf(id),
+                                null
+                            )
+                            if (phones != null && phones.moveToFirst()) {
+                                val numIndex = phones.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                                if (numIndex != -1) {
+                                    var num = phones.getString(numIndex)
+                                    num = num.replace(Regex("[^0-9]"), "")
+                                    if (num.startsWith("62")) {
+                                        num = "0" + num.substring(2)
+                                    }
+                                    phone = num
+                                    isPhoneError = false
+                                }
+                                phones.close()
+                            }
+                        }
+                    }
+                    cursor.close()
+                }
+            }
+        }
+    )
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            contactPickerLauncher.launch(null)
+        } else {
+            Toast.makeText(context, "Izin membaca kontak ditolak", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     
     var selectedTabIndex by remember { mutableStateOf(0) }
 
@@ -499,6 +556,11 @@ fun AddCustomerScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             modifier = Modifier.fillMaxWidth(),
                             isError = isPhoneError,
+                            trailingIcon = {
+                                IconButton(onClick = { permissionLauncher.launch(android.Manifest.permission.READ_CONTACTS) }) {
+                                    Icon(androidx.compose.material.icons.Icons.Default.Contacts, contentDescription = "Pilih Kontak", tint = neonCyan)
+                                }
+                            },
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
                             singleLine = true
                         )
@@ -547,10 +609,10 @@ fun AddCustomerScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        ClickableField(title = "Area", subtitle = selectedArea?.name, actionText = "Pilih Area", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showAreaDialog = true })
+                        ClickableField(title = "Area", subtitle = null, actionText = selectedArea?.name ?: "Pilih Area", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showAreaDialog = true })
                         HorizontalDivider(color = textSecondary.copy(alpha = 0.5f))
 
-                        ClickableField(title = "Paket", subtitle = selectedPackage?.name?.let { "$it (Rp ${selectedPackage?.price})" }, actionText = "Pilih Paket", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showPackageDialog = true })
+                        ClickableField(title = "Paket", subtitle = null, actionText = selectedPackage?.name?.let { "$it (Rp ${selectedPackage?.price})" } ?: "Pilih Paket", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showPackageDialog = true })
                         HorizontalDivider(color = textSecondary.copy(alpha = 0.5f))
 
                         OutlinedTextField(

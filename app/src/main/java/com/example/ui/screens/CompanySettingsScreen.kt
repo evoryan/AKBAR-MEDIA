@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -19,15 +20,17 @@ import com.example.ui.data.SettingsManager
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CompanySettingsScreen(onBack: () -> Unit) {
-    val bgMain = Color(0xFF0A0A0A)
-    val textMain = Color(0xFFFFFFFF)
-    val primaryBg = Color(0xFF00FFFF)
-    val cardBg = Color(0xFF11111A)
-    val cardBorder = Color(0xFF333333)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val primaryBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0)
 
     var companyName by remember { mutableStateOf(SettingsManager.companyName) }
     var info1 by remember { mutableStateOf(SettingsManager.dashboardInfo1) }
     var info2 by remember { mutableStateOf(SettingsManager.dashboardInfo2) }
+    var invoiceFooter by remember { mutableStateOf(SettingsManager.invoiceFooterText) }
+    var supportBy by remember { mutableStateOf(SettingsManager.supportByText) }
     var showSuccess by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -95,6 +98,32 @@ fun CompanySettingsScreen(onBack: () -> Unit) {
                 )
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = invoiceFooter,
+                onValueChange = { invoiceFooter = it },
+                label = { Text("Teks Footer Invoice") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = primaryBg,
+                    unfocusedBorderColor = cardBorder,
+                    focusedTextColor = textMain,
+                    unfocusedTextColor = textMain
+                )
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = supportBy,
+                onValueChange = { supportBy = it },
+                label = { Text("Support By (Invoice)") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = primaryBg,
+                    unfocusedBorderColor = cardBorder,
+                    focusedTextColor = textMain,
+                    unfocusedTextColor = textMain
+                )
+            )
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
@@ -102,6 +131,8 @@ fun CompanySettingsScreen(onBack: () -> Unit) {
                     SettingsManager.companyName = companyName
                     SettingsManager.dashboardInfo1 = info1
                     SettingsManager.dashboardInfo2 = info2
+                    SettingsManager.invoiceFooterText = invoiceFooter
+                    SettingsManager.supportByText = supportBy
                     showSuccess = true
                 },
                 modifier = Modifier

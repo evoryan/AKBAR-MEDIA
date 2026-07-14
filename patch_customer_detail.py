@@ -1,32 +1,66 @@
 import re
 
-with open('app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt', 'r') as f:
+with open("app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt", "r") as f:
     content = f.read()
 
-old_fun = """fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit) {"""
-new_fun = """fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit, onNavigateToAcs: (String) -> Unit = {}) {"""
+target = """                // Top Section (Profile)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(headerBg)
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(primaryBlue),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            customer?.name?.take(1)?.uppercase() ?: "P",
+                            color = neonCyan,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(customer?.name ?: "Nama Pelanggan", color = textMain, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text(customer?.phone ?: "-", color = textSecondary, fontSize = 14.sp)
+                }"""
 
-content = content.replace(old_fun, new_fun)
+rep = """                // Top Section (Profile)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(headerBg)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(primaryBlue),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            customer?.name?.take(1)?.uppercase() ?: "P",
+                            color = neonCyan,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(customer?.name ?: "Nama Pelanggan", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(customer?.phone ?: "-", color = textSecondary, fontSize = 12.sp)
+                }"""
 
-old_btn = """                            Button(
-                                onClick = {
-                                    if (acsDevice != null) {
-                                        Toast.makeText(context, "ACS Data:\\nRxPower: ${acsDevice?.rxPower}\\nSSID: ${acsDevice?.ssid}\\nConnected: ${acsDevice?.connectedUsers}", Toast.LENGTH_LONG).show()
-                                    } else {
-                                        Toast.makeText(context, "Data ACS tidak ditemukan untuk username ini", Toast.LENGTH_SHORT).show()
-                                    }
-                                },"""
-
-new_btn = """                            Button(
-                                onClick = {
-                                    if (!customer?.pppoeSecret.isNullOrBlank()) {
-                                        onNavigateToAcs(customer!!.pppoeSecret!!)
-                                    } else {
-                                        Toast.makeText(context, "Data ACS tidak ditemukan untuk username ini", Toast.LENGTH_SHORT).show()
-                                    }
-                                },"""
-
-content = content.replace(old_btn, new_btn)
-
-with open('app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt', 'w') as f:
-    f.write(content)
+if target in content:
+    content = content.replace(target, rep)
+    with open("app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt", "w") as f:
+        f.write(content)
+    print("Patched CustomerDetailScreen.kt header")
+else:
+    print("Target not found in CustomerDetailScreen.kt")

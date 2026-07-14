@@ -1,7 +1,9 @@
-with open('app/src/main/java/com/example/ui/navigation/Routes.kt', 'r') as f:
+import re
+
+with open("app/src/main/java/com/example/ui/navigation/Routes.kt", "r") as f:
     content = f.read()
 
-content = content.replace("object GatewayPaymentRoute", "object GatewayPaymentRoute\n\n@kotlinx.serialization.Serializable\nobject CompanySettingsRoute")
+content += "\n@Serializable\nobject BackupRestoreRoute\n"
 
-with open('app/src/main/java/com/example/ui/navigation/Routes.kt', 'w') as f:
+with open("app/src/main/java/com/example/ui/navigation/Routes.kt", "w") as f:
     f.write(content)

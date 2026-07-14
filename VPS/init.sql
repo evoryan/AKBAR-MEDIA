@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 
+CREATE TABLE IF NOT EXISTS tagihan_bulanan (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_id INT,
+    bulan VARCHAR(50),
+    tahun INT,
+    amount DECIMAL(10, 2),
+    status VARCHAR(50) DEFAULT 'BELUM BAYAR', -- 'BELUM BAYAR', 'LUNAS CASH'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS pembukuan (
     id INT AUTO_INCREMENT PRIMARY KEY,
     type ENUM('pemasukan', 'pengeluaran'),

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,16 +50,20 @@ fun DashboardScreen(
     var expandedMonth by remember { mutableStateOf(false) }
     var expandedYear by remember { mutableStateOf(false) }
     
+    LaunchedEffect(Unit) {
+        viewModel.fetchDashboardSummary()
+    }
+
     val months = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
     val years = listOf("2023", "2024", "2025", "2026", "2027")
 
-    val bgMain = Color(0xFF0A0A0A)
-    val headerBg = Color(0xFF1F0216)
-    val textMain = Color(0xFFFFFFFF)
-    val primaryBg = Color(0xFF00FFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
-    val cardBorder = Color(0xFF333333)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val primaryBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0)
     val gridSuccessBg = Color(0xFF00FF4D).copy(alpha = 0.1f)
     val gridSuccessBorder = Color(0xFF00FF4D).copy(alpha = 0.3f)
     val iconSuccess = Color(0xFF00FF4D)
@@ -98,7 +103,7 @@ fun DashboardScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Halo, Admin", fontSize = 16.sp, color = textSecondary)
+                Text("Halo, ${currentUser?.name ?: "Admin"}", fontSize = 16.sp, color = textSecondary)
             }
             Box(
                 modifier = Modifier

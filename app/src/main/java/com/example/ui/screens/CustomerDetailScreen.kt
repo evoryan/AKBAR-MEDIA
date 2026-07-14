@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,15 +32,15 @@ import com.example.ui.data.remote.PaymentRequest
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit, onNavigateToAcs: (String) -> Unit = {}) {
-    val bgMain = Color(0xFF05050A)
-    val headerBg = Color(0xFF1F0216)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBorder = Color(0xFF00FFFF).copy(alpha = 0.3f)
-    val primaryBlue = Color(0xFF0F0F2A)
+    val primaryBlue = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0F0F2A) else androidx.compose.ui.graphics.Color(0xFFE3F2FD)
     val lightBlue = Color(0xFF00FFFF)
-    val neonCyan = Color(0xFF00FFFF)
+    val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
     val neonPink = Color(0xFFFF00FF)
     
     val context = LocalContext.current
@@ -188,12 +189,12 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(headerBg)
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(80.dp)
+                            .size(50.dp)
                             .clip(CircleShape)
                             .background(primaryBlue),
                         contentAlignment = Alignment.Center
@@ -201,13 +202,13 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                         Text(
                             customer?.name?.take(1)?.uppercase() ?: "P",
                             color = neonCyan,
-                            fontSize = 32.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(customer?.name ?: "Nama Pelanggan", color = textMain, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Text(customer?.phone ?: "-", color = textSecondary, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(customer?.name ?: "Nama Pelanggan", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(customer?.phone ?: "-", color = textSecondary, fontSize = 12.sp)
                 }
 
                 // Tabs

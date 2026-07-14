@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -23,6 +24,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.example.ui.data.remote.ApiClient
 
 data class AdminData(
     val name: String,
@@ -39,78 +41,50 @@ data class AdminData(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UangDiAdminScreen(onBack: () -> Unit) {
-    val bgMain = Color(0xFF05050A)
-    val headerBg = Color(0xFF1F0216)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBgLighter = Color(0xFF1A1A2A)
     val successGreen = Color(0xFF00C853)
     val errorRed = Color(0xFFFF5252)
     val warningYellow = Color(0xFFFFC107)
-    val primaryCyan = Color(0xFF00FFFF)
+    val primaryCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
 
     val currentMonthYear = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.forLanguageTag("id-ID")))
     }
 
-    val adminList = listOf(
-        AdminData(
-            name = com.example.ui.data.SettingsManager.companyName,
-            totalDiterima = "Rp. 125.000",
-            setor = "Rp. 0",
-            sisa = "Rp. 0",
-            sisaColor = warningYellow,
-            persentase = "0%",
-            pengeluaran = "Rp. 0",
-            persentaseSisa = "0%",
-            jmlPlggn = "1"
-        ),
-        AdminData(
-            name = "Fitri",
-            totalDiterima = "Rp. 0",
-            setor = "Rp. 0",
-            sisa = "Rp. 0",
-            sisaColor = warningYellow,
-            persentase = "0%",
-            pengeluaran = "Rp. 0",
-            persentaseSisa = "0%",
-            jmlPlggn = "0"
-        ),
-        AdminData(
-            name = "Al-Mufit",
-            totalDiterima = "Rp. 2.450.000",
-            setor = "Rp. 0",
-            sisa = "Rp. 2.450.000",
-            sisaColor = warningYellow,
-            persentase = "0%",
-            pengeluaran = "Rp. 0",
-            persentaseSisa = "0%",
-            jmlPlggn = "21"
-        ),
-        AdminData(
-            name = "kholis",
-            totalDiterima = "Rp. 0",
-            setor = "Rp. 0",
-            sisa = "Rp. 0",
-            sisaColor = warningYellow,
-            persentase = "0%",
-            pengeluaran = "Rp. 0",
-            persentaseSisa = "0%",
-            jmlPlggn = "0"
-        ),
-        AdminData(
-            name = "admin",
-            totalDiterima = "Rp. 0",
-            setor = "Rp. 0",
-            sisa = "Rp. 0",
-            sisaColor = warningYellow,
-            persentase = "0%",
-            pengeluaran = "Rp. 0",
-            persentaseSisa = "0%",
-            jmlPlggn = "0"
-        )
-    )
+    var adminList by remember { mutableStateOf<List<AdminData>>(emptyList()) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        try {
+            val admins = ApiClient.apiService.getAdmins()
+            val uangAdmin = try { ApiClient.apiService.getUangDiAdmin() } catch (e: Exception) { emptyList<com.example.ui.data.remote.UangAdminResponse>() }
+            
+            val mapped = admins.map { admin ->
+                val amount = uangAdmin.find { it.adminName == admin.name }?.totalAmount ?: 0.0
+                val formattedAmount = "Rp. ${String.format("%,d", amount.toLong()).replace(",", ".")}"
+                val jml = uangAdmin.find { it.adminName == admin.name }?.jmlPlggn ?: 0
+                AdminData(
+                    name = admin.name,
+                    totalDiterima = formattedAmount,
+                    setor = "Rp. 0",
+                    sisa = formattedAmount,
+                    sisaColor = warningYellow,
+                    persentase = "100%",
+                    pengeluaran = "Rp. 0",
+                    persentaseSisa = "100%",
+                    jmlPlggn = jml.toString()
+                )
+            }
+            adminList = mapped
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,

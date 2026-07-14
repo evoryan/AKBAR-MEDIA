@@ -16,10 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import com.example.ui.data.remote.ApiClient
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -27,14 +30,14 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: () -> Unit) {
-    val bgMain = Color(0xFF05050A)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
     val primaryBlue = Color(0xFF2196F3)
     val warningYellow = Color(0xFFFF9800)
     val successGreen = Color(0xFF4CAF50)
     val errorRed = Color(0xFFF44336)
-    val headerBg = Color(0xFF1F0216)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
 
     val currentMonthYear = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.forLanguageTag("id-ID")))
@@ -52,6 +55,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     val tipeOptions = listOf("Pilih Tipe Pembukuan", "Pemasukan", "Pengeluaran", "Setor")
 
     var searchQuery by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         containerColor = bgMain,
@@ -268,10 +272,37 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                     
                     Button(
                         onClick = { 
-                            showAddDialog = false
-                            keterangan = ""
-                            jumlah = ""
-                            tipePembukuan = "Pilih Tipe Pembukuan"
+                            coroutineScope.launch {
+                                try {
+                                    val amountStr = jumlah.replace(Regex("[^0-9]"), "")
+                                    val amountDouble = amountStr.toDoubleOrNull() ?: 0.0
+                                    var type = "pemasukan"
+                                    var category = "Lain-lain"
+                                    
+                                    if (tipePembukuan == "Pemasukan") {
+                                        type = "pemasukan"
+                                        category = "Pemasukkan Lain2"
+                                    } else if (tipePembukuan == "Pengeluaran") {
+                                        type = "pengeluaran"
+                                        category = "Lain-lain"
+                                    } else if (tipePembukuan == "Setor") {
+                                        type = "setor"
+                                        category = "Lain-lain"
+                                    }
+                                    
+                                    ApiClient.apiService.addPembukuan(
+                                        com.example.ui.data.remote.PembukuanRequest(
+                                            type, category, amountDouble, keterangan
+                                        )
+                                    )
+                                    showAddDialog = false
+                                    keterangan = ""
+                                    jumlah = ""
+                                    tipePembukuan = "Pilih Tipe Pembukuan"
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF)),

@@ -28,7 +28,22 @@ class DashboardViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = DashboardState.Loading
             try {
-                val result = ApiClient.apiService.getDashboardSummary()
+                var result = ApiClient.apiService.getDashboardSummary()
+                try {
+                    val customers = ApiClient.apiService.getCustomers().filter { it.status != "TERHAPUS" }
+                    val paidCount = customers.count { it.status == "LUNAS CASH" }
+                    val unpaidCount = customers.size - paidCount
+                    
+                    val monthlyRevenue = result.monthlyRevenue
+                    result = result.copy(
+                        totalCustomers = customers.size,
+                        monthlyRevenue = monthlyRevenue,
+                        paidCustomers = paidCount,
+                        unpaidCustomers = unpaidCount
+                    )
+                } catch (e: Exception) {
+                    // Use original result if customer fetch fails
+                }
                 var offlineCount: List<OfflinePppoeUser> = emptyList()
                 try {
                     val offlineRes = ApiClient.apiService.getPppoeOffline()

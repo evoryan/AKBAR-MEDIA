@@ -17,9 +17,9 @@ import com.example.data.DashboardSummaryResponse
 data class LoginRequest(val username: String, val password: String = "password")
 
 data class PembukuanResponse(
-    val pemasukan: Long,
-    val pengeluaran: Long,
-    val categories: Map<String, Long> = emptyMap()
+    val pemasukan: Double,
+    val pengeluaran: Double,
+    val categories: Map<String, Double> = emptyMap()
 )
 
 data class PembukuanRequest(
@@ -30,6 +30,12 @@ data class PembukuanRequest(
 )
 
 data class ApiResponse(val message: String, val id: String? = null)
+
+data class UangAdminResponse(
+    val adminName: String,
+    val totalAmount: Double,
+    val jmlPlggn: Int? = 0
+)
 
 data class MikrotikStatus(val cpuLoad: String, val uptime: String, val activePppoe: String, val offlinePppoe: String)
 
@@ -67,6 +73,9 @@ interface ApiService {
 
     @POST("api/pembukuan")
     suspend fun addPembukuan(@Body request: PembukuanRequest): ApiResponse
+
+    @GET("api/uang-di-admin")
+    suspend fun getUangDiAdmin(): List<UangAdminResponse>
 
     @GET("api/pengeluaran")
     suspend fun getPengeluaranDetail(): List<PengeluaranItem>
@@ -159,6 +168,15 @@ interface ApiService {
 
     @POST("api/admins")
     suspend fun addAdmin(@Body item: com.example.ui.data.AdminUser): ApiResponse
+
+    @POST("api/admins")
+    suspend fun addAdminMap(@Body req: Map<String, String>): ApiResponse
+
+    @PUT("api/admins/{id}")
+    suspend fun updateAdminMap(@Path("id") id: String, @Body req: Map<String, String>): ApiResponse
+
+    @PUT("api/admins/{id}")
+    suspend fun updateAdmin(@Path("id") id: String, @Body req: Map<String, String>): ApiResponse
 
     @GET("api/mikrotik/status/{id}")
     suspend fun getMikrotikStatus(@Path("id") id: String): MikrotikStatus

@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,22 +40,23 @@ data class AcsDevice(
     val id: String,
     val username: String,
     val isOnline: Boolean,
-    val ssid: String = "ELS_A",
+    val ssid: String = "Unknown",
+    val wifiPassword: String = "-",
     val connectedUsers: Int = 0,
     val customerNumber: String = "-",
-    val rxPower: String = "-23.27",
+    val rxPower: String = "-",
     val areaName: String = ""
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
-    val bgMain = Color(0xFF05050A)
-    val headerBg = Color(0xFF1F0216)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
-    val primaryCyan = Color(0xFF00FFFF)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val primaryCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
     val successGreen = Color(0xFF00FF4D)
     val errorRed = Color(0xFFFF003C)
     val warningYellow = Color(0xFFFFB800)
@@ -126,27 +128,27 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
             // Summary Cards
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AcsSummaryCard(
+                AcsSummaryText(
                     title = "Total",
                     value = totalDevices.toString(),
-                    icon = Icons.Default.Dns,
-                    bgColor = Color(0xFF0055FF),
+                    
+                    textColor = Color(0xFF0055FF),
                     modifier = Modifier.weight(1f),
                     onClick = { showOnlyOffline = false }
                 )
-                AcsSummaryCard(
+                AcsSummaryText(
                     title = "Online",
                     value = onlineDevices.toString(),
-                    icon = Icons.Default.SignalWifi4Bar,
-                    bgColor = Color(0xFF008844),
+                    
+                    textColor = Color(0xFF008844),
                     modifier = Modifier.weight(1f),
                     onClick = { showOnlyOffline = false }
                 )
-                AcsSummaryCard(
+                AcsSummaryText(
                     title = "Offline",
                     value = offlineDevices.toString(),
-                    icon = Icons.Default.WifiOff,
-                    bgColor = Color(0xFFDD3344),
+                    
+                    textColor = Color(0xFFDD3344),
                     modifier = Modifier.weight(1f),
                     onClick = { showOnlyOffline = true }
                 )
@@ -269,20 +271,14 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
 }
 
 @Composable
-fun AcsSummaryCard(title: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, bgColor: Color, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(bgColor)
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        contentAlignment = Alignment.Center
+fun AcsSummaryText(title: String, value: String, textColor: Color, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier.clickable(onClick = onClick).padding(vertical = 8.dp)
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            Text(title, color = Color.White.copy(alpha = 0.9f), fontSize = 10.sp, maxLines = 1)
-            Text(value, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
+        Text(title, color = textColor.copy(alpha = 0.8f), fontSize = 10.sp)
+        Text(value, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -359,9 +355,10 @@ fun AcsDeviceItem(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     AcsDetailRow("SSID", device.ssid, textMain, textSecondary)
+                    AcsDetailRow("Password", device.wifiPassword, textMain, textSecondary)
                     AcsDetailRow("User Konek", device.connectedUsers.toString(), textMain, textSecondary)
                     AcsDetailRow("Nomor Pelanggan", device.customerNumber, textMain, textSecondary)
-                    AcsDetailRow("Redaman", device.rxPower, textMain, textSecondary)
+                    AcsDetailRow("Redaman", if (device.rxPower != "-" && device.rxPower.isNotEmpty()) "${device.rxPower} dBm" else "-", textMain, textSecondary)
                 }
             }
         }
@@ -384,7 +381,7 @@ fun AcsDeviceItem(
                 updateResult = null
                 coroutineScope.launch {
                     try {
-                        val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "set_ssid", "value" to newSsid))
+                        val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "set_ssid", "value" to newSsid, "areaName" to device.areaName))
                         updateResult = res.message
                     } catch(e: Exception) {
                         updateResult = "Gagal: ${e.message}"
@@ -416,7 +413,7 @@ fun AcsDeviceItem(
                     updateResult = null
                     coroutineScope.launch {
                         try {
-                            val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "set_password", "value" to newPass))
+                            val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "set_password", "value" to newPass, "areaName" to device.areaName))
                             updateResult = res.message
                         } catch(e: Exception) {
                             updateResult = "Gagal: ${e.message}"
@@ -445,7 +442,7 @@ fun AcsDeviceItem(
                 updateResult = null
                 coroutineScope.launch {
                     try {
-                        val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "reboot"))
+                        val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "reboot", "areaName" to device.areaName))
                         updateResult = res.message
                     } catch(e: Exception) {
                         updateResult = "Gagal: ${e.message}"

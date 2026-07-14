@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,18 +36,20 @@ import androidx.compose.ui.window.DialogProperties
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNavigateToUangDiAdmin: () -> Unit, onNavigateToPembayaranByAdmin: () -> Unit, onNavigateToSemuaPembukuan: (String) -> Unit, onNavigateToRangkuman: () -> Unit) {
-    val bgMain = Color(0xFF05050A)
-    val headerBg = Color(0xFF1F0216)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val successGreen = Color(0xFF00C853)
     val errorRed = Color(0xFFFF5252)
-    val primaryCyan = Color(0xFF00FFFF)
+    val primaryCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
     val currentUser by UserSession.currentUser.collectAsState()
-    var pemasukan by remember { mutableStateOf(0L) }
-    var pengeluaran by remember { mutableStateOf(0L) }
-    var categories by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    var pemasukan by remember { mutableStateOf(0.0) }
+    var pengeluaran by remember { mutableStateOf(0.0) }
+    var transaksiCash by remember { mutableStateOf(0.0) }
+    var transaksiOnline by remember { mutableStateOf(0.0) }
+    var categories by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var pengeluaranDetails by remember { mutableStateOf<List<com.example.ui.data.remote.PengeluaranItem>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
     
@@ -63,6 +66,26 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                 pemasukan = res.pemasukan
                 pengeluaran = res.pengeluaran
                 categories = res.categories
+
+                try {
+                    val customersRes = ApiClient.apiService.getCustomers()
+                    var cashTotal = 0.0
+                    var onlineTotal = 0.0
+                    customersRes.forEach { c ->
+                        val priceVal = c.price.replace(Regex("[^0-9]"), "").toDoubleOrNull() ?: 0.0
+                        val discVal = c.discount.replace(Regex("[^0-9]"), "").toDoubleOrNull() ?: 0.0
+                        val finalPrice = if (priceVal > discVal) priceVal - discVal else priceVal
+                        
+                        if (c.status.contains("LUNAS CASH", ignoreCase = true)) {
+                            cashTotal += finalPrice
+                        } else if (c.status.contains("LUNAS TRANSFER", ignoreCase = true) || c.status.contains("LUNAS ONLINE", ignoreCase = true)) {
+                            onlineTotal += finalPrice
+                        }
+                    }
+                    transaksiCash = cashTotal
+                    transaksiOnline = onlineTotal
+                } catch (e: Exception) {}
+
                 
                 try {
                     pengeluaranDetails = ApiClient.apiService.getPengeluaranDetail()
@@ -114,7 +137,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                         ) {
                             Text("Pemasukkan", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Rp. ${String.format("%,d", pemasukan).replace(",", ".")}", color = successGreen, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("Rp. ${String.format("%,d", pemasukan.toLong()).replace(",", ".")}", color = successGreen, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 IconButton(onClick = { fetchData() }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = primaryCyan)
@@ -124,16 +147,22 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                         Divider(modifier = Modifier.padding(vertical = 12.dp), color = textSecondary.copy(alpha = 0.2f))
                         
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            PembukuanItem("Transaksi Cash", "Rp. ${ (categories["Transaksi Cash"] ?: 0L).let { String.format("%,d", it).replace(",", ".") } }", successGreen, modifier = Modifier.weight(1f).clickable { onNavigateToBilling(1) })
-                            PembukuanItem("Transaksi Online", "Rp. ${ (categories["Transaksi Online"] ?: 0L).let { String.format("%,d", it).replace(",", ".") } }", successGreen, modifier = Modifier.weight(1f))
+                            PembukuanItem("Transaksi Cash", "Rp. ${ transaksiCash.let { String.format("%,d", it.toLong()).replace(",", ".") } }", successGreen, modifier = Modifier.weight(1f).clickable { onNavigateToBilling(1) })
+                            PembukuanItem("Transaksi Online", "Rp. ${ transaksiOnline.let { String.format("%,d", it.toLong()).replace(",", ".") } }", successGreen, modifier = Modifier.weight(1f))
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(modifier = Modifier.fillMaxWidth()) {
                             PembukuanItem(
                                 "Total Pemasukkan Lain2", 
-                                "Rp. ${categories["Pemasukkan Lain2"] ?: 0L.let { String.format("%,d", it).replace(",", ".") }}", 
+                                "Rp. ${categories["Pemasukkan Lain2"] ?: 0.0.let { String.format("%,d", it.toLong()).replace(",", ".") }}", 
                                 successGreen, 
-                                modifier = Modifier.weight(1f).clickable { onNavigateToSemuaPembukuan("Pemasukan") }
+                                modifier = Modifier.weight(1f).clickable {
+                                    selectedCategory = "Pemasukkan Lain2"
+                                    selectedType = "pemasukan"
+                                    inputAmount = ""
+                                    inputDescription = ""
+                                    showAddDialog = true
+                                }
                             )
                             Box(modifier = Modifier.weight(1f))
                         }
@@ -158,7 +187,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                         ) {
                             Text("Pengeluaran", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Rp. ${String.format("%,d", pengeluaran).replace(",", ".")}", color = errorRed, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("Rp. ${String.format("%,d", pengeluaran.toLong()).replace(",", ".")}", color = errorRed, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 IconButton(onClick = { fetchData() }, modifier = Modifier.size(24.dp)) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = primaryCyan)
@@ -179,30 +208,38 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                 val cat1 = pengeluaranItems[i]
                                 PembukuanItem(
                                     cat1, 
-                                    "Rp. ${ (categories[cat1] ?: 0L).let { String.format("%,d", it).replace(",", ".") } }", 
+                                    "Rp. ${ (categories[cat1] ?: 0.0).let { String.format("%,d", it.toLong()).replace(",", ".") } }", 
                                     errorRed, 
                                     modifier = Modifier.weight(1f).clickable {
-                                        selectedCategory = cat1
-                                        selectedType = "pengeluaran"
-                                        val detail = pengeluaranDetails.find { it.category == cat1 }
-                                        inputAmount = detail?.amount?.let { if (it > 0) it.toString() else "" } ?: ""
-                                        inputDescription = detail?.description ?: ""
-                                        showAddDialog = true
+                                        if (cat1 == "Lain-lain") {
+                                            onNavigateToSemuaPembukuan("Pengeluaran")
+                                        } else {
+                                            selectedCategory = cat1
+                                            selectedType = "pengeluaran"
+                                            val detail = pengeluaranDetails.find { it.category == cat1 }
+                                            inputAmount = detail?.amount?.let { if (it > 0) it.toString() else "" } ?: ""
+                                            inputDescription = detail?.description ?: ""
+                                            showAddDialog = true
+                                        }
                                     }
                                 )
                                 if (i + 1 < pengeluaranItems.size) {
                                     val cat2 = pengeluaranItems[i + 1]
                                     PembukuanItem(
                                         cat2, 
-                                        "Rp. ${ (categories[cat2] ?: 0L).let { String.format("%,d", it).replace(",", ".") } }", 
+                                        "Rp. ${ (categories[cat2] ?: 0.0).let { String.format("%,d", it.toLong()).replace(",", ".") } }", 
                                         errorRed, 
                                         modifier = Modifier.weight(1f).clickable {
-                                            selectedCategory = cat2
-                                            selectedType = "pengeluaran"
-                                            val detail = pengeluaranDetails.find { it.category == cat2 }
-                                            inputAmount = detail?.amount?.let { if (it > 0) it.toString() else "" } ?: ""
-                                            inputDescription = detail?.description ?: ""
-                                            showAddDialog = true
+                                            if (cat2 == "Lain-lain") {
+                                                onNavigateToSemuaPembukuan("Pengeluaran")
+                                            } else {
+                                                selectedCategory = cat2
+                                                selectedType = "pengeluaran"
+                                                val detail = pengeluaranDetails.find { it.category == cat2 }
+                                                inputAmount = detail?.amount?.let { if (it > 0) it.toString() else "" } ?: ""
+                                                inputDescription = detail?.description ?: ""
+                                                showAddDialog = true
+                                            }
                                         }
                                     )
                                 } else {
@@ -237,12 +274,12 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Total Pemasukkan", color = textMain, fontSize = 12.sp)
-                                Text("Rp. ${ String.format("%,d", pemasukan).replace(",", ".") }", color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Rp. ${ String.format("%,d", pemasukan.toLong()).replace(",", ".") }", color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                             Text("-", color = errorRed, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Total Pengeluaran", color = textMain, fontSize = 12.sp)
-                                Text("Rp. ${ String.format("%,d", pengeluaran).replace(",", ".") }", color = errorRed, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Rp. ${ String.format("%,d", pengeluaran.toLong()).replace(",", ".") }", color = errorRed, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         
@@ -258,7 +295,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Pendapatan", color = Color.White, fontSize = 12.sp)
-                                Text("Rp. ${ String.format("%,d", pemasukan - pengeluaran).replace(",", ".") }", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("Rp. ${ String.format("%,d", (pemasukan - pengeluaran).toLong()).replace(",", ".") }", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -364,12 +401,8 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                         onClick = {
                             coroutineScope.launch {
                                 try {
-                                    val amount = inputAmount.toLongOrNull() ?: 0L
-                                    if (selectedType == "pengeluaran") {
-                                        ApiClient.apiService.updatePengeluaranDetail(com.example.ui.data.remote.PengeluaranRequest(selectedCategory, amount, inputDescription))
-                                    } else {
-                                        ApiClient.apiService.addPembukuan(com.example.ui.data.remote.PembukuanRequest(selectedType, selectedCategory, amount.toDouble(), inputDescription))
-                                    }
+                                    val amount = inputAmount.toLongOrNull() ?: 0.0
+                                    ApiClient.apiService.addPembukuan(com.example.ui.data.remote.PembukuanRequest(selectedType, selectedCategory, amount.toDouble(), inputDescription))
                                     fetchData()
                                     showAddDialog = false
                                 } catch (e: Exception) {}

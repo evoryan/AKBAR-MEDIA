@@ -1,9 +1,11 @@
 const express = require('express');
+const cron = require('node-cron');
 const { RouterOSClient } = require('routeros-client');
 const cors = require('cors');
 const axios = require('axios');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
+const { sendTenantNotification } = require('./fcm_service');
 require('dotenv').config();
 
 const app = express();
@@ -80,8 +82,44 @@ const tenantContext = (req, res, next) => {
 // Auto-update schema to avoid errors if user doesn't run init.sql
 async function updateSchema() {
     try {
+        
+        await masterPool.query(`CREATE TABLE IF NOT EXISTS pembukuan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            type VARCHAR(50),
+            amount DOUBLE,
+            description TEXT,
+            category VARCHAR(100) DEFAULT 'Lain-lain',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).catch(e=>{});
+        await masterPool.query(`CREATE TABLE IF NOT EXISTS pemasukan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            category VARCHAR(100) UNIQUE,
+            amount DOUBLE,
+            description TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`).catch(e=>{});
+        await masterPool.query(`CREATE TABLE IF NOT EXISTS pengeluaran (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            category VARCHAR(100) UNIQUE,
+            amount DOUBLE,
+            description TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`).catch(e=>{});
+
         await masterPool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); await masterPool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        
+        await masterPool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT,
+            bulan VARCHAR(50),
+            tahun INT,
+            amount DECIMAL(15, 2),
+            status VARCHAR(50) DEFAULT 'BELUM BAYAR',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+        )`).catch(e=>{});
+        
         console.log("Schema checked/updated.");
     } catch(e) {
         console.error("Schema update error:", e.message);
@@ -125,6 +163,17 @@ app.get('/api/fix-db', async (req, res) => {
             try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`); } catch(e) {}
             try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`); } catch(e) {}
             try { await pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`); } catch(e) {}
+            
+            try {
+                await pool.query(`CREATE TABLE IF NOT EXISTS pemasukan (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    category VARCHAR(100) UNIQUE,
+                    amount DOUBLE,
+                    description TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                )`);
+                results.push(`${name}: pemasukan table added`);
+            } catch(e) { results.push(`${name}: pemasukan table err: ${e.message}`); }
         }
         res.json({ message: "Database schema check completed", details: results });
     } catch(e) {
@@ -163,6 +212,23 @@ async function initAllDatabases() {
             
             console.log(`Updating schema for tenant: ${dbName}`);
             const tPool = getTenantPool(dbName);
+            
+            await tPool.query(`CREATE TABLE IF NOT EXISTS pembukuan (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                type VARCHAR(50),
+                amount DOUBLE,
+                description TEXT,
+                category VARCHAR(100) DEFAULT 'Lain-lain',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`).catch(e=>{});
+            await tPool.query(`CREATE TABLE IF NOT EXISTS pengeluaran (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                category VARCHAR(100) UNIQUE,
+                amount DOUBLE,
+                description TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )`).catch(e=>{});
+
             await tPool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
             await tPool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
@@ -237,6 +303,26 @@ app.post('/api/billing/pay', async (req, res) => {
         const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [customerId]);
         if (customers.length === 0) return res.status(404).json({ error: "Customer not found" });
         const customerName = customers[0].name;
+        
+        // Ensure table exists
+        await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT,
+            bulan VARCHAR(50),
+            tahun INT,
+            amount DECIMAL(15, 2),
+            status VARCHAR(50) DEFAULT 'BELUM BAYAR',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+        )`).catch(e=>{});
+
+        // Mark tagihan as LUNAS CASH
+        const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
+        let desc = `Pembayaran tagihan pelanggan ${customerName}`;
+        if (tagihan.length > 0) {
+            await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH" WHERE id = ?', [tagihan[0].id]);
+            desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
+        }
 
         // Update customer status to LUNAS CASH
         await req.pool.query('UPDATE customers SET status = "LUNAS CASH" WHERE id = ?', [customerId]);
@@ -244,17 +330,32 @@ app.post('/api/billing/pay', async (req, res) => {
         // Add to pembukuan
         try {
             await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
-                ['pemasukan', totalAmount || 0, `Pembayaran tagihan pelanggan ${customerName}`, 'Transaksi Cash']);
+                ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash']);
         } catch (e) {
             console.error("Warning: category column might be missing in pembukuan", e.message);
             await req.pool.query('INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)', 
-                ['pemasukan', totalAmount || 0, `Pembayaran tagihan pelanggan ${customerName}`]);
+                ['pemasukan', totalAmount || 0, desc]);
+        }
+        
+        // Add to pemasukan summary table
+        try {
+            await req.pool.query(
+                'INSERT INTO pemasukan (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)',
+                ['Transaksi Cash', totalAmount || 0, desc]
+            );
+        } catch (e) {
+            console.error("Warning: failed to insert to pemasukan table", e.message);
         }
 
         // Add notification
         const notifMsg = `Pembayaran "${customerName}" di terima oleh "${adminName}"`;
         try {
             await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
+            
+            if (req.user && req.user.db_name) {
+                sendTenantNotification(req.user.db_name, "Pembayaran Diterima", notifMsg);
+            }
+            sendTenantNotification("superadmin", "Pembayaran Diterima", notifMsg);
         } catch (e) {
             console.error("Warning: notifications table might be missing", e.message);
         }
@@ -279,10 +380,61 @@ app.get('/api/notifications', async (req, res) => {
 app.post('/api/billing/delete', async (req, res) => {
     try {
         const { customerId } = req.body;
-        // The user wants to remove from "Belum Bayar" list. 
-        // We can just update the status to "NONAKTIF" or something that isn't "BELUM BAYAR"
-        await req.pool.query('UPDATE customers SET status = "TERHAPUS" WHERE id = ?', [customerId]);
-        res.json({ message: "Tagihan dihapus" });
+        // Get customer name
+        const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [customerId]);
+        if (customers.length === 0) return res.status(404).json({ error: "Customer not found" });
+        const customerName = customers[0].name;
+        
+        // Ensure table exists
+        await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT,
+            bulan VARCHAR(50),
+            tahun INT,
+            amount DECIMAL(15, 2),
+            status VARCHAR(50) DEFAULT 'BELUM BAYAR',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+        )`).catch(e=>{});
+
+        // Find last paid bill
+        const [tagihan] = await req.pool.query('SELECT id, amount, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "LUNAS CASH" ORDER BY id DESC LIMIT 1', [customerId]);
+        let refundAmount = 0;
+        let desc = `Pembatalan pembayaran pelanggan ${customerName}`;
+        
+        if (tagihan.length > 0) {
+            await req.pool.query('UPDATE tagihan_bulanan SET status = "BELUM BAYAR" WHERE id = ?', [tagihan[0].id]);
+            refundAmount = tagihan[0].amount;
+            desc = `Pembatalan pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
+        } else {
+            // fallback amount if no tagihan_bulanan found
+            const [pembukuan] = await req.pool.query('SELECT amount FROM pembukuan WHERE type = "pemasukan" AND description LIKE ? ORDER BY id DESC LIMIT 1', [`%${customerName}%`]);
+            if (pembukuan.length > 0) refundAmount = pembukuan[0].amount;
+        }
+
+        // Revert customer status
+        await req.pool.query('UPDATE customers SET status = "BELUM BAYAR" WHERE id = ?', [customerId]);
+
+        // Add to pembukuan as pengeluaran (refund)
+        try {
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
+                ['pengeluaran', refundAmount, desc, 'Pengembalian Dana']);
+        } catch (e) {
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)', 
+                ['pengeluaran', refundAmount, desc]);
+        }
+        
+        // Also add to pengeluaran summary table
+        try {
+            await req.pool.query(
+                'INSERT INTO pengeluaran (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)',
+                ['Pengembalian Dana', refundAmount, desc]
+            );
+        } catch (e) {
+            console.error("Warning: failed to insert to pengeluaran table", e.message);
+        }
+
+        res.json({ message: "Pembatalan berhasil dan dana dicatat di pembukuan" });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Terjadi kesalahan server" });
@@ -295,12 +447,31 @@ app.get('/api/dashboard/summary', async (req, res) => {
         const [customers] = await req.pool.query('SELECT COUNT(*) as total FROM customers');
         const [paidCustomers] = await req.pool.query('SELECT COUNT(*) as paid FROM customers WHERE status = "LUNAS CASH"');
         const [unpaidCustomers] = await req.pool.query('SELECT COUNT(*) as unpaid FROM customers WHERE status != "LUNAS CASH"');
-        const [pembukuan] = await req.pool.query('SELECT type, SUM(amount) as total FROM pembukuan GROUP BY type');
         
-        let monthlyRevenue = 0;
-        pembukuan.forEach(row => {
-            if (row.type === 'pemasukan') monthlyRevenue += Number(row.total);
-        });
+        let totalPemasukan = 0;
+        let totalPengeluaran = 0;
+        try {
+            const [pemasukanRows] = await req.pool.query('SELECT SUM(amount) as total FROM pemasukan');
+            totalPemasukan = pemasukanRows[0]?.total || 0;
+        } catch (e) {
+            // fallback if table doesn't exist yet
+            const [pembukuan] = await req.pool.query('SELECT type, SUM(amount) as total FROM pembukuan GROUP BY type');
+            pembukuan.forEach(row => {
+                if (row.type === 'pemasukan') totalPemasukan += Number(row.total);
+            });
+        }
+        
+        try {
+            const [pengeluaranRows] = await req.pool.query('SELECT SUM(amount) as total FROM pengeluaran');
+            totalPengeluaran = pengeluaranRows[0]?.total || 0;
+        } catch (e) {
+            const [pembukuan] = await req.pool.query('SELECT type, SUM(amount) as total FROM pembukuan GROUP BY type');
+            pembukuan.forEach(row => {
+                if (row.type === 'pengeluaran') totalPengeluaran += Number(row.total);
+            });
+        }
+        
+        const monthlyRevenue = totalPemasukan - totalPengeluaran;
 
         res.json({
             totalCustomers: customers[0].total,
@@ -362,6 +533,21 @@ app.get('/api/customers', async (req, res) => {
 });
 
 
+
+app.get('/api/uang-di-admin', async (req, res) => {
+    try {
+        const [rows] = await req.pool.query(`
+            SELECT admin_name as adminName, SUM(amount) as totalAmount, COUNT(*) as jmlPlggn 
+            FROM pembukuan 
+            WHERE category = 'Transaksi Cash' AND type = 'pemasukan' 
+            GROUP BY admin_name
+        `);
+        res.json(rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
 app.get('/api/pembukuan', async (req, res) => {
     try {
         const [rows] = await req.pool.query('SELECT type, category, SUM(amount) as total FROM pembukuan GROUP BY type, category');
@@ -397,10 +583,11 @@ app.get('/api/pembukuan', async (req, res) => {
 app.post('/api/pembukuan', async (req, res) => {
     try {
         const { type, amount, description, category } = req.body;
+        const cat = category || 'Lain-lain';
         try {
             await req.pool.query(
                 'INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)',
-                [type, amount || 0, description || '', category || 'Lain-lain']
+                [type, amount || 0, description || '', cat]
             );
         } catch (e) {
             await req.pool.query(
@@ -408,6 +595,20 @@ app.post('/api/pembukuan', async (req, res) => {
                 [type, amount || 0, description || '']
             );
         }
+        
+        // Update summary table
+        if (type === 'pemasukan') {
+            await req.pool.query(
+                'INSERT INTO pemasukan (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)',
+                [cat, amount || 0, description || '']
+            ).catch(e => console.error(e));
+        } else if (type === 'pengeluaran') {
+            await req.pool.query(
+                'INSERT INTO pengeluaran (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)',
+                [cat, amount || 0, description || '']
+            ).catch(e => console.error(e));
+        }
+
         res.json({ message: "Pembukuan ditambahkan" });
     } catch (error) {
         console.error(error);
@@ -415,6 +616,30 @@ app.post('/api/pembukuan', async (req, res) => {
     }
 });
 
+
+app.get('/api/pemasukan', async (req, res) => {
+    try {
+        const [rows] = await req.pool.query('SELECT category, amount, description, updated_at FROM pemasukan');
+        res.json(rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
+
+app.post('/api/pemasukan', async (req, res) => {
+    try {
+        const { category, amount, description } = req.body;
+        await req.pool.query(
+            'INSERT INTO pemasukan (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = VALUES(amount), description = VALUES(description)',
+            [category, amount || 0, description || '']
+        );
+        res.json({ message: "Pemasukan diupdate" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
 
 app.get('/api/pengeluaran', async (req, res) => {
     try {
@@ -487,7 +712,7 @@ app.delete('/api/areas/:id', async (req, res) => {
 
 app.get('/api/admins', async (req, res) => {
     try {
-        const [rows] = await req.pool.query('SELECT id, name, username, role FROM users');
+        const [rows] = await masterPool.query('SELECT id, name, username, role FROM users');
         const admins = rows.map(r => ({ ...r, id: r.id.toString() }));
         res.json(admins);
     } catch (error) {
@@ -531,7 +756,7 @@ app.get('/api/stock_history', async (req, res) => {
 
 app.delete('/api/admins/:id', async (req, res) => {
     try {
-        await req.pool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
+        await masterPool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
         res.json({ message: "Admin berhasil dihapus" });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
@@ -793,44 +1018,115 @@ app.get('/api/acs/devices', async (req, res) => {
                             return current;
                         };
 
-                        const pppoeUser = 
-                            getVal('InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username') ||
-                            getVal('InternetGatewayDevice.WANDevice.1.WANPPPConnection.1.Username') ||
-                            getVal('Device.WANDevice.1.WANPPPConnection.1.Username') ||
-                            getVal('Device.Users.User.1.Username') ||
-                            (d.summary && d.summary.username) ||
-                            (d.summary && d.summary.mac) ||
-                            'Unknown';
+                        const pppoeUser = (() => {
+                            for (let dev = 1; dev <= 2; dev++) {
+                                for (let i = 1; i <= 10; i++) {
+                                    for (let j = 1; j <= 5; j++) {
+                                        let u = getVal(`InternetGatewayDevice.WANDevice.${dev}.WANConnectionDevice.${i}.WANPPPConnection.${j}.Username`) ||
+                                                getVal(`Device.WANDevice.${dev}.WANConnectionDevice.${i}.WANPPPConnection.${j}.Username`);
+                                        if (u && String(u).trim() !== '') return u;
+                                    }
+                                }
+                            }
+                            return getVal('InternetGatewayDevice.WANDevice.1.WANPPPConnection.1.Username') ||
+                                   getVal('Device.WANDevice.1.WANPPPConnection.1.Username') ||
+                                   getVal('Device.PPP.Interface.1.Username') ||
+                                   getVal('Device.Users.User.1.Username') ||
+                                   (d.summary && d.summary.username) ||
+                                   (d.summary && d.summary.mac) ||
+                                   'Unknown';
+                        })();
                             
                         const ssid = 
                             getVal('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID') ||
                             getVal('Device.WiFi.SSID.1.SSID') ||
+                            getVal('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSIDAdvertisementEnabled') ||
                             'Unknown';
                             
-                        const rxPowerRaw = 
-                            getVal('InternetGatewayDevice.WANDevice.1.X_ZTE-COM_WANPONInterfaceConfig.RXPower') ||
-                            getVal('InternetGatewayDevice.WANDevice.1.X_ZTE_COM_WANPONInterfaceConfig.RXPower') ||
-                            getVal('Device.Optical.ReceivePower') ||
-                            getVal('InternetGatewayDevice.WANDevice.1.WANDSLInterfaceConfig.RxPower') ||
+                        const wifiPassword = 
+                            getVal('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase') ||
+                            getVal('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey') ||
+                            getVal('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase') ||
+                            getVal('Device.WiFi.Radio.1.Security.KeyPassphrase') ||
                             '-';
                             
                         let rxPowerStr = '-';
-                        if (rxPowerRaw !== undefined && rxPowerRaw !== null && rxPowerRaw !== '-' && rxPowerRaw !== '') {
-                            let num = parseFloat(rxPowerRaw);
-                            if (!isNaN(num)) {
-                                if (Math.abs(num) > 100) num = num / 1000;
-                                else if (Math.abs(num) > 10 && num > 0) num = num / 100;
-                                rxPowerStr = num.toFixed(2);
+                        const getAny = (pathTpl) => {
+                            if (pathTpl.includes('*')) {
+                                for (let i = 1; i <= 5; i++) {
+                                    let v = getVal(pathTpl.replace('*', i));
+                                    if (v !== undefined && v !== null && v !== '') return v;
+                                }
                             } else {
-                                rxPowerStr = String(rxPowerRaw);
+                                let v = getVal(pathTpl);
+                                if (v !== undefined && v !== null && v !== '') return v;
                             }
+                            return undefined;
+                        };
+
+                        let zte = getAny("InternetGatewayDevice.WANDevice.*.X_ZTE-COM_WANPONInterfaceConfig.RXPower") || getAny("InternetGatewayDevice.WANDevice.*.X_ZTE_COM_WANPONInterfaceConfig.RXPower");
+                        let huawei = getAny("InternetGatewayDevice.WANDevice.*.X_GponInterafceConfig.RXPower") || getAny("InternetGatewayDevice.WANDevice.*.X_HW_Optical.RxPower") || getAny("InternetGatewayDevice.WANDevice.*.X_HW_Optical.RxOpticalPower");
+                        let fiberhome = getAny("InternetGatewayDevice.WANDevice.*.X_FH_GponInterfaceConfig.RXPower");
+                        let ztecmcc = getAny("InternetGatewayDevice.WANDevice.*.X_CMCC_EponInterfaceConfig.RXPower");
+                        let ztecmcg = getAny("InternetGatewayDevice.WANDevice.*.X_CMCC_GponInterfaceConfig.RXPower");
+                        let gm220se = getAny("InternetGatewayDevice.WANDevice.*.X_CT-COM_EponInterfaceConfig.RXPower");
+                        let gm220sg = getAny("InternetGatewayDevice.WANDevice.*.X_CT-COM_GponInterfaceConfig.RXPower") || getAny("InternetGatewayDevice.WANDevice.*.X_CT-COM_PONInterfaceConfig.RXPower") || getAny("InternetGatewayDevice.WANDevice.*.X_CT-COM_XPON.RXPower");
+                        let f477v2 = getAny("InternetGatewayDevice.WANDevice.*.X_CU_WANEPONInterfaceConfig.OpticalTransceiver.RXPower");
+                        let nokia = getAny("InternetGatewayDevice.X_ALU_OntOpticalParam.RXPower");
+                        let generic = getAny("Device.Optical.ReceivePower") || getAny("InternetGatewayDevice.WANDevice.*.WANDSLInterfaceConfig.RxPower");
+                        
+                        const calcDb = (val, isLog) => {
+                            let num = parseFloat(val);
+                            if (isNaN(num)) return val;
+                            if (num < 0) {
+                                if (num < -1000) num = num / 1000;
+                                else if (num < -100) num = num / 100;
+                                return num.toFixed(2);
+                            } else if (num > 0 && isLog) {
+                                let db = 30 + (Math.log10(num * Math.pow(10, -7)) * 10);
+                                return (Math.ceil(db * 100) / 100).toFixed(2);
+                            } else if (num > 0 && !isLog) {
+                                if (num > 1000) num = -(num / 100);
+                                else if (num > 100) num = -(num / 10);
+                                else num = -num;
+                                return num.toFixed(2);
+                            }
+                            return num.toFixed(2);
+                        };
+
+                        let m = undefined;
+                        if (zte !== undefined) m = calcDb(zte, true);
+                        else if (ztecmcc !== undefined) m = calcDb(ztecmcc, true);
+                        else if (ztecmcg !== undefined) m = calcDb(ztecmcg, true);
+                        else if (gm220se !== undefined) m = calcDb(gm220se, true);
+                        else if (gm220sg !== undefined) m = calcDb(gm220sg, true);
+                        else if (f477v2 !== undefined) m = calcDb(f477v2, true);
+                        else if (huawei !== undefined) m = calcDb(huawei, false);
+                        else if (fiberhome !== undefined) m = calcDb(fiberhome, false);
+                        else if (nokia !== undefined) m = calcDb(nokia, false);
+                        else if (generic !== undefined) m = calcDb(generic, false);
+
+                        if (m !== undefined && m !== "N/A" && m !== null) {
+                            rxPowerStr = String(m);
                         }
                         
-                        const connectedUsers = 
-                            getVal('InternetGatewayDevice.LANDevice.1.Hosts.HostNumberOfEntries') ||
-                            getVal('Device.Hosts.HostNumberOfEntries') ||
-                            (d.summary && d.summary.connectedUsers) ||
-                            '0';
+                        const connectedUsers = (() => {
+                            let count = parseInt(getVal('InternetGatewayDevice.LANDevice.1.Hosts.HostNumberOfEntries') || getVal('Device.Hosts.HostNumberOfEntries') || (d.summary && d.summary.connectedUsers) || '0');
+                            if (count === 0 || isNaN(count)) {
+                                // Try AssociatedDevice
+                                let assocCount = 0;
+                                for (let i = 1; i <= 3; i++) {
+                                    for (let j = 1; j <= 5; j++) {
+                                        let assoc = getVal(`InternetGatewayDevice.LANDevice.${i}.WLANConfiguration.${j}.AssociatedDevice`);
+                                        if (assoc && typeof assoc === 'object') {
+                                            assocCount += Object.keys(assoc).filter(k => !k.startsWith('_')).length;
+                                        }
+                                    }
+                                }
+                                if (assocCount > 0) return assocCount;
+                            }
+                            return count;
+                        })();
 
                         const lastInform = d._lastInform || d._lastPing || d._lastBoot;
                         let isOnline = false;
@@ -844,6 +1140,7 @@ app.get('/api/acs/devices', async (req, res) => {
                             username: pppoeUser !== 'Unknown' ? String(pppoeUser) : (d._id || 'Unknown'),
                             isOnline: isOnline,
                             ssid: String(ssid),
+                            wifiPassword: String(wifiPassword),
                             connectedUsers: parseInt(connectedUsers) || 0,
                             customerNumber: '-',
                             rxPower: rxPowerStr,
@@ -866,12 +1163,65 @@ app.get('/api/acs/devices', async (req, res) => {
 
 app.post('/api/acs/devices/:id/action', async (req, res) => {
     try {
-        const { action, value } = req.body;
-        // Mock successful response since we can't easily proxy tasks without knowing the exact ACS task API format.
-        // In a real app we'd POST to /tasks for the specific device ID.
-        res.json({ message: `Aksi ${action} diproses` });
+        const { action, value, areaName } = req.body;
+        const deviceId = req.params.id;
+        
+        let areaRow = null;
+        if (areaName) {
+            const [areas] = await req.pool.query('SELECT * FROM areas WHERE name = ?', [areaName]);
+            if (areas.length > 0) areaRow = areas[0];
+        }
+        
+        if (!areaRow) {
+            // Fallback to searching all areas
+            const [areas] = await req.pool.query('SELECT * FROM areas WHERE apiDomain IS NOT NULL AND apiDomain != ""');
+            areaRow = areas[0]; // just try the first one for now if we can't find it
+        }
+        
+        if (!areaRow || !areaRow.apiDomain) {
+            return res.status(400).json({ error: "Server Area tidak ditemukan atau URL API kosong" });
+        }
+        
+        let baseUrl = areaRow.apiDomain.trim();
+        if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+        
+        let taskData = {
+            device: deviceId
+        };
+        
+        if (action === 'set_ssid') {
+            taskData.name = 'setParameterValues';
+            taskData.parameterValues = [
+                ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', String(value), 'xsd:string'],
+                ['Device.WiFi.SSID.1.SSID', String(value), 'xsd:string']
+            ];
+        } else if (action === 'set_password') {
+            taskData.name = 'setParameterValues';
+            taskData.parameterValues = [
+                ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', String(value), 'xsd:string'],
+                ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase', String(value), 'xsd:string'],
+                ['Device.WiFi.Radio.1.Security.KeyPassphrase', String(value), 'xsd:string']
+            ];
+        } else if (action === 'reboot') {
+            taskData.name = 'reboot';
+        } else {
+            return res.status(400).json({ error: "Aksi tidak dikenal" });
+        }
+        
+        // GenieACS v1.2 format: POST /tasks?connection_request
+        const response = await axios.post(`${baseUrl}/tasks?connection_request`, taskData, {
+            auth: { username: areaRow.acsUser, password: areaRow.acsPassword },
+            timeout: 10000 // give it some time to process
+        });
+        
+        res.json({ message: `Aksi ${action} berhasil diproses` });
     } catch (error) {
-        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+        console.error("ACS Task Error:", error.message); 
+        let errorMsg = error.message;
+        if (error.response && error.response.data) {
+            errorMsg = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data);
+        }
+        res.status(500).json({ error: `Gagal ke ACS: ${errorMsg}` });
     }
 });
 
@@ -971,10 +1321,30 @@ app.post('/api/inventory', async (req, res) => {
     }
 });
 
+
+app.put('/api/admins/:id', async (req, res) => {
+    try {
+        const { name, username, password } = req.body;
+        // Check if username is already taken by someone else
+        const [existing] = await masterPool.query('SELECT id FROM users WHERE username = ? AND id != ?', [username, req.params.id]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: "Username sudah digunakan" });
+        }
+        
+        if (password) {
+            await masterPool.query('UPDATE users SET name = ?, username = ?, password = ? WHERE id = ?', [name, username, password, req.params.id]);
+        } else {
+            await masterPool.query('UPDATE users SET name = ?, username = ? WHERE id = ?', [name, username, req.params.id]);
+        }
+        res.json({ message: "Admin diperbarui" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+    }
+});
 app.post('/api/admins', async (req, res) => {
     try {
         const { name, username, role, password } = req.body;
-        const [result] = await req.pool.query(
+        const [result] = await masterPool.query(
             'INSERT INTO users (name, username, role, password) VALUES (?, ?, ?, ?)',
             [name, username, role, password]
         );
@@ -1164,6 +1534,61 @@ app.get('/api/mikrotik/secrets/:id', async (req, res) => {
 });
 
 const PORT = 4500;
+
+cron.schedule('1 0 * * *', async () => {
+    console.log('Menjalankan cron job tagihan bulanan...');
+    try {
+        const [users] = await masterPool.query('SELECT DISTINCT db_name FROM users WHERE db_name IS NOT NULL AND db_name != ""');
+        const today = new Date();
+        const dateStr = today.getDate().toString();
+        const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+        const currentMonth = monthNames[today.getMonth()];
+        const currentYear = today.getFullYear();
+        
+        for (const user of users) {
+            const dbName = user.db_name;
+            const pool = getTenantPool(dbName);
+            try {
+                // Ensure table exists
+                await pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    customer_id INT,
+                    bulan VARCHAR(50),
+                    tahun INT,
+                    amount DECIMAL(15, 2),
+                    status VARCHAR(50) DEFAULT 'BELUM BAYAR',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+                )`);
+                
+                const [customers] = await pool.query('SELECT * FROM customers WHERE billingDate = ? AND status != "TERHAPUS"', [dateStr]);
+                for (const customer of customers) {
+                    const [existing] = await pool.query(
+                        'SELECT id FROM tagihan_bulanan WHERE customer_id = ? AND bulan = ? AND tahun = ?',
+                        [customer.id, currentMonth, currentYear]
+                    );
+                    if (existing.length === 0) {
+                        let amount = 0;
+                        if (customer.price) {
+                            amount = parseFloat(customer.price.replace(/[^0-9]/g, '')) || 0;
+                        }
+                        await pool.query(
+                            'INSERT INTO tagihan_bulanan (customer_id, bulan, tahun, amount, status) VALUES (?, ?, ?, ?, "BELUM BAYAR")',
+                            [customer.id, currentMonth, currentYear, amount]
+                        );
+                        await pool.query('UPDATE customers SET status = "BELUM BAYAR" WHERE id = ?', [customer.id]);
+                        console.log(`Tagihan dibuat untuk ${customer.name} di database ${dbName}`);
+                    }
+                }
+            } catch (e) {
+                console.error(`Error processing db ${dbName}:`, e.message);
+            }
+        }
+    } catch(e) {
+        console.error('Cron job error:', e);
+    }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });

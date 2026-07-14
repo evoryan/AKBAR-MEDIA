@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.widget.Toast
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +20,11 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material3.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import com.example.ui.data.remote.LoginRequest
+import com.example.ui.data.UserRole
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.LaunchedEffect
 import com.example.ui.data.remote.ApiClient
 import com.example.ui.data.remote.DeleteBillingRequest
@@ -30,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -39,21 +47,25 @@ import androidx.compose.ui.unit.sp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit, onNavigateToSuccess: (String, String, String) -> Unit) {
-    val bgMain = Color(0xFF05050A)
-    val headerBg = Color(0xFF1F0216)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBorder = Color(0xFF00FFFF).copy(alpha = 0.3f)
     val primaryPurple = Color(0xFF2B0B3F) // Dark Purple
-    val neonCyan = Color(0xFF00FFFF)
+    val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
     val neonPink = Color(0xFFFF00FF)
     val warningOrange = Color(0xFFFF9900)
     val errorRed = Color(0xFFFF003C)
     val successGreen = Color(0xFF00FF00)
 
     var customers by remember { mutableStateOf<List<Customer>>(emptyList()) }
+    var showCancelDialog by remember { mutableStateOf(false) }
+    var customerToCancel by remember { mutableStateOf<Customer?>(null) }
+    var cancelPassword by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     fun fetchCustomers() {
         coroutineScope.launch {
@@ -87,6 +99,71 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     val paidSum = paidCustomers.sumOf { it.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L }
     val totalUnpaid = "Rp. ${formatter.format(unpaidSum)}"
     val totalPaid = "Rp. ${formatter.format(paidSum)}"
+
+    if (showCancelDialog && customerToCancel != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                showCancelDialog = false
+                cancelPassword = ""
+            },
+            title = { Text("Batalkan Pembayaran", color = textMain) },
+            text = { 
+                Column {
+                    Text("Masukkan password superadmin untuk membatalkan pembayaran ${customerToCancel?.name}:", color = textSecondary, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = cancelPassword,
+                        onValueChange = { cancelPassword = it },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = cardBorder,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        )
+                    )
+                }
+            },
+            containerColor = cardBg,
+            confirmButton = {
+                TextButton(onClick = {
+                    coroutineScope.launch {
+                        try {
+                            val currentUser = com.example.ui.data.UserSession.currentUser.value
+                            if (currentUser != null) {
+                                val loginRes = com.example.ui.data.remote.ApiClient.apiService.login(
+                                    com.example.ui.data.remote.LoginRequest(currentUser.username, cancelPassword)
+                                )
+                                if (loginRes.role.name == "SUPER_ADMIN" || loginRes.role.name == "ADMIN") {
+                                    ApiClient.apiService.deleteBilling(DeleteBillingRequest(customerToCancel!!.id))
+                                    customers = customers.map { if (it.id == customerToCancel!!.id) it.copy(status = "BELUM BAYAR") else it }
+                                    Toast.makeText(context, "Pembayaran dibatalkan", Toast.LENGTH_SHORT).show()
+                                    showCancelDialog = false
+                                    cancelPassword = ""
+                                    customerToCancel = null
+                                } else {
+                                    Toast.makeText(context, "Akses ditolak. Butuh Super Admin", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Password salah", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) {
+                    Text("Batalkan", color = errorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showCancelDialog = false
+                    cancelPassword = ""
+                }) {
+                    Text("Tutup", color = textSecondary)
+                }
+            }
+        )
+    }
 
     Scaffold(containerColor = bgMain,
         topBar = {
@@ -238,7 +315,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                     
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(unpaidCustomers) { customer ->
                             BillingCustomerItem(
@@ -276,7 +353,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                     
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(paidCustomers) { customer ->
                             BillingCustomerItem(
@@ -291,6 +368,10 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 onDetailClick = {
                                     val amount = customer.price.replace(Regex("[^0-9]"), "")
                                     onNavigateToSuccess(customer.id, amount, "Mei 2026")
+                                },
+                                onLongPress = {
+                                    customerToCancel = customer
+                                    showCancelDialog = true
                                 }
                             )
                         }
@@ -302,18 +383,20 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BillingCustomerItem(
-    customer: Customer, 
-    cardBg: Color, 
-    cardBorder: Color, 
-    textMain: Color, 
-    textSecondary: Color, 
-    neonCyan: Color, 
-    neonPink: Color, 
+    customer: Customer,
+    cardBg: Color,
+    cardBorder: Color,
+    textMain: Color,
+    textSecondary: Color,
+    neonCyan: Color,
+    neonPink: Color,
     onPayClick: () -> Unit,
     onDetailClick: () -> Unit,
-    onDeleteClick: () -> Unit = {}
+    onDeleteClick: () -> Unit = {},
+    onLongPress: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -321,26 +404,26 @@ fun BillingCustomerItem(
             .clip(RoundedCornerShape(16.dp))
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
-            .padding(16.dp)
+
+            .padding(12.dp)
     ) {
         Column {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
                     Text(customer.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
                     Text(customer.phone, color = textSecondary, fontSize = 12.sp)
                     Text("Area: ${customer.area}", color = textSecondary, fontSize = 12.sp)
                 }
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(CircleShape)
                         .background(if (customer.status != "LUNAS CASH") Color(0xFFFF003C).copy(alpha = 0.2f) else neonCyan.copy(alpha = 0.2f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text(customer.status, color = if (customer.status != "LUNAS CASH") Color(0xFFFF003C) else neonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(customer.price, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -348,23 +431,34 @@ fun BillingCustomerItem(
                         IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color(0xFFFF003C))
                         }
-                    }
-                }
-                Button(
-                    onClick = {
-                        if (customer.status != "LUNAS CASH") {
-                            onPayClick()
-                        } else {
-                            onDetailClick()
+                    } else {
+                        Button(
+                            onClick = onLongPress,
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color(0xFFFF003C)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF003C)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("BATAL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                    },
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (customer.status != "LUNAS CASH") neonCyan else Color.Transparent, contentColor = if (customer.status != "LUNAS CASH") Color.Black else neonCyan),
-                    border = if (customer.status == "LUNAS CASH") androidx.compose.foundation.BorderStroke(1.dp, neonCyan) else null,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(if (customer.status != "LUNAS CASH") "BAYAR" else "DETAIL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = {
+                            if (customer.status != "LUNAS CASH") {
+                                onPayClick()
+                            } else {
+                                onDetailClick()
+                            }
+                        },
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (customer.status != "LUNAS CASH") neonCyan else Color.Transparent, contentColor = if (customer.status != "LUNAS CASH") Color.Black else neonCyan),
+                        border = if (customer.status == "LUNAS CASH") androidx.compose.foundation.BorderStroke(1.dp, neonCyan) else null,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(if (customer.status != "LUNAS CASH") "BAYAR" else "DETAIL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

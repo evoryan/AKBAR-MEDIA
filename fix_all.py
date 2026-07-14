@@ -1,33 +1,33 @@
 import re
 
-# Fix DaftarAdminScreen
-filepath = '/app/applet/app/src/main/java/com/example/ui/screens/DaftarAdminScreen.kt'
-with open(filepath, 'r') as f:
-    content = f.read()
-if "import com.example.ui.data.remote.ApiClient" not in content:
-    content = content.replace('import androidx.compose.runtime.*', 'import androidx.compose.runtime.*\nimport com.example.ui.data.remote.ApiClient')
-content = content.replace('editItem.id', 'editItem?.id')
-content = content.replace('editItem.copy', 'editItem!!.copy')
-with open(filepath, 'w') as f:
-    f.write(content)
+# Fix BillingScreen.kt
+with open("app/src/main/java/com/example/ui/screens/BillingScreen.kt", "r") as f:
+    billing = f.read()
+billing = billing.replace("@Composable\n@OptIn(ExperimentalFoundationApi::class)\n@Composable", "@OptIn(ExperimentalFoundationApi::class)\n@Composable")
+with open("app/src/main/java/com/example/ui/screens/BillingScreen.kt", "w") as f:
+    f.write(billing)
 
 
-# Fix HistoryStockScreen
-filepath = '/app/applet/app/src/main/java/com/example/ui/screens/HistoryStockScreen.kt'
-with open(filepath, 'r') as f:
-    content = f.read()
-if "import com.example.ui.data.remote.ApiClient" not in content:
-    content = content.replace('import androidx.compose.runtime.*', 'import androidx.compose.runtime.*\nimport com.example.ui.data.remote.ApiClient')
-with open(filepath, 'w') as f:
-    f.write(content)
+# Fix AddCustomerScreen.kt
+with open("app/src/main/java/com/example/ui/screens/AddCustomerScreen.kt", "r") as f:
+    addc = f.read()
 
+# We just need to move permissionLauncher down below contactPickerLauncher.
+# They are both val declarations inside the Composable.
+# Let's extract permissionLauncher and put it after contactPickerLauncher.
+pattern_permission = r"(\s*val permissionLauncher = rememberLauncherForActivityResult\([\s\S]*?\}\n\s*\})"
+match_perm = re.search(pattern_permission, addc)
+if match_perm:
+    perm_block = match_perm.group(1)
+    addc = addc.replace(perm_block, "")
+    
+    # Find contactPickerLauncher end
+    pattern_contact = r"(\s*val contactPickerLauncher = rememberLauncherForActivityResult\([\s\S]*?\}\n\s*\})"
+    match_contact = re.search(pattern_contact, addc)
+    if match_contact:
+        contact_block = match_contact.group(1)
+        addc = addc.replace(contact_block, contact_block + "\n" + perm_block)
 
-# Fix KategoriScreen
-filepath = '/app/applet/app/src/main/java/com/example/ui/screens/KategoriScreen.kt'
-with open(filepath, 'r') as f:
-    content = f.read()
-if "import com.example.ui.data.remote.ApiClient" not in content:
-    content = content.replace('import androidx.compose.runtime.*', 'import androidx.compose.runtime.*\nimport com.example.ui.data.remote.ApiClient')
-with open(filepath, 'w') as f:
-    f.write(content)
+with open("app/src/main/java/com/example/ui/screens/AddCustomerScreen.kt", "w") as f:
+    f.write(addc)
 

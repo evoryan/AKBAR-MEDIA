@@ -1,25 +1,23 @@
 import re
 
-with open('app/src/main/AndroidManifest.xml', 'r') as f:
+with open("app/src/main/AndroidManifest.xml", "r") as f:
     content = f.read()
 
-old_block = """        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.MyApplication">"""
+target = """        <activity
+            android:name=".MainActivity\""""
 
-new_block = """        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.MyApplication">"""
+rep = """        <service
+            android:name=".MyFirebaseMessagingService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
-if old_block in content:
-    content = content.replace(old_block, new_block)
-    with open('app/src/main/AndroidManifest.xml', 'w') as f:
-        f.write(content)
-    print("Patched successfully")
-else:
-    print("Old block not found!")
+        <activity
+            android:name=".MainActivity\""""
+
+content = content.replace(target, rep)
+
+with open("app/src/main/AndroidManifest.xml", "w") as f:
+    f.write(content)

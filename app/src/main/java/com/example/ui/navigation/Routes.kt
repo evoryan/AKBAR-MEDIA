@@ -103,3 +103,6 @@ object GatewayPaymentRoute
 
 @Serializable
 object CompanySettingsRoute
+
+@Serializable
+object BackupRestoreRoute

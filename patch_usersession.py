@@ -1,62 +1,74 @@
-with open('app/src/main/java/com/example/ui/data/AdminData.kt', 'r') as f:
+import re
+
+with open("app/src/main/java/com/example/ui/data/AdminData.kt", "r") as f:
     content = f.read()
 
-new_content = """package com.example.ui.data
+import_statement = "import kotlinx.coroutines.flow.MutableStateFlow\nimport com.google.firebase.messaging.FirebaseMessaging\nimport android.util.Log"
+content = content.replace("import kotlinx.coroutines.flow.MutableStateFlow", import_statement)
 
-import android.content.Context
-import kotlinx.coroutines.flow.MutableStateFlow
-
-enum class UserRole {
-    SUPER_ADMIN, ADMIN, TEKNISI, COLLECTOR
-}
-
-data class AdminUser(val id: String, var name: String, var username: String, var role: UserRole)
-
-object UserSession {
-    val currentUser = MutableStateFlow<AdminUser?>(null)
-    
-    fun hasDeletePrivilege(): Boolean {
-        return currentUser.value?.role == UserRole.SUPER_ADMIN
-    }
-    
-    fun saveSession(context: Context, user: AdminUser) {
-        currentUser.value = user
-        val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
-        sharedPrefs.edit().apply {
+save_target = """        sharedPrefs.edit().apply {
             putString("user_id", user.id)
             putString("user_name", user.name)
             putString("user_username", user.username)
             putString("user_role", user.role.name)
+            putString("user_token", user.token)
+            putString("user_db_name", user.db_name)
+            apply()
+        }"""
+
+save_rep = """        sharedPrefs.edit().apply {
+            putString("user_id", user.id)
+            putString("user_name", user.name)
+            putString("user_username", user.username)
+            putString("user_role", user.role.name)
+            putString("user_token", user.token)
+            putString("user_db_name", user.db_name)
             apply()
         }
-    }
-    
-    fun loadSession(context: Context): Boolean {
-        val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
-        val id = sharedPrefs.getString("user_id", null)
-        val name = sharedPrefs.getString("user_name", null)
-        val username = sharedPrefs.getString("user_username", null)
-        val roleString = sharedPrefs.getString("user_role", null)
         
-        if (id != null && name != null && username != null && roleString != null) {
-            val role = try {
-                UserRole.valueOf(roleString)
-            } catch (e: Exception) {
-                UserRole.ADMIN
-            }
-            currentUser.value = AdminUser(id, name, username, role)
-            return true
-        }
-        return false
-    }
-    
-    fun clearSession(context: Context) {
-        currentUser.value = null
-        val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
-        sharedPrefs.edit().clear().apply()
-    }
-}
-"""
+        user.db_name?.let { dbName ->
+            val safeTopic = dbName.replace(Regex("[^a-zA-Z0-9-_~]"), "")
+            val topicName = "tenant_$safeTopic"
+            FirebaseMessaging.getInstance().subscribeToTopic(topicName)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        Log.d("FCM", "Berhasil subscribe ke topik $topicName")
+                    } else {
+                        Log.e("FCM", "Gagal subscribe ke topik $topicName")
+                    }
+                }
+        }"""
 
-with open('app/src/main/java/com/example/ui/data/AdminData.kt', 'w') as f:
-    f.write(new_content)
+content = content.replace(save_target, save_rep)
+
+load_target = """            currentUser.value = AdminUser(id, name, username, role, token, dbName)
+            return true
+        }"""
+
+load_rep = """            currentUser.value = AdminUser(id, name, username, role, token, dbName)
+            dbName?.let {
+                val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
+                val topicName = "tenant_$safeTopic"
+                FirebaseMessaging.getInstance().subscribeToTopic(topicName)
+            }
+            return true
+        }"""
+
+content = content.replace(load_target, load_rep)
+
+clear_target = """        sharedPrefs.edit().clear().apply()
+    }"""
+
+clear_rep = """        val dbName = currentUser.value?.db_name
+        dbName?.let {
+            val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
+            val topicName = "tenant_$safeTopic"
+            FirebaseMessaging.getInstance().unsubscribeFromTopic(topicName)
+        }
+        sharedPrefs.edit().clear().apply()
+    }"""
+
+content = content.replace(clear_target, clear_rep)
+
+with open("app/src/main/java/com/example/ui/data/AdminData.kt", "w") as f:
+    f.write(content)

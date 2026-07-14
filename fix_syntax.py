@@ -1,12 +1,17 @@
 import re
 
-with open('app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt', 'r') as f:
+with open("app/src/main/java/com/example/ui/screens/PaymentSuccessScreen.kt", "r") as f:
     content = f.read()
 
-bad_str = 'Toast.makeText(context, "ACS Data:\nRxPower: ${acsDevice?.rxPower}\nSSID: ${acsDevice?.ssid}\nConnected: ${acsDevice?.connectedUsers}", Toast.LENGTH_LONG).show()'
-good_str = 'Toast.makeText(context, "ACS Data:\\nRxPower: ${acsDevice?.rxPower}\\nSSID: ${acsDevice?.ssid}\\nConnected: ${acsDevice?.connectedUsers}", Toast.LENGTH_LONG).show()'
+# Fix newline
+content = content.replace(
+    'text = "Support By:\n" + com.example.ui.data.SettingsManager.supportByText,',
+    'text = "Support By:\\n" + com.example.ui.data.SettingsManager.supportByText,'
+)
 
-content = content.replace(bad_str, good_str)
+# Add import if needed
+if "import kotlinx.coroutines.launch" not in content:
+    content = "import kotlinx.coroutines.launch\n" + content
 
-with open('app/src/main/java/com/example/ui/screens/CustomerDetailScreen.kt', 'w') as f:
+with open("app/src/main/java/com/example/ui/screens/PaymentSuccessScreen.kt", "w") as f:
     f.write(content)

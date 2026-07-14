@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.automirrored.filled.Message
@@ -15,6 +17,13 @@ import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.asAndroidBitmap
+import android.provider.MediaStore
+import android.content.ContentValues
+import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -53,14 +63,14 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
         }
     }
 
-    val bgMain = Color(0xFF05050A)
-    val headerBg = Color(0xFF1F0216)
-    val textMain = Color(0xFFFFFFFF)
-    val textSecondary = Color(0xFFAAAAAA)
-    val cardBg = Color(0xFF11111A)
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBorder = Color(0xFF00FFFF).copy(alpha = 0.3f)
     val successGreen = Color(0xFF00FF00)
-    val neonCyan = Color(0xFF00FFFF)
+    val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
 
     val formatter = NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
     val amountDouble = totalAmount.toDoubleOrNull() ?: 0.0
@@ -68,6 +78,9 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
     
     val sdf = SimpleDateFormat("dd MMM yyyy", java.util.Locale.forLanguageTag("id-ID"))
     val currentDate = sdf.format(Date())
+    
+    val graphicsLayer = rememberGraphicsLayer()
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -102,6 +115,12 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
                 .clip(RoundedCornerShape(8.dp))
                 .background(cardBg)
                 .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
+                .drawWithContent {
+                    graphicsLayer.record {
+                        this@drawWithContent.drawContent()
+                    }
+                    drawLayer(graphicsLayer)
+                }
                 .padding(24.dp)
                 .verticalScroll(rememberScrollState())
         ) {
@@ -138,11 +157,9 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
             Text("Rincian", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
             
-            ReceiptRow("Nama Kepada", "Customer $customerId", neonCyan)
+            ReceiptRow("Nama Kepada", customer?.name ?: "-", neonCyan)
             DividerLine()
-            ReceiptRow("Alamat", "Pakisan", textMain)
-            DividerLine()
-            ReceiptRow("Area", "Pakisan", textMain)
+            ReceiptRow("Alamat / Area", customer?.area ?: "-", textMain)
             DividerLine()
             ReceiptRow("Iuran", formattedAmount, textMain, isBold = true)
             DividerLine()
@@ -156,13 +173,13 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
             DividerLine()
             ReceiptRow("Tanggal", currentDate, textMain)
             DividerLine()
-            ReceiptRow("Keterangan", "L U N A S", successGreen, isBold = true)
+            ReceiptRow("Keterangan", com.example.ui.data.SettingsManager.invoiceFooterText, successGreen, isBold = true)
             DividerLine()
             ReceiptRow("Admin By", com.example.ui.data.SettingsManager.companyName, textMain)
             
             Spacer(modifier = Modifier.height(32.dp))
             Text(
-                text = "Support By:\nToko Ana, PT.Telkom, PT.Citra Selaras Terabit,",
+                text = "Support By:\n" + com.example.ui.data.SettingsManager.supportByText,
                 color = textSecondary,
                 fontSize = 10.sp,
                 textAlign = TextAlign.Center,
@@ -200,14 +217,33 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
                 }
             }
             ActionIconBtn(Icons.Default.Share, "Bagikan", cardBg, neonCyan) {
-                val text = "Bukti Pembayaran Tagihan Internet\nNama: ${customer?.name}\nTotal: $formattedAmount\nBulan: $months\nStatus: LUNAS"
-                val sendIntent = Intent().apply {
-                    action = Intent.ACTION_SEND
-                    putExtra(Intent.EXTRA_TEXT, text)
-                    type = "text/plain"
+                coroutineScope.launch {
+                    try {
+                        val bitmap = graphicsLayer.toImageBitmap().asAndroidBitmap()
+                        val contentValues = ContentValues().apply {
+                            put(MediaStore.Images.Media.DISPLAY_NAME, "Invoice_${customer?.name}_$months.jpg")
+                            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                        }
+                        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                        if (uri != null) {
+                            context.contentResolver.openOutputStream(uri)?.use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                            }
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                type = "image/jpeg"
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            val shareIntent = Intent.createChooser(sendIntent, "Bagikan Invoice")
+                            context.startActivity(shareIntent)
+                        } else {
+                            Toast.makeText(context, "Gagal menyiapkan gambar", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Gagal membagikan gambar", Toast.LENGTH_SHORT).show()
+                    }
                 }
-                val shareIntent = Intent.createChooser(sendIntent, null)
-                context.startActivity(shareIntent)
             }
         }
         

@@ -246,6 +246,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToOdp = { navController.navigate(OdpRoute) },
                     onNavigateToGatewayPayment = { navController.navigate(GatewayPaymentRoute) },
                     onNavigateToCompanySettings = { navController.navigate(CompanySettingsRoute) },
+                    onNavigateToBackupRestore = { navController.navigate(BackupRestoreRoute) },
                                         onLogout = {
                         val context = navController.context
                         com.example.ui.data.UserSession.clearSession(context)
@@ -274,6 +275,7 @@ fun AkbarMediaNavGraph() {
             composable<OdpRoute> { OdpScreen(onBack = { navController.popBackStack() }) }
             composable<GatewayPaymentRoute> { GatewayPaymentScreen(onBack = { navController.popBackStack() }) }
             composable<CompanySettingsRoute> { com.example.ui.screens.CompanySettingsScreen(onBack = { navController.popBackStack() }) }
+            composable<BackupRestoreRoute> { com.example.ui.screens.BackupRestoreScreen(onBack = { navController.popBackStack() }) }
             composable<ManageSecretsRoute> {
                 val route = it.toRoute<ManageSecretsRoute>()
                 ManageSecretsScreen(areaId = route.areaId, onBack = { navController.popBackStack() })
