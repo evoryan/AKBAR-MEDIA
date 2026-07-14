@@ -712,7 +712,8 @@ app.delete('/api/areas/:id', async (req, res) => {
 
 app.get('/api/admins', async (req, res) => {
     try {
-        const [rows] = await masterPool.query('SELECT id, name, username, role FROM users');
+        const db_name = req.user ? req.user.db_name : 'app_db';
+        const [rows] = await masterPool.query('SELECT id, name, username, role FROM users WHERE db_name = ?', [db_name]);
         const admins = rows.map(r => ({ ...r, id: r.id.toString() }));
         res.json(admins);
     } catch (error) {
@@ -756,7 +757,8 @@ app.get('/api/stock_history', async (req, res) => {
 
 app.delete('/api/admins/:id', async (req, res) => {
     try {
-        await masterPool.query('DELETE FROM users WHERE id = ?', [req.params.id]);
+        const db_name = req.user ? req.user.db_name : 'app_db';
+        await masterPool.query('DELETE FROM users WHERE id = ? AND db_name = ?', [req.params.id, db_name]);
         res.json({ message: "Admin berhasil dihapus" });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
@@ -1324,7 +1326,8 @@ app.post('/api/inventory', async (req, res) => {
 
 app.put('/api/admins/:id', async (req, res) => {
     try {
-        const { name, username, password } = req.body;
+        const { name, username, role, password } = req.body;
+        const db_name = req.user ? req.user.db_name : 'app_db';
         // Check if username is already taken by someone else
         const [existing] = await masterPool.query('SELECT id FROM users WHERE username = ? AND id != ?', [username, req.params.id]);
         if (existing.length > 0) {
@@ -1332,9 +1335,9 @@ app.put('/api/admins/:id', async (req, res) => {
         }
         
         if (password) {
-            await masterPool.query('UPDATE users SET name = ?, username = ?, password = ? WHERE id = ?', [name, username, password, req.params.id]);
+            await masterPool.query('UPDATE users SET name = ?, username = ?, role = ?, password = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', password, req.params.id, db_name]);
         } else {
-            await masterPool.query('UPDATE users SET name = ?, username = ? WHERE id = ?', [name, username, req.params.id]);
+            await masterPool.query('UPDATE users SET name = ?, username = ?, role = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', req.params.id, db_name]);
         }
         res.json({ message: "Admin diperbarui" });
     } catch (error) {
@@ -1344,9 +1347,10 @@ app.put('/api/admins/:id', async (req, res) => {
 app.post('/api/admins', async (req, res) => {
     try {
         const { name, username, role, password } = req.body;
+        const db_name = req.user ? req.user.db_name : 'app_db';
         const [result] = await masterPool.query(
-            'INSERT INTO users (name, username, role, password) VALUES (?, ?, ?, ?)',
-            [name, username, role, password]
+            'INSERT INTO users (name, username, role, password, db_name) VALUES (?, ?, ?, ?, ?)',
+            [name, username, role || 'ADMIN', password || '', db_name]
         );
         res.json({ message: "Admin ditambahkan", id: result.insertId.toString() });
     } catch (error) {
