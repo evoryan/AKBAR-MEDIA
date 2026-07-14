@@ -21,8 +21,8 @@ jobs:
             gradle wrapper
           fi
           chmod +x ./gradlew
-      - name: Build with Gradle (Ignore Lint and Errors)
-        run: ./gradlew assembleDebug -x lint -x test -Dorg.gradle.workers.max=1
+      - name: Build with Gradle (Fix KSP AWT Error)
+        run: ./gradlew assembleDebug -x lint -x test -Dksp.use.daemon=false -Dorg.gradle.workers.max=1
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
