@@ -14,15 +14,16 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Setup Gradle & Mock Keystore
+      - name: Setup Gradle & Fix Keystore Location
         run: |
           if [ ! -f ./gradlew ]; then
             gradle wrapper
           fi
           chmod +x ./gradlew
-          # Membuat file keystore tiruan di folder app agar build tidak eror
-          mkdir -p app
-          touch app/debug.keystore
+          
+          # Membuat file keystore kosong tepat di folder root tempat Gradle mencari file tersebut
+          touch debug.keystore
+          
       - name: Build with Gradle (Fix KSP & Signing)
         run: ./gradlew assembleDebug -x lint -x test -Dksp.use.daemon=false -Dorg.gradle.workers.max=1
       - name: Upload APK
