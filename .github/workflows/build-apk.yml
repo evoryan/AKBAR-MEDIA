@@ -16,15 +16,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           
-      - name: Setup Gradle, Keystore & Fix KSP Bug
+      - name: Setup Gradle, Generate Real Debug Keystore & Fix KSP Bug
         run: |
           if [ ! -f ./gradlew ]; then
             gradle wrapper
           fi
           chmod +x ./gradlew
-          touch debug.keystore
           
-          # Trik Utama: Memaksa Gradle menonaktifkan daemon KSP dan mengaktifkan isolasi penuh
+          # Membuat file debug.keystore asli dengan sertifikat valid (Password standar Android: android)
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          
+          # Trik Isolasi Memori KSP
           mkdir -p ~/.gradle
           echo "org.gradle.jvmargs=-Djava.awt.headless=true -Xmx2048m" >> ~/.gradle/gradle.properties
           echo "ksp.use.daemon=false" >> gradle.properties
