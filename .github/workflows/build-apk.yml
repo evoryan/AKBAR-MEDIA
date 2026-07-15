@@ -20,12 +20,18 @@ jobs:
             gradle wrapper
           fi
           chmod +x ./gradlew
-          
-          # Membuat file keystore kosong tepat di folder root tempat Gradle mencari file tersebut
           touch debug.keystore
           
-      - name: Build with Gradle (Fix KSP & Signing)
-        run: ./gradlew assembleDebug -x lint -x test -Dksp.use.daemon=false -Dorg.gradle.workers.max=1
+      - name: Build with Gradle (Hard Bypass Headless Bug)
+        run: |
+          ./gradlew assembleDebug \
+            -x lint -x test \
+            -Dorg.gradle.workers.max=1 \
+            -Dksp.use.daemon=false \
+            -Djava.awt.headless=true \
+            -Pandroid.experimental.additional-lint-output=false \
+            -Pandroid.enableLint=false
+            
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
