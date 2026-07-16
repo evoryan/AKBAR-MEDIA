@@ -256,7 +256,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                     ExposedDropdownMenu(
                         expanded = expanded,
                         onDismissRequest = { expanded = false },
-                        containerColor = Color(0xFF11111A)
+                        containerColor = cardBg
                     ) {
                         areas.forEach { area ->
                             DropdownMenuItem(

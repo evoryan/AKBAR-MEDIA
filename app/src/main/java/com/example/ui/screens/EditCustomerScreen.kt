@@ -36,7 +36,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddCustomerScreen(
+fun EditCustomerScreen(customerId: String, 
     onBack: () -> Unit
 ) {
     val bgDark = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
@@ -48,6 +48,8 @@ fun AddCustomerScreen(
     val successGreen = Color(0xFF00FF00)
     val context = LocalContext.current
 
+    var originalCustomer by remember { mutableStateOf<Customer?>(null) }
+    var isLoadingCustomer by remember { mutableStateOf(true) }
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
@@ -157,8 +159,32 @@ fun AddCustomerScreen(
             packages = ApiClient.apiService.getPackages()
             odps = ApiClient.apiService.getOdpList()
             customers = ApiClient.apiService.getCustomers()
+            val cust = customers.find { it.id == customerId }
+            if (cust != null) {
+                originalCustomer = cust
+                name = cust.name
+                phone = cust.phone
+                address = cust.address ?: ""
+                registerDate = cust.registerDate ?: ""
+                billingDate = cust.billingDate
+                isolateDate = cust.isolateDate ?: ""
+                selectedArea = areas.find { it.name == cust.area }
+                selectedPackage = packages.find { it.name == cust.packageName }
+                additionalCost1 = cust.additionalCost1 ?: ""
+                additionalCost2 = cust.additionalCost2 ?: ""
+                if (!cust.odpId.isNullOrEmpty()) {
+                    selectedOdp = odps.find { it.id.toString() == cust.odpId }
+                    selectedPort = cust.odpPort ?: ""
+                }
+                if (!cust.pppoeSecret.isNullOrEmpty()) {
+                    secretSearchQuery = cust.pppoeSecret
+                    selectedSecret = com.example.ui.screens.PPPoESecret(id = "", name = cust.pppoeSecret, profile = "", status = "", ipAddress = "", uptime = "")
+                }
+            }
         } catch (e: Exception) {
-            // handle error
+            android.widget.Toast.makeText(context, "Gagal memuat data: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        } finally {
+            isLoadingCustomer = false
         }
     }
 
@@ -504,6 +530,12 @@ fun AddCustomerScreen(
         )
     }
 
+    if (isLoadingCustomer) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = primaryPurple)
+        }
+        return
+    }
     Scaffold(
         topBar = {
             Row(
@@ -513,7 +545,7 @@ fun AddCustomerScreen(
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
                 }
-                Text("Tambah Pelanggan", color = textMain, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+                Text("Edit Pelanggan", color = textMain, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
             }
         },
         containerColor = bgDark
@@ -799,11 +831,11 @@ fun AddCustomerScreen(
                             onClick = {
                                 coroutineScope.launch {
                                     try {
-                                        val newCust = Customer(
-                                            id = "", name = name, phone = phone, area = selectedArea?.name ?: "Semua", address = address, username = selectedSecret?.name ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: "Rp. 0", discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = selectedSecret?.name ?: "", odpId = selectedOdp?.id ?: "", odpPort = selectedPort
+                                        val updatedCust = Customer(
+                                            id = customerId, name = name, phone = phone, area = selectedArea?.name ?: originalCustomer?.area ?: "Semua", address = address, username = selectedSecret?.name ?: originalCustomer?.username ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "", status = originalCustomer?.status ?: "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0", discount = originalCustomer?.discount ?: "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = selectedSecret?.name ?: originalCustomer?.pppoeSecret ?: "", odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId, odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
                                         )
-                                        ApiClient.apiService.addCustomer(newCust)
-                                        Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
+                                        ApiClient.apiService.updateCustomer(customerId, updatedCust)
+                                        Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()
                                         onBack()
                                     } catch(e: retrofit2.HttpException) {
                                         val errBody = e.response()?.errorBody()?.string()
@@ -828,12 +860,3 @@ fun AddCustomerScreen(
     }
 }
 
-@Composable
-fun ClickableField(title: String, subtitle: String? = null, actionText: String, neonCyan: Color, textSecondary: Color, titleColor: Color = textSecondary, onClick: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp)) {
-        Text(title, color = titleColor, fontSize = 12.sp)
-        if (subtitle != null) { Text(subtitle, color = textSecondary, fontSize = 10.sp) }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(actionText, color = neonCyan, fontSize = 14.sp)
-    }
-}

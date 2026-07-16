@@ -40,6 +40,10 @@ object SettingsManager {
         get() = prefs.getString(KEY_DASHBOARD_INFO_2, "Tersedia update router firmware") ?: "Tersedia update router firmware"
         set(value) = prefs.edit().putString(KEY_DASHBOARD_INFO_2, value).apply()
 
+    var invoiceHeader: String
+        get() = prefs.getString("invoice_header", "AKBAR MEDIA\nJln.Raya Akbar Media") ?: "AKBAR MEDIA\nJln.Raya Akbar Media"
+        set(value) = prefs.edit().putString("invoice_header", value).apply()
+
     var invoiceFooterText: String
         get() = prefs.getString(KEY_INVOICE_FOOTER, "L U N A S") ?: "L U N A S"
         set(value) = prefs.edit().putString(KEY_INVOICE_FOOTER, value).apply()

@@ -1,4 +1,8 @@
 package com.example.ui.screens
+import androidx.compose.ui.graphics.PathEffect
+
+
+
 
 import kotlinx.coroutines.launch
 
@@ -24,6 +28,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import android.provider.MediaStore
 import android.content.ContentValues
 import android.graphics.Bitmap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -37,7 +43,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -103,7 +108,7 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text("Success", color = successGreen, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Text("Pembayaran Telah Tersimpan", color = textMain, fontSize = 14.sp)
+        Text("Pembayaran Telah Tersimpan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 14.sp)
         
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -115,76 +120,28 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
                 .clip(RoundedCornerShape(8.dp))
                 .background(cardBg)
                 .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
-                .drawWithContent {
-                    graphicsLayer.record {
-                        this@drawWithContent.drawContent()
-                    }
-                    drawLayer(graphicsLayer)
-                }
-                .padding(24.dp)
                 .verticalScroll(rememberScrollState())
+                .padding(24.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Logo placeholder
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(Color.White, RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("AMG", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(com.example.ui.data.SettingsManager.companyName, color = neonCyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                    .padding(12.dp)
+                    .drawWithContent {
+                        graphicsLayer.record {
+                            this@drawWithContent.drawContent()
+                        }
+                        drawLayer(graphicsLayer)
+                    }, 
+                contentAlignment = Alignment.Center
             ) {
-                Column {
-                    Text("Total Pembayaran", color = textSecondary, fontSize = 12.sp)
-                    Text("Reguler", color = neonCyan, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    Text(formattedAmount, color = textMain, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                }
+                com.example.ui.components.ThermalInvoiceView(
+                    headerText = com.example.ui.data.SettingsManager.invoiceHeader,
+                    footerText = com.example.ui.data.SettingsManager.invoiceFooterText,
+                    customer = customer,
+                    months = months,
+                    totalAmount = formattedAmount
+                )
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            Text("Rincian", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            ReceiptRow("Nama Kepada", customer?.name ?: "-", neonCyan)
-            DividerLine()
-            ReceiptRow("Alamat / Area", customer?.area ?: "-", textMain)
-            DividerLine()
-            ReceiptRow("Iuran", formattedAmount, textMain, isBold = true)
-            DividerLine()
-            ReceiptRow("Biaya Tambahan", "- Rp. 0\n- Rp. 0", textMain)
-            DividerLine()
-            ReceiptRow("PPN 0%", "Rp. 0", textMain)
-            DividerLine()
-            ReceiptRow("Diskon", "Rp. 0", textMain)
-            DividerLine()
-            ReceiptRow("Bulan", months, textMain)
-            DividerLine()
-            ReceiptRow("Tanggal", currentDate, textMain)
-            DividerLine()
-            ReceiptRow("Keterangan", com.example.ui.data.SettingsManager.invoiceFooterText, successGreen, isBold = true)
-            DividerLine()
-            ReceiptRow("Admin By", com.example.ui.data.SettingsManager.companyName, textMain)
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            Text(
-                text = "Support By:\n" + com.example.ui.data.SettingsManager.supportByText,
-                color = textSecondary,
-                fontSize = 10.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -267,7 +224,7 @@ fun ReceiptRow(label: String, value: String, valueColor: Color, isBold: Boolean 
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top
     ) {
-        Text(label, color = Color(0xFFAAAAAA), fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text(label, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp, modifier = Modifier.weight(1f))
         Text(
             value, 
             color = valueColor, 
@@ -281,11 +238,21 @@ fun ReceiptRow(label: String, value: String, valueColor: Color, isBold: Boolean 
 
 @Composable
 fun DividerLine() {
-    HorizontalDivider(
-        modifier = Modifier.padding(vertical = 8.dp),
-        thickness = 1.dp,
-        color = Color(0xFF333333)
-    )
+    val color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF333333) else Color(0xFFCCCCCC)
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .height(1.dp)
+    ) {
+        drawLine(
+            color = color,
+            start = Offset(0f, 0f),
+            end = Offset(size.width, 0f),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+        )
+    }
 }
 
 @Composable

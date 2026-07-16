@@ -102,12 +102,12 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = bgMain,
         topBar = {
-            Column(modifier = Modifier.background(Color(0xFF11111A))) {
+            Column(modifier = Modifier.background(if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))) {
                 TopAppBar(
-                    title = { Text("Pembyrn By Admin", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                    title = { Text("Pembyrn By Admin", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
@@ -186,7 +186,7 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Total", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Total", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 // For demonstration, calculating total based on size
                 val totalAmount = displayedData.size * 100000
                 Text("Rp. ${String.format("%,d", totalAmount).replace(",", ".")}", color = warningYellow, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -220,7 +220,7 @@ fun FilterDropdownMenu(
 
     Box {
         Column(modifier = Modifier.clickable { expanded = true }) {
-            Text(label, color = textSecondary, fontSize = 12.sp)
+            Text(label, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(selectedOption, color = primaryCyan, fontSize = 12.sp)
                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = primaryCyan, modifier = Modifier.size(16.dp))
@@ -229,11 +229,11 @@ fun FilterDropdownMenu(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            containerColor = Color(0xFF11111A)
+            containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option, color = Color.White) },
+                    text = { Text(option, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)) },
                     onClick = {
                         onOptionSelected(option)
                         expanded = false
@@ -265,9 +265,9 @@ fun PembayaranItemCard(data: PembayaranData) {
         Spacer(modifier = Modifier.width(16.dp))
         
         Column(modifier = Modifier.weight(1f)) {
-            Text(data.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Text(data.phone, color = Color(0xFFAAAAAA), fontSize = 12.sp)
-            Text("Bayar Tgl : ${data.payDate}", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+            Text(data.name, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(data.phone, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+            Text("Bayar Tgl : ${data.payDate}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
             Row {
                 Text("Bayar Bulan : ", color = Color(0xFF00FFFF), fontSize = 12.sp)
                 Text(data.payMonth, color = Color(0xFF00FFFF), fontSize = 12.sp)
@@ -275,8 +275,8 @@ fun PembayaranItemCard(data: PembayaranData) {
         }
         
         Column(horizontalAlignment = Alignment.End) {
-            Text(data.amount, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(data.area, color = Color(0xFFAAAAAA), fontSize = 12.sp)
+            Text(data.amount, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(data.area, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
             Text(data.admin, color = Color(0xFF00FFFF), fontSize = 12.sp)
         }
     }

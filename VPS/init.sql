@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS odc_list (
     name VARCHAR(100),
     phone VARCHAR(20),
     area VARCHAR(50),
+    address TEXT,
     username VARCHAR(50),
     billingDate VARCHAR(10),
     status VARCHAR(20),

@@ -48,6 +48,7 @@ fun SettingScreen(
     onNavigateToGatewayPayment: () -> Unit,
     onNavigateToCompanySettings: () -> Unit,
     onNavigateToBackupRestore: () -> Unit,
+    onNavigateToInvoiceSettings: () -> Unit,
     onLogout: () -> Unit
 ) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
@@ -62,10 +63,10 @@ fun SettingScreen(
         containerColor = bgMain,
         topBar = {
             TopAppBar(
-                title = { Text("Setting", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
+                title = { Text("Setting", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -144,7 +145,7 @@ fun SettingScreen(
             if (showThemeDialog) {
                 AlertDialog(
                     onDismissRequest = { showThemeDialog = false },
-                    title = { Text("Pilih Tema", color = textMain) },
+                    title = { Text("Pilih Tema", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)) },
                     containerColor = cardBg,
                     text = {
                         Column {
@@ -166,7 +167,7 @@ fun SettingScreen(
                                         colors = RadioButtonDefaults.colors(selectedColor = primaryBg)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(themeName, color = textMain)
+                                    Text(themeName, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                                 }
                             }
                         }
@@ -230,6 +231,8 @@ fun SettingScreen(
                         SettingItem(icon = Icons.Default.Payments, title = "Pengaturan Gateway Payment", subtitle = "Integrasi payment gateway", iconTint = textMain, onClick = onNavigateToGatewayPayment)
                         HorizontalDivider(color = cardBorder)
                         SettingItem(icon = Icons.Default.Backup, title = "Backup & Restore", subtitle = "Database Pelanggan", iconTint = textMain, onClick = onNavigateToBackupRestore)
+                        HorizontalDivider(color = cardBorder)
+                        SettingItem(icon = Icons.Default.Receipt, title = "Pengaturan Invoice", subtitle = "Atur text header dan footer invoice (Thermal)", iconTint = textMain, onClick = onNavigateToInvoiceSettings)
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))
@@ -256,10 +259,15 @@ fun SettingScreen(
                                 coroutineScope.launch {
                                     try {
                                         val api = GithubApiService.create()
-                                        // TODO: Ganti owner dan repo dengan yang sesuai
-                                        val release = api.getLatestRelease("satriaevo77", "Akbar-Media") // placeholder, will use appropriate later
+                                        val release = api.getLatestRelease("satriaevo77", "Akbar-Media")
                                         updateInfo = release
                                         showUpdateDialog = true
+                                    } catch (e: retrofit2.HttpException) {
+                                        if (e.code() == 404) {
+                                            Toast.makeText(context, "Belum ada update (404 Not Found)", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Gagal memeriksa update: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
                                     } catch (e: Exception) {
                                         Toast.makeText(context, "Gagal memeriksa update: ${e.message}", Toast.LENGTH_SHORT).show()
                                     } finally {
@@ -317,7 +325,7 @@ fun SettingScreen(
             dismissButton = {
                 if (isNewer) {
                     TextButton(onClick = { showUpdateDialog = false }) {
-                        Text("Batal", color = textSecondary)
+                        Text("Batal", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
                     }
                 }
             }
@@ -367,10 +375,10 @@ fun SettingItem(
         Icon(icon, contentDescription = title, tint = iconTint, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.Medium)
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(subtitle, color = Color(0xFFAAAAAA), fontSize = 12.sp)
+                Text(subtitle, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
             }
         }
     }

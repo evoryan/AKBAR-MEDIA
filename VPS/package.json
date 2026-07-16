@@ -4,7 +4,8 @@
   "description": "Backend API for Android App",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js", "postinstall": "node patch-routeros.js",
+    "start": "node server.js",
+    "postinstall": "node patch-routeros.js",
     "manage-tenant": "bash add_tenant.sh",
     "dev": "nodemon server.js"
   },

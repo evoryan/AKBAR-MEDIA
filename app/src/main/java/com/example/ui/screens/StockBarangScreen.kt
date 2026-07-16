@@ -41,10 +41,10 @@ fun StockBarangScreen(
         containerColor = bgMain,
         topBar = {
             TopAppBar(
-                title = { Text("Stock Barang", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
+                title = { Text("Stock Barang", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -118,11 +118,11 @@ fun StockBarangScreen(
                     .padding(16.dp)
             ) {
                 Column {
-                    Text("Barang Terambil hari ini :", color = textSecondary, fontSize = 14.sp)
+                    Text("Barang Terambil hari ini :", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(24.dp))
                     Text(
                         "Tidak ada Data",
-                        color = textMain,
+                        color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         textAlign = TextAlign.Center,
@@ -155,7 +155,7 @@ fun StockMenuCard(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(32.dp))
             Spacer(modifier = Modifier.height(12.dp))
-            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
     }
 }

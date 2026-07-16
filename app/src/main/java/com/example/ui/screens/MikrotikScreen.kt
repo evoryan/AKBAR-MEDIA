@@ -170,11 +170,6 @@ fun MikrotikCard(area: Area, onNavigateToManageSecrets: () -> Unit) {
                 Text(errorMsg!!, color = Color(0xFFFF003C), fontSize = 14.sp)
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    MikrotikStatCard("CPU Load", mikrotikStatus?.cpuLoad ?: "-", neonCyan, textMain, textSecondary, Modifier.weight(1f))
-                    MikrotikStatCard("Uptime", mikrotikStatus?.uptime ?: "-", neonCyan, textMain, textSecondary, Modifier.weight(1f))
-                }
-                
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     MikrotikStatCard("Active PPPoE", mikrotikStatus?.activePppoe ?: "-", neonCyan, textMain, textSecondary, Modifier.weight(1f))
                     MikrotikStatCard("PPPoE Offline", mikrotikStatus?.offlinePppoe ?: "-", neonCyan, textMain, textSecondary, Modifier.weight(1f))
                 }

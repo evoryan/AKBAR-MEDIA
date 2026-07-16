@@ -3,140 +3,47 @@ import re
 with open("VPS/server.js", "r") as f:
     content = f.read()
 
-# Add endpoints for Pembukuan
-pembukuan_endpoints = """
-app.get('/api/pembukuan/all', async (req, res) => {
+pattern_add = r"""app\.post\('/api/customers', async \(req, res\) => \{
+    try \{
+        const \{ name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 \} = req\.body;"""
+replacement_add = """app.post('/api/customers', async (req, res) => {
     try {
-        const [rows] = await req.pool.query('SELECT * FROM pembukuan ORDER BY id DESC');
-        res.json(rows.map(r => ({ ...r, id: r.id.toString(), amount: Number(r.amount) })));
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
+        const { name, phone, area, address, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;"""
 
-app.put('/api/pembukuan/:id', async (req, res) => {
-    try {
-        const { type, category, amount, description } = req.body;
-        await req.pool.query(
-            'UPDATE pembukuan SET type = ?, category = ?, amount = ?, description = ? WHERE id = ?',
-            [type, category || 'Lain-lain', amount, description, req.params.id]
-        );
-        res.json({ message: "Pembukuan diperbarui" });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
+content = re.sub(pattern_add, replacement_add, content)
 
-app.delete('/api/pembukuan/:id', async (req, res) => {
-    try {
-        await req.pool.query('DELETE FROM pembukuan WHERE id = ?', [req.params.id]);
-        res.json({ message: "Pembukuan dihapus" });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
+pattern_ins1 = r"""                'INSERT INTO customers \(name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2\) VALUES \(\?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?\)',
+                \[name, phone, area, username, billingDate, status, price, discount, registerDate \|\| '', isolateDate \|\| '', packageName \|\| '', pppoeSecret \|\| '', parsedOdpId, odpPort \|\| '', additionalCost1 \|\| '', additionalCost2 \|\| ''\]"""
+replacement_ins1 = """                'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']"""
 
-app.post('/api/setoran', async (req, res) => {
-    try {
-        const { adminName, amount } = req.body;
-        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
-        await req.pool.query(
-            'INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)',
-            ['setor', amount, `Setoran oleh ${adminName}`, 'Setoran', adminName]
-        );
-        res.json({ message: "Setoran berhasil ditambahkan" });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
+content = re.sub(pattern_ins1, replacement_ins1, content)
 
-"""
+pattern_catch = r"""            if \(e\.message && e\.message\.includes\("Unknown column"\)\) \{
+                await req\.pool\.query\(`ALTER TABLE customers ADD COLUMN register_date VARCHAR\(50\) DEFAULT ''`\)\.catch\(err=>\{\}\);"""
+replacement_catch = """            if (e.message && e.message.includes("Unknown column")) {
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});"""
+content = re.sub(pattern_catch, replacement_catch, content)
 
-if "app.get('/api/pembukuan/all'" not in content:
-    target = "app.post('/api/pembukuan'"
-    content = content.replace(target, pembukuan_endpoints + "\n" + target)
+pattern_ins2 = r"""                \[result\] = await req\.pool\.query\(
+                    'INSERT INTO customers \(name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port\) VALUES \(\?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?, \?\)',
+                    \[name, phone, area, username, billingDate, status, price, discount, registerDate \|\| '', isolateDate \|\| '', packageName \|\| '', pppoeSecret \|\| '', parsedOdpId, odpPort \|\| ''\]
+                \);"""
+replacement_ins2 = """                [result] = await req.pool.query(
+                    'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
+                );"""
+content = re.sub(pattern_ins2, replacement_ins2, content)
 
-# Modify `/api/uang-di-admin`
-uang_target = """app.get('/api/uang-di-admin', async (req, res) => {
-    try {
-        const [rows] = await req.pool.query(`
-            SELECT admin_name as adminName, SUM(amount) as totalAmount, COUNT(*) as jmlPlggn 
-            FROM pembukuan 
-            WHERE category = 'Transaksi Cash' AND type = 'pemasukan' 
-            GROUP BY admin_name
-        `);
-        res.json(rows);"""
+# Modify init.sql to include address
+with open("VPS/init.sql", "r") as f:
+    init_sql = f.read()
 
-uang_rep = """app.get('/api/uang-di-admin', async (req, res) => {
-    try {
-        const [pemasukan] = await req.pool.query(`
-            SELECT admin_name as adminName, SUM(amount) as totalAmount, COUNT(*) as jmlPlggn 
-            FROM pembukuan 
-            WHERE type = 'pemasukan' AND admin_name IS NOT NULL
-            GROUP BY admin_name
-        `);
-        const [setoran] = await req.pool.query(`
-            SELECT admin_name as adminName, SUM(amount) as totalAmount
-            FROM pembukuan 
-            WHERE type = 'setor' AND admin_name IS NOT NULL
-            GROUP BY admin_name
-        `);
-        const [pengeluaran] = await req.pool.query(`
-            SELECT admin_name as adminName, SUM(amount) as totalAmount
-            FROM pembukuan 
-            WHERE type = 'pengeluaran' AND admin_name IS NOT NULL
-            GROUP BY admin_name
-        `);
-        
-        let result = {};
-        pemasukan.forEach(row => {
-            result[row.adminName] = { 
-                adminName: row.adminName, 
-                totalDiterima: Number(row.totalAmount), 
-                jmlPlggn: row.jmlPlggn,
-                setor: 0,
-                pengeluaran: 0
-            };
-        });
-        setoran.forEach(row => {
-            if (!result[row.adminName]) result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
-            result[row.adminName].setor = Number(row.totalAmount);
-        });
-        pengeluaran.forEach(row => {
-            if (!result[row.adminName]) result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
-            result[row.adminName].pengeluaran = Number(row.totalAmount);
-        });
-        
-        res.json(Object.values(result));"""
+init_sql = init_sql.replace("    area VARCHAR(50),\n    username VARCHAR(50)", "    area VARCHAR(50),\n    address TEXT,\n    username VARCHAR(50)")
 
-content = content.replace(uang_target, uang_rep)
-
-# In `/api/billing/pay`, ensure we set `admin_name`.
-pay_target = """        try {
-            await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
-                ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash']);
-        } catch (e) {
-            console.error("Warning: category column might be missing in pembukuan", e.message);
-            await req.pool.query('INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)', 
-                ['pemasukan', totalAmount || 0, desc]);
-        }"""
-
-pay_rep = """        try {
-            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
-            await req.pool.query('INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)', 
-                ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash', adminName || 'Admin']);
-        } catch (e) {
-            console.error("Warning: category column might be missing in pembukuan", e.message);
-            await req.pool.query('INSERT INTO pembukuan (type, amount, description, admin_name) VALUES (?, ?, ?, ?)', 
-                ['pemasukan', totalAmount || 0, desc, adminName || 'Admin']);
-        }"""
-
-content = content.replace(pay_target, pay_rep)
-
+with open("VPS/init.sql", "w") as f:
+    f.write(init_sql)
 
 with open("VPS/server.js", "w") as f:
     f.write(content)

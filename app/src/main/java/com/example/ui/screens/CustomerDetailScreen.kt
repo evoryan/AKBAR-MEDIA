@@ -131,7 +131,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                     },
                     enabled = !isPaying
                 ) {
-                    if (isPaying) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    if (isPaying) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     else Text("Ya, Bayar")
                 }
             },
@@ -149,7 +149,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                 title = { },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
@@ -174,7 +174,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
             }
         } else if (customer == null) {
             Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                Text("Pelanggan tidak ditemukan", color = textMain)
+                Text("Pelanggan tidak ditemukan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
             }
         } else {
             Column(
@@ -207,8 +207,8 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(customer?.name ?: "Nama Pelanggan", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text(customer?.phone ?: "-", color = textSecondary, fontSize = 12.sp)
+                    Text(customer?.name ?: "Nama Pelanggan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(customer?.phone ?: "-", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                 }
 
                 // Tabs
@@ -242,9 +242,9 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                         CardSection(title = "Rincian Jaringan", cardBg = cardBg, cardBorder = cardBorder, textMain = textMain) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column {
-                                    Text("Mikrotik Secret", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                    Text("Sumber: ${customer?.area}", color = textSecondary, fontSize = 12.sp)
-                                    Text("User: ${customer?.pppoeSecret?.takeIf { it.isNotBlank() } ?: "-"}", color = textSecondary, fontSize = 12.sp)
+                                    Text("Mikrotik Secret", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text("Sumber: ${customer?.area}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+                                    Text("User: ${customer?.pppoeSecret?.takeIf { it.isNotBlank() } ?: "-"}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                                 }
                                 Box(
                                     modifier = Modifier
@@ -260,9 +260,9 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                             
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column {
-                                    Text("ODP", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                    Text("Nama: ${odpItem?.name ?: "-"}", color = textSecondary, fontSize = 12.sp)
-                                    Text("Port: ${customer?.odpPort?.takeIf { it.isNotBlank() } ?: "-"}", color = textSecondary, fontSize = 12.sp)
+                                    Text("ODP", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text("Nama: ${odpItem?.name ?: "-"}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+                                    Text("Port: ${customer?.odpPort?.takeIf { it.isNotBlank() } ?: "-"}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                                 }
                             }
 
@@ -312,7 +312,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Total Biaya Perbulan", color = textMain, fontSize = 14.sp)
+                                Text("Total Biaya Perbulan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 14.sp)
                                 Text(customer?.price ?: "Rp. 0", color = lightBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                         }
@@ -331,18 +331,18 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
 @Composable
 fun DetailRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color(0xFFAAAAAA), fontSize = 12.sp)
-        Text(value, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+        Text(value, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
 fun PaymentHistorySection(history: List<com.example.ui.data.remote.PaymentHistory>, cardBg: Color, cardBorder: Color, textMain: Color, textSecondary: Color, neonCyan: Color, neonPink: Color) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Riwayat Transaksi", color = textMain, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Riwayat Transaksi", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold, fontSize = 18.sp)
         
         if (history.isEmpty()) {
-            Text("Tidak ada riwayat transaksi", color = textSecondary, fontSize = 14.sp)
+            Text("Tidak ada riwayat transaksi", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 14.sp)
         } else {
             history.forEach { item ->
                 Box(
@@ -356,9 +356,9 @@ fun PaymentHistorySection(history: List<com.example.ui.data.remote.PaymentHistor
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
                             val date = item.createdAt?.substringBefore("T") ?: ""
-                            Text(date, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(date, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(item.description, color = textSecondary, fontSize = 12.sp)
+                            Text(item.description, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("Rp. ${item.amount}", color = neonCyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -383,7 +383,7 @@ fun CardSection(title: String, cardBg: Color, cardBorder: Color, textMain: Color
             .padding(16.dp)
     ) {
         Column {
-            Text(title, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Spacer(modifier = Modifier.height(16.dp))
             content()
         }

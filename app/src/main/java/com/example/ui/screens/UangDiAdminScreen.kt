@@ -98,7 +98,7 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            Column(modifier = Modifier.background(Color(0xFF141F4A))) {
+            Column(modifier = Modifier.background(bgMain)) {
                 TopAppBar(
                     title = { Text("Sisa Uang Bulan $currentMonthYear", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) },
                     navigationIcon = {
@@ -169,7 +169,7 @@ fun AdminItemCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A)),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
         shape = RoundedCornerShape(8.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

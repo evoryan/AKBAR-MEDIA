@@ -1,0 +1,27 @@
+Auto-patched node-routeros for !empty support successfully at /app/applet/VPS/node_modules/node-routeros/dist/Channel.js
+Warning: Firebase serviceAccountKey.json tidak ditemukan atau tidak valid. FCM dinonaktifkan.
+Checking and updating schemas for all databases...
+Server running on port 4500
+Schema checked/updated.
+Init databases error: connect ECONNREFUSED 127.0.0.1:3306
+POST /api/billing/pay
+JWT verify error: invalid signature
+POST /api/billing/pay
+Payment API Error: Error: connect ECONNREFUSED 127.0.0.1:3306
+    at /app/applet/VPS/server.js:345:44
+    at Layer.handle [as handle_request] (/app/applet/VPS/node_modules/express/lib/router/layer.js:95:5)
+    at next (/app/applet/VPS/node_modules/express/lib/router/route.js:149:13)
+    at Route.dispatch (/app/applet/VPS/node_modules/express/lib/router/route.js:119:3)
+    at Layer.handle [as handle_request] (/app/applet/VPS/node_modules/express/lib/router/layer.js:95:5)
+    at /app/applet/VPS/node_modules/express/lib/router/index.js:284:15
+    at Function.process_params (/app/applet/VPS/node_modules/express/lib/router/index.js:346:12)
+    at next (/app/applet/VPS/node_modules/express/lib/router/index.js:280:10)
+    at tenantContext (/app/applet/VPS/server.js:112:20)
+    at Layer.handle [as handle_request] (/app/applet/VPS/node_modules/express/lib/router/layer.js:95:5) {
+  errno: -111,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 3306,
+  fatal: true
+}

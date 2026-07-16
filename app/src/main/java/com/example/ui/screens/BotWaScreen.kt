@@ -80,11 +80,11 @@ fun BotWaScreen(onBack: () -> Unit) {
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = textMain, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Terhubung (62881037160075)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Terhubung (62881037160075)", color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
-                            Text("Terhubung sejak: 9/7/2026, 07.30.20", color = Color.White, fontSize = 12.sp)
+                            Text("Terhubung sejak: 9/7/2026, 07.30.20", color = textMain, fontSize = 12.sp)
                         }
                     }
 
@@ -115,7 +115,7 @@ fun BotWaScreen(onBack: () -> Unit) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A)),
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {

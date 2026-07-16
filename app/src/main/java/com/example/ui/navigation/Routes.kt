@@ -30,6 +30,9 @@ data class ManageSecretsRoute(val areaId: String)
 object AddCustomerRoute
 
 @Serializable
+data class EditCustomerRoute(val customerId: String)
+
+@Serializable
 data class CustomerDetailRoute(val customerId: String)
 
 @Serializable
@@ -106,3 +109,6 @@ object CompanySettingsRoute
 
 @Serializable
 object BackupRestoreRoute
+
+@Serializable
+object InvoiceSettingsRoute

@@ -103,12 +103,23 @@ fun AkbarMediaNavGraph() {
                     onNavigateToCustomerDetail = { customerId ->
                         navController.navigate(CustomerDetailRoute(customerId))
                     },
-                    onNavigateToAddCustomer = { navController.navigate(AddCustomerRoute) }
+                    onNavigateToAddCustomer = { navController.navigate(AddCustomerRoute) },
+                    onNavigateToEditCustomer = { customerId -> 
+                        navController.navigate(EditCustomerRoute(customerId))
+                    }
                 )
             }
 
             composable<AddCustomerRoute> {
                 AddCustomerScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<EditCustomerRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<EditCustomerRoute>()
+                com.example.ui.screens.EditCustomerScreen(
+                    customerId = route.customerId,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -247,6 +258,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToGatewayPayment = { navController.navigate(GatewayPaymentRoute) },
                     onNavigateToCompanySettings = { navController.navigate(CompanySettingsRoute) },
                     onNavigateToBackupRestore = { navController.navigate(BackupRestoreRoute) },
+                    onNavigateToInvoiceSettings = { navController.navigate(InvoiceSettingsRoute) },
                                         onLogout = {
                         val context = navController.context
                         com.example.ui.data.UserSession.clearSession(context)
@@ -276,6 +288,7 @@ fun AkbarMediaNavGraph() {
             composable<GatewayPaymentRoute> { GatewayPaymentScreen(onBack = { navController.popBackStack() }) }
             composable<CompanySettingsRoute> { com.example.ui.screens.CompanySettingsScreen(onBack = { navController.popBackStack() }) }
             composable<BackupRestoreRoute> { com.example.ui.screens.BackupRestoreScreen(onBack = { navController.popBackStack() }) }
+            composable<InvoiceSettingsRoute> { com.example.ui.screens.InvoiceSettingsScreen(onBack = { navController.popBackStack() }) }
             composable<ManageSecretsRoute> {
                 val route = it.toRoute<ManageSecretsRoute>()
                 ManageSecretsScreen(areaId = route.areaId, onBack = { navController.popBackStack() })

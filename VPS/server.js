@@ -347,10 +347,10 @@ app.post('/api/billing/pay', async (req, res) => {
         const customerName = customers[0].name;
         
         // Ensure table exists
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
         
-        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             customer_id INT,
@@ -367,7 +367,7 @@ app.post('/api/billing/pay', async (req, res) => {
         const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
         let desc = `Pembayaran tagihan pelanggan ${customerName}`;
         if (tagihan.length > 0) {
-            await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+            await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
             await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ? WHERE id = ?', [adminName, tagihan[0].id]);
             desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
         }
@@ -377,7 +377,7 @@ app.post('/api/billing/pay', async (req, res) => {
 
         // Add to pembukuan
         try {
-            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
             await req.pool.query('INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)', 
                 ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash', adminName || 'Admin']);
         } catch (e) {
@@ -494,10 +494,10 @@ app.post('/api/billing/delete', async (req, res) => {
         const customerName = customers[0].name;
         
         // Ensure table exists
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
         
-        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             customer_id INT,
@@ -744,7 +744,7 @@ app.get('/api/pembukuan', async (req, res) => {
 
 app.get('/api/pembayaran', async (req, res) => {
     try {
-        await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+        await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
         const [rows] = await req.pool.query(`
             SELECT 
                 t.id, t.bulan, t.tahun, t.amount, t.admin_name, t.created_at,
@@ -860,7 +860,7 @@ app.delete('/api/pembukuan/:id', async (req, res) => {
 app.post('/api/setoran', async (req, res) => {
     try {
         const { adminName, amount } = req.body;
-        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
         await req.pool.query(
             'INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)',
             ['setor', amount, `Setoran oleh ${adminName}`, 'Setoran', adminName]
@@ -1007,7 +1007,15 @@ app.delete('/api/areas/:id', async (req, res) => {
 app.get('/api/admins', async (req, res) => {
     try {
         const db_name = req.user ? req.user.db_name : 'app_db';
-        const [rows] = await masterPool.query('SELECT id, name, username, role FROM users WHERE db_name = ?', [db_name]);
+        // Try to get from tenant DB first, fallback to masterPool
+        let rows = [];
+        try {
+            const [tenantRows] = await req.pool.query('SELECT id, name, username, role FROM users');
+            rows = tenantRows;
+        } catch (e) {
+            const [masterRows] = await masterPool.query('SELECT id, name, username, role FROM users WHERE db_name = ?', [db_name]);
+            rows = masterRows;
+        }
         const admins = rows.map(r => ({ ...r, id: r.id.toString() }));
         res.json(admins);
     } catch (error) {
@@ -1052,7 +1060,19 @@ app.get('/api/stock_history', async (req, res) => {
 app.delete('/api/admins/:id', async (req, res) => {
     try {
         const db_name = req.user ? req.user.db_name : 'app_db';
+        // Delete from master DB (using id)
+        const [rows] = await masterPool.query('SELECT username FROM users WHERE id = ? AND db_name = ?', [req.params.id, db_name]);
+        const username = rows.length > 0 ? rows[0].username : null;
+        
         await masterPool.query('DELETE FROM users WHERE id = ? AND db_name = ?', [req.params.id, db_name]);
+        
+        // Also delete from tenant DB
+        try {
+            if (req.pool && req.pool !== masterPool && username) {
+                await req.pool.query('DELETE FROM users WHERE username = ?', [username]);
+            }
+        } catch (e) { console.error("Error deleting from tenant DB:", e.message); }
+        
         res.json({ message: "Admin berhasil dihapus" });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
@@ -1165,6 +1185,30 @@ app.get('/api/customers/:id/history', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
+
+app.put('/api/customers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, phone, area, address, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
+        const registerDate = req.body.registerDate || req.body.register_date;
+        const isolateDate = req.body.isolateDate || req.body.isolate_date;
+        const packageName = req.body.packageName || req.body.package_name;
+        const pppoeSecret = req.body.pppoeSecret || req.body.pppoe_secret;
+        const odpId = req.body.odpId || req.body.odp_id;
+        const odpPort = req.body.odpPort || req.body.odp_port;
+        
+        const parsedOdpId = (odpId !== undefined && odpId !== null && odpId !== '') ? parseInt(odpId) : null;
+        
+        await req.pool.query(
+            'UPDATE customers SET name=?, phone=?, area=?, address=?, username=?, billingDate=?, status=?, price=?, discount=?, register_date=?, isolate_date=?, package_name=?, pppoe_secret=?, odp_id=?, odp_port=?, additionalCost1=?, additionalCost2=? WHERE id=?',
+            [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', id]
+        );
+        res.json({ message: "Pelanggan berhasil diupdate" });
+    } catch (error) {
+        console.error("API Error (update customer):", error.message);
+        res.status(500).json({ error: error.message || "Terjadi kesalahan saat update pelanggan" });
     }
 });
 
@@ -1300,7 +1344,7 @@ app.post('/api/customers/:id/isolir', tenantContext, async (req, res) => {
 
 app.post('/api/customers', async (req, res) => {
     try {
-        const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
+        const { name, phone, area, address, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
         const registerDate = req.body.registerDate || req.body.register_date;
         const isolateDate = req.body.isolateDate || req.body.isolate_date;
         const packageName = req.body.packageName || req.body.package_name;
@@ -1312,11 +1356,12 @@ app.post('/api/customers', async (req, res) => {
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
+                'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
             );
         } catch (e) {
             if (e.message && e.message.includes("Unknown column")) {
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
@@ -1327,8 +1372,8 @@ app.post('/api/customers', async (req, res) => {
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 
                 [result] = await req.pool.query(
-                    'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
+                    'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
                 );
             } else {
                 throw e;
@@ -1743,6 +1788,10 @@ app.put('/api/admins/:id', async (req, res) => {
     try {
         const { name, username, role, password } = req.body;
         const db_name = req.user ? req.user.db_name : 'app_db';
+        // Get old username from master to update tenant DB properly
+        const [oldUserRows] = await masterPool.query('SELECT username FROM users WHERE id = ? AND db_name = ?', [req.params.id, db_name]);
+        const oldUsername = oldUserRows.length > 0 ? oldUserRows[0].username : null;
+        
         // Check if username is already taken by someone else
         const [existing] = await masterPool.query('SELECT id FROM users WHERE username = ? AND id != ?', [username, req.params.id]);
         if (existing.length > 0) {
@@ -1751,8 +1800,18 @@ app.put('/api/admins/:id', async (req, res) => {
         
         if (password) {
             await masterPool.query('UPDATE users SET name = ?, username = ?, role = ?, password = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', password, req.params.id, db_name]);
+            try {
+                if (req.pool && req.pool !== masterPool && oldUsername) {
+                    await req.pool.query('UPDATE users SET name = ?, username = ?, role = ?, password = ? WHERE username = ?', [name, username, role || 'ADMIN', password, oldUsername]);
+                }
+            } catch (e) { console.error("Error updating tenant DB:", e.message); }
         } else {
             await masterPool.query('UPDATE users SET name = ?, username = ?, role = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', req.params.id, db_name]);
+            try {
+                if (req.pool && req.pool !== masterPool && oldUsername) {
+                    await req.pool.query('UPDATE users SET name = ?, username = ?, role = ? WHERE username = ?', [name, username, role || 'ADMIN', oldUsername]);
+                }
+            } catch (e) { console.error("Error updating tenant DB:", e.message); }
         }
         res.json({ message: "Admin diperbarui" });
     } catch (error) {
@@ -1767,6 +1826,18 @@ app.post('/api/admins', async (req, res) => {
             'INSERT INTO users (name, username, role, password, db_name) VALUES (?, ?, ?, ?, ?)',
             [name, username, role || 'ADMIN', password || '', db_name]
         );
+        
+        // Also insert into tenant DB
+        try {
+            if (req.pool && req.pool !== masterPool) {
+                // Check if table exists
+                await req.pool.query(
+                    'INSERT INTO users (name, username, role, password) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, role=?, password=?',
+                    [name, username, role || 'ADMIN', password || '', name, role || 'ADMIN', password || '']
+                );
+            }
+        } catch (e) { console.error("Error inserting to tenant DB:", e.message); }
+        
         res.json({ message: "Admin ditambahkan", id: result.insertId.toString() });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });

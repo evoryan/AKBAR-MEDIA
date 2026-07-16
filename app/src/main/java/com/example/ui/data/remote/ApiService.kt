@@ -77,6 +77,18 @@ data class MikrotikProfile(
     val name: String
 )
 
+
+data class TrafficResponse(
+    @com.squareup.moshi.Json(name = "rx-bits-per-second") val rxBits: String? = null,
+    @com.squareup.moshi.Json(name = "tx-bits-per-second") val txBits: String? = null,
+    val rx: Long? = null,
+    val tx: Long? = null,
+    @com.squareup.moshi.Json(name = "rx_byte") val rxByte: Long? = null,
+    @com.squareup.moshi.Json(name = "tx_byte") val txByte: Long? = null,
+    @com.squareup.moshi.Json(name = "rx_string") val rxString: String? = null,
+    @com.squareup.moshi.Json(name = "tx_string") val txString: String? = null
+)
+
 interface ApiService {
     @GET("api/dashboard/pppoe-offline")
     suspend fun getPppoeOffline(): List<OfflinePppoeUser>
@@ -172,6 +184,10 @@ interface ApiService {
     @DELETE("api/customers/{id}")
     suspend fun deleteCustomer(@Path("id") id: String)
 
+    
+    @PUT("api/customers/{id}")
+    suspend fun updateCustomer(@Path("id") id: String, @Body customer: com.example.ui.screens.Customer): ApiResponse
+
     @POST("api/customers")
     suspend fun addCustomer(@Body customer: com.example.ui.screens.Customer): ApiResponse
 
@@ -234,6 +250,9 @@ interface ApiService {
 
     @GET("api/mikrotik/secrets/{id}")
     suspend fun getMikrotikSecrets(@Path("id") id: String): List<com.example.ui.screens.PPPoESecret>
+
+    @GET("api/mikrotik/traffic/{id}")
+    suspend fun getMikrotikTraffic(@Path("id") areaId: String, @Query("interface") interfaceName: String): List<TrafficResponse>
 
     @POST("api/mikrotik/secrets/{id}")
     suspend fun addMikrotikSecret(@Path("id") id: String, @Body request: Map<String, String>): ApiResponse

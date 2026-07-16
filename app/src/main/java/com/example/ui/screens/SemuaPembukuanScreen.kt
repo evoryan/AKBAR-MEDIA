@@ -144,7 +144,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     Scaffold(
         containerColor = bgMain,
         topBar = {
-            Column(modifier = Modifier.background(Color(0xFF11111A))) {
+            Column(modifier = Modifier.background(if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))) {
                 TopAppBar(
                     title = { Text("Pembukuan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
                     navigationIcon = {
@@ -175,11 +175,11 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             DropdownMenu(
                                 expanded = monthDropdownExpanded,
                                 onDismissRequest = { monthDropdownExpanded = false },
-                                containerColor = Color(0xFF11111A)
+                                containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
                             ) {
                                 months.forEach { month ->
                                     DropdownMenuItem(
-                                        text = { Text(month, color = Color.White) },
+                                        text = { Text(month, color = textMain) },
                                         onClick = {
                                             selectedMonth = month
                                             monthDropdownExpanded = false
@@ -202,7 +202,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                         shape = CircleShape,
                         modifier = Modifier.size(48.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add", tint = Color.White)
+                        Icon(Icons.Default.Add, contentDescription = "Add", tint = textMain)
                     }
                 }
             }
@@ -211,7 +211,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF11111A))
+                    .background(if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -273,7 +273,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                         .background(primaryBlue),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                    Icon(Icons.Default.Search, contentDescription = "Search", tint = textMain)
                 }
             }
             
@@ -398,12 +398,12 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             DropdownMenu(
                                 expanded = tipeDropdownExpanded,
                                 onDismissRequest = { tipeDropdownExpanded = false },
-                                containerColor = Color(0xFF11111A),
+                                containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF),
                                 modifier = Modifier.fillMaxWidth(0.7f)
                             ) {
                                 tipeOptions.forEach { option ->
                                     DropdownMenuItem(
-                                        text = { Text(option, color = Color.White) },
+                                        text = { Text(option, color = textMain) },
                                         onClick = {
                                             tipePembukuan = option
                                             tipeDropdownExpanded = false
@@ -463,7 +463,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                         shape = RoundedCornerShape(24.dp),
                         enabled = !isSaving
                     ) {
-                        Text(if (isSaving) "MENYIMPAN..." else "SIMPAN", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(if (isSaving) "MENYIMPAN..." else "SIMPAN", color = textMain, fontWeight = FontWeight.Bold)
                     }
                 }
             },

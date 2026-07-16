@@ -34,10 +34,13 @@ class DashboardViewModel : ViewModel() {
                     val paidCount = customers.count { it.status == "LUNAS CASH" }
                     val unpaidCount = customers.size - paidCount
                     
+                    val globalRev = customers.sumOf { it.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L }.toDouble()
+                    
                     val monthlyRevenue = result.monthlyRevenue
                     result = result.copy(
                         totalCustomers = customers.size,
                         monthlyRevenue = monthlyRevenue,
+                        totalGlobalRevenue = globalRev,
                         paidCustomers = paidCount,
                         unpaidCustomers = unpaidCount
                     )

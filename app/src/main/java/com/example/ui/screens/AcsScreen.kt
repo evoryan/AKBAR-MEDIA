@@ -157,7 +157,7 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
             // Filters
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A)),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -309,7 +309,7 @@ fun AcsDeviceItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .clickable { expanded = !expanded },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A))
+        colors = CardDefaults.cardColors(containerColor = cardBg)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(

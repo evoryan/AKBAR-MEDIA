@@ -1476,6 +1476,42 @@ app.post('/api/admins', async (req, res) => {
 });
 
 
+
+app.get('/api/mikrotik/traffic/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const interfaceName = req.query.interface;
+        if (!interfaceName) return res.status(400).json({ error: "interface parameter required" });
+
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+
+        const area = rows[0];
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+
+        const api = await client.connect();
+        const interfaceMenu = api.menu('/interface');
+        const traffic = await interfaceMenu.exec('monitor-traffic', { interface: interfaceName, once: '' });
+        client.close();
+        
+        res.json(traffic);
+    } catch (error) {
+        console.error("Mikrotik traffic error:", error.message);
+        res.status(500).json({ error: "Failed to connect to Mikrotik: " + error.message });
+    }
+});
+
 app.get('/api/mikrotik/status/:id', async (req, res) => {
     try {
         const { id } = req.params;

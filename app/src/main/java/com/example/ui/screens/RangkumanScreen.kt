@@ -93,11 +93,11 @@ fun RangkumanScreen(onBack: () -> Unit) {
                 DropdownMenu(
                     expanded = monthDropdownExpanded,
                     onDismissRequest = { monthDropdownExpanded = false },
-                    containerColor = Color(0xFF11111A)
+                    containerColor = cardBg
                 ) {
                     months.forEach { month ->
                         DropdownMenuItem(
-                            text = { Text(month, color = Color.White) },
+                            text = { Text(month, color = textMain) },
                             onClick = {
                                 selectedMonth = month
                                 monthDropdownExpanded = false
@@ -113,7 +113,7 @@ fun RangkumanScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(1.dp, primaryCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A)),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -145,7 +145,7 @@ fun RangkumanScreen(onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(1.dp, primaryCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A)),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {

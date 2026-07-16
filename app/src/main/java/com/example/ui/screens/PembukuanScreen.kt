@@ -106,10 +106,10 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
         containerColor = bgMain,
         topBar = {
             TopAppBar(
-                title = { Text("Pembukuan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                title = { Text("Pembukuan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
@@ -128,7 +128,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A))
+                    colors = CardDefaults.cardColors(containerColor = cardBg)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -136,7 +136,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Pemasukkan", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Pemasukkan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Rp. ${String.format("%,d", pemasukan.toLong()).replace(",", ".")}", color = successGreen, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -145,7 +145,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                 }
                             }
                         }
-                        Divider(modifier = Modifier.padding(vertical = 12.dp), color = textSecondary.copy(alpha = 0.2f))
+                        Divider(modifier = Modifier.padding(vertical = 12.dp), color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666).copy(alpha = 0.2f))
                         
                         Row(modifier = Modifier.fillMaxWidth()) {
                             PembukuanItem("Transaksi Cash", "Rp. ${ transaksiCash.let { String.format("%,d", it.toLong()).replace(",", ".") } }", successGreen, modifier = Modifier.weight(1f).clickable { onNavigateToBilling(1) })
@@ -178,7 +178,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A))
+                    colors = CardDefaults.cardColors(containerColor = cardBg)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -186,7 +186,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Pengeluaran", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Pengeluaran", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Rp. ${String.format("%,d", pengeluaran.toLong()).replace(",", ".")}", color = errorRed, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -195,7 +195,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                 }
                             }
                         }
-                        Divider(modifier = Modifier.padding(vertical = 12.dp), color = textSecondary.copy(alpha = 0.2f))
+                        Divider(modifier = Modifier.padding(vertical = 12.dp), color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666).copy(alpha = 0.2f))
                         
                         val pengeluaranItems = listOf(
                             "Gaji Karyawan", "Pasang Baru",
@@ -262,11 +262,11 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF11111A))
+                    colors = CardDefaults.cardColors(containerColor = cardBg)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Total Pendapatan", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Divider(modifier = Modifier.padding(vertical = 12.dp), color = textSecondary.copy(alpha = 0.2f))
+                        Text("Total Pendapatan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Divider(modifier = Modifier.padding(vertical = 12.dp), color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666).copy(alpha = 0.2f))
                         
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -274,12 +274,12 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Total Pemasukkan", color = textMain, fontSize = 12.sp)
+                                Text("Total Pemasukkan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp)
                                 Text("Rp. ${ String.format("%,d", pemasukan.toLong()).replace(",", ".") }", color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                             Text("-", color = errorRed, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Total Pengeluaran", color = textMain, fontSize = 12.sp)
+                                Text("Total Pengeluaran", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp)
                                 Text("Rp. ${ String.format("%,d", pengeluaran.toLong()).replace(",", ".") }", color = errorRed, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -295,8 +295,8 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Pendapatan", color = Color.White, fontSize = 12.sp)
-                                Text("Rp. ${ String.format("%,d", (pemasukan - pengeluaran).toLong()).replace(",", ".") }", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("Pendapatan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp)
+                                Text("Rp. ${ String.format("%,d", (pemasukan - pengeluaran).toLong()).replace(",", ".") }", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -311,7 +311,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "Menu Lain",
-                        color = textSecondary,
+                        color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666),
                         fontSize = 12.sp,
                         modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.End
@@ -370,14 +370,14 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
         if (showAddDialog) {
             AlertDialog(
                 onDismissRequest = { showAddDialog = false },
-                containerColor = Color(0xFF11111A),
-                title = { Text("Input Nominal ($selectedCategory)", color = textMain, fontWeight = FontWeight.Bold) },
+                containerColor = cardBg,
+                title = { Text("Input Nominal ($selectedCategory)", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = inputAmount,
                             onValueChange = { inputAmount = it },
-                            label = { Text("Nominal (Rp)", color = textSecondary) },
+                            label = { Text("Nominal (Rp)", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryCyan, unfocusedBorderColor = textSecondary,
@@ -388,7 +388,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                         OutlinedTextField(
                             value = inputDescription,
                             onValueChange = { inputDescription = it },
-                            label = { Text("Keterangan", color = textSecondary) },
+                            label = { Text("Keterangan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)) },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryCyan, unfocusedBorderColor = textSecondary,
                                 focusedTextColor = textMain, unfocusedTextColor = textMain
@@ -422,7 +422,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                 },
                 dismissButton = {
                     TextButton(onClick = { showAddDialog = false }) {
-                        Text("Batal", color = textMain)
+                        Text("Batal", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 },
                 properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -439,7 +439,7 @@ fun PembukuanItem(title: String, value: String, valueColor: Color, modifier: Mod
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(title, color = Color.White, fontSize = 12.sp, textAlign = TextAlign.Center)
+        Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp, textAlign = TextAlign.Center)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
@@ -458,6 +458,6 @@ fun MenuLainItem(icon: ImageVector, title: String, tint: Color, modifier: Modifi
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(36.dp))
-        Text(title, color = Color.White, fontSize = 12.sp, textAlign = TextAlign.Center)
+        Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp, textAlign = TextAlign.Center)
     }
 }

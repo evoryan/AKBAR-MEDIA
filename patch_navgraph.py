@@ -1,26 +1,25 @@
 import re
 
-with open('app/src/main/java/com/example/ui/navigation/NavGraph.kt', 'r') as f:
+with open("app/src/main/java/com/example/ui/navigation/NavGraph.kt", "r") as f:
     content = f.read()
 
-old_route = """            composable<CustomerDetailRoute> {
-                val route = it.toRoute<CustomerDetailRoute>()
-                CustomerDetailScreen(
+pattern = r"""            composable<AddCustomerRoute> \{
+                AddCustomerScreen\(onBack = \{ navController\.popBackStack\(\) \}\)
+            \}"""
+replacement = """            composable<AddCustomerRoute> {
+                AddCustomerScreen(onBack = { navController.popBackStack() })
+            }
+            
+            composable<EditCustomerRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<EditCustomerRoute>()
+                EditCustomerScreen(
                     customerId = route.customerId,
                     onBack = { navController.popBackStack() }
                 )
             }"""
 
-new_route = """            composable<CustomerDetailRoute> {
-                val route = it.toRoute<CustomerDetailRoute>()
-                CustomerDetailScreen(
-                    customerId = route.customerId,
-                    onBack = { navController.popBackStack() },
-                    onNavigateToPayment = { id -> navController.navigate(PaymentRoute(id)) }
-                )
-            }"""
+content = re.sub(pattern, replacement, content)
 
-content = content.replace(old_route, new_route)
-
-with open('app/src/main/java/com/example/ui/navigation/NavGraph.kt', 'w') as f:
+with open("app/src/main/java/com/example/ui/navigation/NavGraph.kt", "w") as f:
     f.write(content)
+

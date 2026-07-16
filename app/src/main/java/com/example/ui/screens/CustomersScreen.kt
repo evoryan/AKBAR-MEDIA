@@ -54,7 +54,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 fun CustomersScreen(
     onBack: () -> Unit,
     onNavigateToCustomerDetail: (String) -> Unit,
-    onNavigateToAddCustomer: () -> Unit
+    onNavigateToAddCustomer: () -> Unit,
+    onNavigateToEditCustomer: (String) -> Unit
 ) {
         var customers by remember { mutableStateOf<List<Customer>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
@@ -302,6 +303,8 @@ fun CustomersScreen(
                                 android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }
+                    }, onEditCustomer = { id ->
+                        onNavigateToEditCustomer(id)
                     })
 
                 }
@@ -315,6 +318,7 @@ data class Customer(
     val name: String,
     val phone: String,
     val area: String,
+    val address: String? = null,
     val username: String,
     val billingDate: String,
     val status: String,
@@ -331,7 +335,7 @@ data class Customer(
 )
 
 @Composable
-fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit, onIsolirCustomer: (Customer) -> Unit = {}) {
+fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit, onIsolirCustomer: (Customer) -> Unit = {}, onEditCustomer: (String) -> Unit = {}) {
     val context = LocalContext.current
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0)
@@ -373,7 +377,7 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
                             Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = errorRed)
                         }
                     }
-                    IconButton(onClick = { Toast.makeText(context, "Fitur edit pelanggan akan segera hadir", Toast.LENGTH_SHORT).show() }) {
+                    IconButton(onClick = { onEditCustomer(customer.id) }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan)
                     }
                     IconButton(onClick = { onDeleteCustomer(customer) }) {

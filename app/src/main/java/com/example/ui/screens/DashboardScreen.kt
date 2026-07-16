@@ -95,17 +95,17 @@ fun DashboardScreen(
             Column {
                 val context = LocalContext.current
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(com.example.ui.data.SettingsManager.companyName, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                    Text(com.example.ui.data.SettingsManager.companyName, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = { 
                         viewModel.fetchDashboardSummary()
                         Toast.makeText(context, "Refreshing data...", Toast.LENGTH_SHORT).show()
                     }, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = textSecondary)
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Halo, ${currentUser?.name ?: "Admin"}", fontSize = 16.sp, color = textSecondary)
+                Text("Halo, ${currentUser?.name ?: "Admin"}", fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
             }
             Box(
                 modifier = Modifier
@@ -115,7 +115,7 @@ fun DashboardScreen(
                     .border(1.dp, cardBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Person, contentDescription = "Profile", tint = textMain, modifier = Modifier.size(32.dp))
+                Icon(Icons.Default.Person, contentDescription = "Profile", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), modifier = Modifier.size(32.dp))
             }
         }
         
@@ -132,11 +132,11 @@ fun DashboardScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, contentDescription = null, tint = primaryBg, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Informasi Sistem", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textMain)
+                    Text("Informasi Sistem", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo1}", color = textSecondary, fontSize = 12.sp)
-                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo2}", color = textSecondary, fontSize = 12.sp)
+                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo1}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo2}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
             }
         }
 
@@ -161,8 +161,8 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(selectedMonth, color = textMain, fontWeight = FontWeight.Medium)
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textMain)
+                        Text(selectedMonth, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 }
                 DropdownMenu(
@@ -172,7 +172,7 @@ fun DashboardScreen(
                 ) {
                     months.forEach { month ->
                         DropdownMenuItem(
-                            text = { Text(month, color = textMain) },
+                            text = { Text(month, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)) },
                             onClick = {
                                 selectedMonth = month
                                 expandedMonth = false
@@ -197,8 +197,8 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(selectedYear, color = textMain, fontWeight = FontWeight.Medium)
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textMain)
+                        Text(selectedYear, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 }
                 DropdownMenu(
@@ -208,7 +208,7 @@ fun DashboardScreen(
                 ) {
                     years.forEach { year ->
                         DropdownMenuItem(
-                            text = { Text(year, color = textMain) },
+                            text = { Text(year, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)) },
                             onClick = {
                                 selectedYear = year
                                 expandedYear = false
@@ -245,19 +245,19 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 if (page == 0) "Total Pendapatan ($selectedMonth $selectedYear)" else "Total Pendapatan Global",
-                                fontWeight = FontWeight.Medium, fontSize = 14.sp, color = textSecondary
+                                fontWeight = FontWeight.Medium, fontSize = 14.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
                             )
                         }
                         
                         when (val state = uiState) {
-                            is DashboardState.Loading -> Text("Rp ...", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = textMain)
+                            is DashboardState.Loading -> Text("Rp ...", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                             is DashboardState.Success -> {
                                 val format = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("id-ID"))
                                 format.maximumFractionDigits = 0
                                 val amount = if (page == 0) state.data.monthlyRevenue else state.data.totalGlobalRevenue
                                 Text(format.format(amount), fontWeight = FontWeight.Bold, fontSize = 32.sp, color = primaryBg)
                             }
-                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = textMain)
+                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                         }
                     }
                 }
@@ -296,11 +296,11 @@ fun DashboardScreen(
                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = iconSuccess, modifier = Modifier.size(24.dp))
                     Column {
                         when (val state = uiState) {
-                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
-                            is DashboardState.Success -> Text("${state.data.totalCustomers}", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
-                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textMain)
+                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                            is DashboardState.Success -> Text("${state.data.totalCustomers}", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                         }
-                        Text("Aktif", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = textSecondary)
+                        Text("Aktif", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
                     }
                 }
             }
@@ -329,7 +329,7 @@ fun DashboardScreen(
         }
         
         // Shortcut Menu Cepat
-        Text("Akses Cepat", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
+        Text("Akses Cepat", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -349,7 +349,7 @@ fun DashboardScreen(
                 .padding(20.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Menu Utama", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain, modifier = Modifier.padding(bottom = 16.dp))
+                Text("Menu Utama", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), modifier = Modifier.padding(bottom = 16.dp))
                 
                 // Grid 1
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -390,7 +390,7 @@ fun DashboardScreen(
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text("PPPoE Offline", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
+                    Text("PPPoE Offline", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     Text("Lihat Semua", fontSize = 12.sp, color = primaryBg, modifier = Modifier.clickable { onNavigateToMikrotik() })
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -398,7 +398,7 @@ fun DashboardScreen(
                 if (uiState is DashboardState.Success) {
                     val offlineUsers = (uiState as DashboardState.Success).offlinePppoe
                     if (offlineUsers.isEmpty()) {
-                        Text("Tidak ada PPPoE offline", color = textSecondary, fontSize = 14.sp)
+                        Text("Tidak ada PPPoE offline", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 14.sp)
                     } else {
                         offlineUsers.take(5).forEach { user ->
                             OfflineUserItem(user.name, user.lastLogoff)
@@ -430,7 +430,7 @@ fun RowScope.MenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, tit
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(title, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Medium)
+        Text(title, fontSize = 10.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Medium)
     }
 }
 
@@ -446,9 +446,9 @@ fun ShortcutItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: S
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = null, tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.height(8.dp))
-            Text(title, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 10.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }
@@ -471,8 +471,8 @@ fun OfflineUserItem(username: String, time: String) {
                 Icon(Icons.Default.PersonOff, contentDescription = null, tint = Color(0xFFFF003C), modifier = Modifier.size(20.dp))
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(username, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(username, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
-        Text(time, color = Color(0xFFAAAAAA), fontSize = 12.sp)
+        Text(time, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
     }
 }
