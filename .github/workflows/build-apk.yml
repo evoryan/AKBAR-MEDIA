@@ -11,19 +11,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # Diperbarui ke v4
 
       - name: Setup JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4 # Diperbarui ke v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # LANGKAH BARU: Menginstal Gradle CLI langsung di server GitHub karena gradlew tidak ada
+      # Menginstal Gradle CLI langsung di server GitHub karena gradlew tidak ada
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
 
-      # LANGKAH BARU: Membuat file gradlew secara otomatis di dalam server
+      # Membuat file gradlew secara otomatis di dalam server
       - name: Generate Gradle Wrapper
         run: gradle wrapper
 
@@ -34,7 +34,7 @@ jobs:
         run: ./gradlew assembleRelease
 
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4 # Diperbarui ke v4 agar tidak error
         with:
           name: app-release
           path: "**/build/outputs/apk/release/*.apk"
