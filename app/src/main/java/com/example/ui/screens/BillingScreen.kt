@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.material.icons.filled.Lock
+
+
 import android.widget.Toast
 
 import androidx.compose.foundation.background
@@ -327,7 +330,17 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 neonCyan = neonCyan, 
                                 neonPink = neonPink, 
                                 onPayClick = { onNavigateToPayment(customer.id) },
-                                onDetailClick = {}
+                                onDetailClick = {},
+                                onIsolirClick = {
+                                    coroutineScope.launch {
+                                        try {
+                                            com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customer.id)
+                                            android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
                             )
                         }
                         item { Spacer(modifier = Modifier.height(24.dp)) }
@@ -396,7 +409,8 @@ fun BillingCustomerItem(
     onPayClick: () -> Unit,
     onDetailClick: () -> Unit,
     onDeleteClick: () -> Unit = {},
-    onLongPress: () -> Unit = {}
+    onLongPress: () -> Unit = {},
+    onIsolirClick: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -428,6 +442,9 @@ fun BillingCustomerItem(
                 Text(customer.price, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (customer.status != "LUNAS CASH") {
+                        IconButton(onClick = onIsolirClick, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = Color(0xFFD4AF37))
+                        }
                         IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color(0xFFFF003C))
                         }

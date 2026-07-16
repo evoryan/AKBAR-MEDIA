@@ -37,7 +37,6 @@ object ApiClient {
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .addInterceptor(AuthInterceptor(context))
-                .addInterceptor(OfflineInterceptor(database!!, context))
                 .build()
                 
             val retrofit = Retrofit.Builder()
@@ -48,8 +47,6 @@ object ApiClient {
                 
             apiService = retrofit.create(ApiService::class.java)
             
-            // Trigger sync on startup
-            SyncManager.triggerSync(context)
         }
     }
     

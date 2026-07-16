@@ -1,13 +1,15 @@
 import re
 
-with open('VPS/server.js', 'r') as f:
+with open("app/src/main/java/com/example/ui/screens/BillingScreen.kt", "r") as f:
     content = f.read()
 
-old_insert = """        await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
-            ['pemasukan', totalAmount || 0, `Pembayaran tagihan pelanggan ${customerName}`, 'Transaksi Cash']);"""
-new_insert = """        await req.pool.query('INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)', 
-            ['pemasukan', totalAmount || 0, `Pembayaran tagihan pelanggan ${customerName}`]);"""
-content = content.replace(old_insert, new_insert)
+# Fix context duplication
+content = content.replace("val context = LocalContext.current\n    val context = LocalContext.current", "val context = LocalContext.current")
 
-with open('VPS/server.js', 'w') as f:
+# Add Lock import if missing
+if "import androidx.compose.material.icons.filled.Lock" not in content:
+    content = "import androidx.compose.material.icons.filled.Lock\n" + content
+
+with open("app/src/main/java/com/example/ui/screens/BillingScreen.kt", "w") as f:
     f.write(content)
+

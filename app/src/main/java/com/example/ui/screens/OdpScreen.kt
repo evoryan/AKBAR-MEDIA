@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Hub
@@ -208,17 +209,40 @@ fun OdpScreen(onBack: () -> Unit) {
                             unfocusedTextColor = textMain
                         )
                     )
-                    OutlinedTextField(
-                        value = portInput,
-                        onValueChange = { portInput = it },
-                        label = { Text("Sumber Port Input") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = primaryBg,
-                            unfocusedBorderColor = cardBorder,
-                            focusedTextColor = textMain,
-                            unfocusedTextColor = textMain
+                    var portInputExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedTextField(
+                            value = portInput,
+                            onValueChange = { portInput = it },
+                            label = { Text("Sumber Port Input") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryBg,
+                                unfocusedBorderColor = cardBorder,
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { portInputExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih ODC")
+                                }
+                            }
                         )
-                    )
+                        DropdownMenu(
+                            expanded = portInputExpanded,
+                            onDismissRequest = { portInputExpanded = false },
+                            modifier = Modifier.background(cardBg)
+                        ) {
+                            odcList.forEach { odc ->
+                                DropdownMenuItem(
+                                    text = { Text(odc.name, color = textMain) },
+                                    onClick = {
+                                        portInput = odc.name
+                                        portInputExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     // ODC Dropdown
                     Box {
                         OutlinedButton(

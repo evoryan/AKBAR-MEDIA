@@ -29,11 +29,39 @@ data class PembukuanRequest(
     val description: String
 )
 
+data class PembukuanItem(
+    val id: String,
+    val type: String,
+    val category: String?,
+    val amount: Double,
+    val description: String?,
+    val created_at: String?
+)
+
+data class SetoranRequest(
+    val adminName: String,
+    val amount: Double
+)
+
+data class PembayaranHistoryItem(
+    val id: String,
+    val bulan: String?,
+    val tahun: Int?,
+    val amount: Double?,
+    val admin_name: String?,
+    val created_at: String?,
+    val customer_name: String?,
+    val phone: String?,
+    val area: String?
+)
+
 data class ApiResponse(val message: String, val id: String? = null)
 
 data class UangAdminResponse(
     val adminName: String,
-    val totalAmount: Double,
+    val totalDiterima: Double? = 0.0,
+    val setor: Double? = 0.0,
+    val pengeluaran: Double? = 0.0,
     val jmlPlggn: Int? = 0
 )
 
@@ -71,8 +99,23 @@ interface ApiService {
     @GET("api/pembukuan")
     suspend fun getPembukuan(): PembukuanResponse
 
+    @GET("api/pembukuan/all")
+    suspend fun getAllPembukuan(): List<PembukuanItem>
+
+    @GET("api/pembayaran")
+    suspend fun getPembayaranHistory(): List<PembayaranHistoryItem>
+
     @POST("api/pembukuan")
     suspend fun addPembukuan(@Body request: PembukuanRequest): ApiResponse
+    
+    @PUT("api/pembukuan/{id}")
+    suspend fun updatePembukuan(@Path("id") id: String, @Body request: PembukuanRequest): ApiResponse
+    
+    @DELETE("api/pembukuan/{id}")
+    suspend fun deletePembukuan(@Path("id") id: String): ApiResponse
+
+    @POST("api/setoran")
+    suspend fun addSetoran(@Body request: SetoranRequest): ApiResponse
 
     @GET("api/uang-di-admin")
     suspend fun getUangDiAdmin(): List<UangAdminResponse>
@@ -122,6 +165,9 @@ interface ApiService {
 
     @DELETE("api/odp/{id}")
     suspend fun deleteOdp(@Path("id") id: String)
+
+    @POST("api/customers/{id}/isolir")
+    suspend fun isolateCustomer(@Path("id") id: String): ApiResponse
 
     @DELETE("api/customers/{id}")
     suspend fun deleteCustomer(@Path("id") id: String)
@@ -191,6 +237,15 @@ interface ApiService {
 
     @POST("api/mikrotik/secrets/{id}")
     suspend fun addMikrotikSecret(@Path("id") id: String, @Body request: Map<String, String>): ApiResponse
+
+    @POST("api/mikrotik/secrets/{id}/disable")
+    suspend fun disableMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse
+    
+    @POST("api/mikrotik/secrets/{id}/enable")
+    suspend fun enableMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse
+    
+    @POST("api/mikrotik/secrets/{id}/remove-active")
+    suspend fun removeActiveMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse
 
 
     @GET("api/acs/devices")

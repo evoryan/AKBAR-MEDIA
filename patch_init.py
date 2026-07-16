@@ -3,20 +3,20 @@ import re
 with open("VPS/init.sql", "r") as f:
     content = f.read()
 
-table_sql = """CREATE TABLE IF NOT EXISTS tagihan_bulanan (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_id INT,
-    bulan VARCHAR(50),
-    tahun INT,
-    amount DECIMAL(10, 2),
-    status VARCHAR(50) DEFAULT 'BELUM BAYAR', -- 'BELUM BAYAR', 'LUNAS CASH'
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
-);
+# Remove odc_list and odp_list blocks and store them
+odc_pattern = re.compile(r'CREATE TABLE IF NOT EXISTS odc_list.*?;', re.DOTALL)
+odp_pattern = re.compile(r'CREATE TABLE IF NOT EXISTS odp_list.*?;', re.DOTALL)
 
-"""
+odc_match = odc_pattern.search(content)
+odp_match = odp_pattern.search(content)
 
-if "tagihan_bulanan" not in content:
-    content = content.replace("CREATE TABLE IF NOT EXISTS pembukuan", table_sql + "CREATE TABLE IF NOT EXISTS pembukuan")
-    with open("VPS/init.sql", "w") as f:
-        f.write(content)
+content = content.replace(odc_match.group(0), "")
+content = content.replace(odp_match.group(0), "")
+
+# insert them before CREATE TABLE IF NOT EXISTS customers
+insert_pos = content.find("CREATE TABLE IF NOT EXISTS customers")
+new_content = content[:insert_pos] + odc_match.group(0) + odp_match.group(0) + content[insert_pos:]
+
+with open("VPS/init.sql", "w") as f:
+    f.write(new_content)
+

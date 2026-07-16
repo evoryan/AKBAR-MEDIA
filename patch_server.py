@@ -1,64 +1,143 @@
 import re
 
-with open('VPS/server.js', 'r') as f:
+with open("VPS/server.js", "r") as f:
     content = f.read()
 
-# 1. Add additionalCost1 and additionalCost2 to ALTER TABLEs
-alter_str = """
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});"""
+# Add endpoints for Pembukuan
+pembukuan_endpoints = """
+app.get('/api/pembukuan/all', async (req, res) => {
+    try {
+        const [rows] = await req.pool.query('SELECT * FROM pembukuan ORDER BY id DESC');
+        res.json(rows.map(r => ({ ...r, id: r.id.toString(), amount: Number(r.amount) })));
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
 
-content = content.replace("""
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_id INT DEFAULT NULL`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(err=>{});""", alter_str)
+app.put('/api/pembukuan/:id', async (req, res) => {
+    try {
+        const { type, category, amount, description } = req.body;
+        await req.pool.query(
+            'UPDATE pembukuan SET type = ?, category = ?, amount = ?, description = ? WHERE id = ?',
+            [type, category || 'Lain-lain', amount, description, req.params.id]
+        );
+        res.json({ message: "Pembukuan diperbarui" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
 
-# Global alter table (for masterPool/tPool)
-global_alter = """
-        await masterPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
-        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
-        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});"""
-content = content.replace("        await masterPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});", global_alter)
+app.delete('/api/pembukuan/:id', async (req, res) => {
+    try {
+        await req.pool.query('DELETE FROM pembukuan WHERE id = ?', [req.params.id]);
+        res.json({ message: "Pembukuan dihapus" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
 
-global_alter_tpool = """
-            await tPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
-            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
-            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});"""
-content = content.replace("            await tPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});", global_alter_tpool)
+app.post('/api/setoran', async (req, res) => {
+    try {
+        const { adminName, amount } = req.body;
+        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+        await req.pool.query(
+            'INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)',
+            ['setor', amount, `Setoran oleh ${adminName}`, 'Setoran', adminName]
+        );
+        res.json({ message: "Setoran berhasil ditambahkan" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
 
-init_alter = """
-            try { await pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`); } catch(e) {}
-            try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`); } catch(e) {}
-            try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`); } catch(e) {}"""
-content = content.replace("            try { await pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`); } catch(e) {}", init_alter)
+"""
+
+if "app.get('/api/pembukuan/all'" not in content:
+    target = "app.post('/api/pembukuan'"
+    content = content.replace(target, pembukuan_endpoints + "\n" + target)
+
+# Modify `/api/uang-di-admin`
+uang_target = """app.get('/api/uang-di-admin', async (req, res) => {
+    try {
+        const [rows] = await req.pool.query(`
+            SELECT admin_name as adminName, SUM(amount) as totalAmount, COUNT(*) as jmlPlggn 
+            FROM pembukuan 
+            WHERE category = 'Transaksi Cash' AND type = 'pemasukan' 
+            GROUP BY admin_name
+        `);
+        res.json(rows);"""
+
+uang_rep = """app.get('/api/uang-di-admin', async (req, res) => {
+    try {
+        const [pemasukan] = await req.pool.query(`
+            SELECT admin_name as adminName, SUM(amount) as totalAmount, COUNT(*) as jmlPlggn 
+            FROM pembukuan 
+            WHERE type = 'pemasukan' AND admin_name IS NOT NULL
+            GROUP BY admin_name
+        `);
+        const [setoran] = await req.pool.query(`
+            SELECT admin_name as adminName, SUM(amount) as totalAmount
+            FROM pembukuan 
+            WHERE type = 'setor' AND admin_name IS NOT NULL
+            GROUP BY admin_name
+        `);
+        const [pengeluaran] = await req.pool.query(`
+            SELECT admin_name as adminName, SUM(amount) as totalAmount
+            FROM pembukuan 
+            WHERE type = 'pengeluaran' AND admin_name IS NOT NULL
+            GROUP BY admin_name
+        `);
+        
+        let result = {};
+        pemasukan.forEach(row => {
+            result[row.adminName] = { 
+                adminName: row.adminName, 
+                totalDiterima: Number(row.totalAmount), 
+                jmlPlggn: row.jmlPlggn,
+                setor: 0,
+                pengeluaran: 0
+            };
+        });
+        setoran.forEach(row => {
+            if (!result[row.adminName]) result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
+            result[row.adminName].setor = Number(row.totalAmount);
+        });
+        pengeluaran.forEach(row => {
+            if (!result[row.adminName]) result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
+            result[row.adminName].pengeluaran = Number(row.totalAmount);
+        });
+        
+        res.json(Object.values(result));"""
+
+content = content.replace(uang_target, uang_rep)
+
+# In `/api/billing/pay`, ensure we set `admin_name`.
+pay_target = """        try {
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
+                ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash']);
+        } catch (e) {
+            console.error("Warning: category column might be missing in pembukuan", e.message);
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)', 
+                ['pemasukan', totalAmount || 0, desc]);
+        }"""
+
+pay_rep = """        try {
+            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)', 
+                ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash', adminName || 'Admin']);
+        } catch (e) {
+            console.error("Warning: category column might be missing in pembukuan", e.message);
+            await req.pool.query('INSERT INTO pembukuan (type, amount, description, admin_name) VALUES (?, ?, ?, ?)', 
+                ['pemasukan', totalAmount || 0, desc, adminName || 'Admin']);
+        }"""
+
+content = content.replace(pay_target, pay_rep)
 
 
-# 2. Update INSERT logic
-old_insert = """            [result] = await req.pool.query(
-                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
-            );"""
-
-new_insert = """            [result] = await req.pool.query(
-                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
-            );"""
-
-content = content.replace(old_insert, new_insert)
-
-# 3. Update UPDATE logic in PUT /api/customers/:id
-# We need to find the PUT method
-import re
-put_pattern = r"app\.put\('/api/customers/:id', async \(req, res\) => \{.*?\};"
-# Wait, maybe simpler to just replace the UPDATE query directly
-with open('VPS/server.js', 'w') as f:
+with open("VPS/server.js", "w") as f:
     f.write(content)
+

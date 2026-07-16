@@ -27,17 +27,16 @@ object NetworkMonitor {
             override fun onAvailable(network: Network) {
                 if (wasOffline) {
                     CoroutineScope(Dispatchers.Main).launch {
-                        Toast.makeText(context.applicationContext, "Jaringan kembali normal. Mode Online aktif.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context.applicationContext, "Jaringan kembali normal.", Toast.LENGTH_LONG).show()
                     }
                     wasOffline = false
-                    SyncManager.triggerSync(context)
                 }
             }
 
             override fun onLost(network: Network) {
                 if (!wasOffline) {
                     CoroutineScope(Dispatchers.Main).launch {
-                        Toast.makeText(context.applicationContext, "Koneksi terputus. Beralih ke Mode Offline.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context.applicationContext, "Koneksi terputus.", Toast.LENGTH_LONG).show()
                     }
                     wasOffline = true
                 }
@@ -50,7 +49,7 @@ object NetworkMonitor {
         if (actNw == null || !actNw.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
             wasOffline = true
             CoroutineScope(Dispatchers.Main).launch {
-                Toast.makeText(context.applicationContext, "Tidak ada jaringan. Beralih ke Mode Offline.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context.applicationContext, "Tidak ada jaringan.", Toast.LENGTH_LONG).show()
             }
         }
     }

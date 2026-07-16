@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 
@@ -57,6 +58,7 @@ fun CustomersScreen(
 ) {
         var customers by remember { mutableStateOf<List<Customer>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         try {
@@ -291,6 +293,15 @@ fun CustomersScreen(
                     CustomerItem(customer, onNavigateToCustomerDetail, onDeleteCustomer = { customerToDelete ->
                         customerToDeleteState = customerToDelete
                         showDeleteConfirm = true
+                    }, onIsolirCustomer = { customerToIsolir ->
+                        coroutineScope.launch {
+                            try {
+                                com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
+                                android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     })
 
                 }
@@ -320,7 +331,7 @@ data class Customer(
 )
 
 @Composable
-fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit) {
+fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit, onIsolirCustomer: (Customer) -> Unit = {}) {
     val context = LocalContext.current
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0)
@@ -357,6 +368,11 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
             // Right Column
             Column(horizontalAlignment = Alignment.End) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (customer.status.contains("BELUM BAYAR", ignoreCase = true)) {
+                        IconButton(onClick = { onIsolirCustomer(customer) }) {
+                            Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = errorRed)
+                        }
+                    }
                     IconButton(onClick = { Toast.makeText(context, "Fitur edit pelanggan akan segera hadir", Toast.LENGTH_SHORT).show() }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan)
                     }

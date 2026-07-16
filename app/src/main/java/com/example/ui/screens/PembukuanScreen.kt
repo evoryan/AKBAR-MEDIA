@@ -58,6 +58,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
     var selectedType by remember { mutableStateOf("") }
     var inputAmount by remember { mutableStateOf("") }
     var inputDescription by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
 
     fun fetchData() {
         coroutineScope.launch {
@@ -217,8 +218,8 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                             selectedCategory = cat1
                                             selectedType = "pengeluaran"
                                             val detail = pengeluaranDetails.find { it.category == cat1 }
-                                            inputAmount = detail?.amount?.let { if (it > 0) it.toString() else "" } ?: ""
-                                            inputDescription = detail?.description ?: ""
+                                            inputAmount = ""
+                                            inputDescription = ""
                                             showAddDialog = true
                                         }
                                     }
@@ -236,8 +237,8 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                                 selectedCategory = cat2
                                                 selectedType = "pengeluaran"
                                                 val detail = pengeluaranDetails.find { it.category == cat2 }
-                                                inputAmount = detail?.amount?.let { if (it > 0) it.toString() else "" } ?: ""
-                                                inputDescription = detail?.description ?: ""
+                                                inputAmount = ""
+                                                inputDescription = ""
                                                 showAddDialog = true
                                             }
                                         }
@@ -399,18 +400,24 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                 confirmButton = {
                     Button(
                         onClick = {
+                            if (isSaving) return@Button
+                            isSaving = true
                             coroutineScope.launch {
                                 try {
-                                    val amount = inputAmount.toLongOrNull() ?: 0.0
+                                    val amount = inputAmount.replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0.0
                                     ApiClient.apiService.addPembukuan(com.example.ui.data.remote.PembukuanRequest(selectedType, selectedCategory, amount.toDouble(), inputDescription))
                                     fetchData()
                                     showAddDialog = false
-                                } catch (e: Exception) {}
+                                } catch (e: Exception) {
+                                } finally {
+                                    isSaving = false
+                                }
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = primaryCyan, contentColor = Color.Black)
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryCyan, contentColor = Color.Black),
+                        enabled = !isSaving
                     ) {
-                        Text("Simpan", fontWeight = FontWeight.Bold)
+                        Text(if (isSaving) "Menyimpan..." else "Simpan", fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

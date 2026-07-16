@@ -10,6 +10,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,10 +26,70 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+
 import com.example.ui.data.remote.ApiClient
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+@Composable
+fun PembukuanListItem(
+    item: com.example.ui.data.remote.PembukuanItem,
+    bgMain: Color,
+    textMain: Color,
+    textSecondary: Color,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = bgMain),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.description ?: "-",
+                    color = textMain,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${item.type.uppercase()} - ${item.category ?: "-"}",
+                    color = textSecondary,
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = item.created_at?.take(19)?.replace("T", " ") ?: "",
+                    color = textSecondary,
+                    fontSize = 12.sp
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                val color = if (item.type.lowercase() == "pemasukan") Color(0xFF4CAF50) else Color(0xFFF44336)
+                Text(
+                    text = "Rp. ${String.format("%,d", item.amount.toLong()).replace(",", ".")}",
+                    color = color,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF2196F3))
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFF44336))
+                    }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +106,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     val currentMonthYear = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.forLanguageTag("id-ID")))
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     var selectedMonth by remember { mutableStateOf(currentMonthYear) }
     var monthDropdownExpanded by remember { mutableStateOf(false) }
@@ -52,10 +117,29 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     var jumlah by remember { mutableStateOf("") }
     var tipePembukuan by remember { mutableStateOf(if (initialType.isNotEmpty()) initialType else "Pilih Tipe Pembukuan") }
     var tipeDropdownExpanded by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
     val tipeOptions = listOf("Pilih Tipe Pembukuan", "Pemasukan", "Pengeluaran", "Setor")
+    
+    var pembukuanList by remember { mutableStateOf(emptyList<com.example.ui.data.remote.PembukuanItem>()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var editingItem by remember { mutableStateOf<com.example.ui.data.remote.PembukuanItem?>(null) }
+    
+    
+    
+    LaunchedEffect(Unit) {
+        try {
+            pembukuanList = ApiClient.apiService.getAllPembukuan()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            isLoading = false
+        }
+    }
+    
+    val coroutineScope = rememberCoroutineScope()
 
     var searchQuery by remember { mutableStateOf("") }
-    val coroutineScope = rememberCoroutineScope()
+    
 
     Scaffold(
         containerColor = bgMain,
@@ -107,7 +191,13 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                     }
                     
                     FloatingActionButton(
-                        onClick = { showAddDialog = true },
+                        onClick = { 
+                            editingItem = null
+                            keterangan = ""
+                            jumlah = ""
+                            tipePembukuan = "Pilih Tipe Pembukuan"
+                            showAddDialog = true 
+                        },
                         containerColor = bgMain,
                         shape = CircleShape,
                         modifier = Modifier.size(48.dp)
@@ -127,15 +217,24 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Total Pengeluaran", color = textMain, fontSize = 14.sp)
-                    Text("-", color = errorRed, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Rp. ${String.format("%,d", pembukuanList.filter { it.type.lowercase() == "pengeluaran" }.sumOf { it.amount.toLong() }).replace(",", ".")}",
+                        color = errorRed, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                    )
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Total Pemasukan Lain2", color = textMain, fontSize = 14.sp)
-                    Text("-", color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Rp. ${String.format("%,d", pembukuanList.filter { it.type.lowercase() == "pemasukan" }.sumOf { it.amount.toLong() }).replace(",", ".")}",
+                        color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                    )
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Total Setor", color = textMain, fontSize = 14.sp)
-                    Text("-", color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Rp. ${String.format("%,d", pembukuanList.filter { it.type.lowercase() == "setor" }.sumOf { it.amount.toLong() }).replace(",", ".")}",
+                        color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -178,20 +277,65 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                 }
             }
             
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
-            Text(
-                text = "Tidak ada Data",
-                color = textSecondary,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = primaryBlue)
+                }
+            } else if (pembukuanList.isEmpty()) {
+                Text(
+                    text = "Tidak ada Data",
+                    color = textSecondary,
+                    modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(pembukuanList.filter { it.description?.contains(searchQuery, ignoreCase = true) == true || it.category?.contains(searchQuery, ignoreCase = true) == true || it.type.contains(searchQuery, ignoreCase = true) }) { item ->
+                        PembukuanListItem(
+                            item = item,
+                            bgMain = bgMain,
+                            textMain = textMain,
+                            textSecondary = textSecondary,
+                            onEdit = {
+                                editingItem = item
+                                tipePembukuan = when (item.type.lowercase()) {
+                                    "pemasukan" -> "Pemasukan"
+                                    "pengeluaran" -> "Pengeluaran"
+                                    "setor" -> "Setor"
+                                    else -> "Pilih Tipe Pembukuan"
+                                }
+                                keterangan = item.description ?: ""
+                                jumlah = item.amount.toLong().toString()
+                                showAddDialog = true
+                            },
+                            onDelete = {
+                                coroutineScope.launch {
+                                    try {
+                                        ApiClient.apiService.deletePembukuan(item.id)
+                                        pembukuanList = ApiClient.apiService.getAllPembukuan()
+                                        android.widget.Toast.makeText(context, "Data berhasil dihapus", android.widget.Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        android.widget.Toast.makeText(context, "Gagal menghapus data", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 
     if (showAddDialog) {
         AlertDialog(
-            onDismissRequest = { showAddDialog = false },
+            onDismissRequest = { showAddDialog = false; editingItem = null; keterangan = ""; jumlah = ""; tipePembukuan = "Pilih Tipe Pembukuan" },
             containerColor = bgMain,
             title = {
                 Text(
@@ -272,43 +416,54 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                     
                     Button(
                         onClick = { 
+                            if (isSaving) return@Button
+                            isSaving = true
                             coroutineScope.launch {
                                 try {
-                                    val amountStr = jumlah.replace(Regex("[^0-9]"), "")
-                                    val amountDouble = amountStr.toDoubleOrNull() ?: 0.0
+                                    val amountLong = jumlah.replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                                    val amountDouble = amountLong.toDouble()
                                     var type = "pemasukan"
-                                    var category = "Lain-lain"
+                                    var category = editingItem?.category ?: "Lain-lain"
                                     
                                     if (tipePembukuan == "Pemasukan") {
                                         type = "pemasukan"
-                                        category = "Pemasukkan Lain2"
+                                        if (editingItem == null) category = "Pemasukkan Lain2"
                                     } else if (tipePembukuan == "Pengeluaran") {
                                         type = "pengeluaran"
-                                        category = "Lain-lain"
+                                        if (editingItem == null) category = "Lain-lain"
                                     } else if (tipePembukuan == "Setor") {
                                         type = "setor"
-                                        category = "Lain-lain"
+                                        if (editingItem == null) category = "Lain-lain"
                                     }
                                     
-                                    ApiClient.apiService.addPembukuan(
-                                        com.example.ui.data.remote.PembukuanRequest(
-                                            type, category, amountDouble, keterangan
-                                        )
+                                    val req = com.example.ui.data.remote.PembukuanRequest(
+                                        type, category, amountDouble, keterangan
                                     )
+                                    if (editingItem != null) {
+                                        ApiClient.apiService.updatePembukuan(editingItem!!.id, req)
+                                    } else {
+                                        ApiClient.apiService.addPembukuan(req)
+                                    }
+                                    pembukuanList = ApiClient.apiService.getAllPembukuan()
                                     showAddDialog = false
+                                    editingItem = null
                                     keterangan = ""
                                     jumlah = ""
                                     tipePembukuan = "Pilih Tipe Pembukuan"
                                 } catch (e: Exception) {
                                     e.printStackTrace()
+                                    android.widget.Toast.makeText(context, "Gagal menyimpan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    isSaving = false
                                 }
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF)),
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(24.dp),
+                        enabled = !isSaving
                     ) {
-                        Text("SIMPAN", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(if (isSaving) "MENYIMPAN..." else "SIMPAN", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             },

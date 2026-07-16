@@ -1,0 +1,15 @@
+import re
+
+with open("VPS/server.js", "r") as f:
+    content = f.read()
+
+content = content.replace("await client.rosApi.write('/ppp/secret/disable', [\n                `=.id=${realId}`\n            ]);", "await client.rosApi.write('/ppp/secret/set', [\n                `=.id=${realId}`,\n                `=disabled=yes`\n            ]);")
+
+content = content.replace("await client.rosApi.write('/ppp/secret/disable', [\n            `=.id=${realId}`\n        ]);", "await client.rosApi.write('/ppp/secret/set', [\n            `=.id=${realId}`,\n            `=disabled=yes`\n        ]);")
+
+content = content.replace("await client.rosApi.write('/ppp/secret/enable', [\n            `=.id=${realId}`\n        ]);", "await client.rosApi.write('/ppp/secret/set', [\n            `=.id=${realId}`,\n            `=disabled=no`\n        ]);")
+
+
+with open("VPS/server.js", "w") as f:
+    f.write(content)
+

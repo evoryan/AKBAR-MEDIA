@@ -12,6 +12,7 @@ interface ApiService {
 data class DashboardSummaryResponse(
     val totalCustomers: Int,
     val monthlyRevenue: Double,
+    val totalGlobalRevenue: Double = 0.0,
     val activePPPoE: Int,
     val activeHotspot: Int,
     val paidCustomers: Int,

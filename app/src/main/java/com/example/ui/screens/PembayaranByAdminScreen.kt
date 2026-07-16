@@ -12,6 +12,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
+import com.example.ui.data.remote.ApiClient
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,27 +51,53 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
     val currentUser by UserSession.currentUser.collectAsState()
     val warningYellow = Color(0xFFFFC107)
 
-    val dummyData = listOf(
-        PembayaranData("Boseri", "B", Color(0xFFD1C4E9), "09896321543", "09 Jul 2026 - 07:07:00", "Jul 2026", "Rp. 100.000", "Area Kluwihan Jimbaran", "Admin By Purwoto"),
-        PembayaranData("Taplikan", "T", Color(0xFFD1C4E9), "6.28134E12", "08 Jul 2026 - 19:09:47", "Jul 2026", "Rp. 100.000", "Area Kluwihan Jimbaran", "Admin By Purwoto"),
-        PembayaranData("Kandab", "K", Color(0xFFD1C4E9), "6.28134E12", "08 Jul 2026 - 19:09:42", "Jul 2026", "Rp. 100.000", "Area Kluwihan Jimbaran", "Admin By Purwoto"),
-        PembayaranData("Mahkun", "M", Color(0xFFD1C4E9), "6.28134E12", "08 Jul 2026 - 18:09:17", "Jul 2026", "Rp. 100.000", "Area Kluwihan Jimbaran", "Admin By Purwoto"),
-        PembayaranData("Wahyudin", "W", Color(0xFFD1C4E9), "081234567890", "08 Jul 2026 - 07:08:47", "Jul 2026", "Rp. 100.000", "Area Talun", "Admin By Budi Talun"),
-        PembayaranData("Sutris rt 01", "S", Color(0xFFD1C4E9), "085012345678", "08 Jul 2026 - 07:08:36", "Jul 2026", "Rp. 100.000", "Area Kluwihan Jimbaran", "Admin By Purwoto"),
-        PembayaranData("Toin", "T", Color(0xFFD1C4E9), "6289525686652", "07 Jul 2026 - 19:16:47", "Jul 2026", "Rp. 100.000", "Area Talun", "Admin By Budi Talun"),
-        PembayaranData("Turmi", "T", Color(0xFFD1C4E9), "089870339635", "07 Jul 2026 - 18:23:45", "Jul 2026", "Rp. 100.000", "Area Talun", "Admin By Budi Talun")
-    )
-
+    var realData by remember { mutableStateOf<List<PembayaranData>>(emptyList()) }
     var filterDari by remember { mutableStateOf("hari ini") }
     var filterSampai by remember { mutableStateOf("hari ini") }
-    var filterAdmin by remember { mutableStateOf(if (currentUser?.role == UserRole.COLLECTOR) currentUser?.name ?: "All" else "All") }
+    var filterAdmin by remember { mutableStateOf(if (currentUser?.role == UserRole.COLLECTOR) "Admin By ${currentUser?.name}" else "All") }
     var filterArea by remember { mutableStateOf("All") }
+    var displayedData by remember { mutableStateOf<List<PembayaranData>>(emptyList()) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    LaunchedEffect(Unit) {
+        try {
+            val res = ApiClient.apiService.getPembayaranHistory()
+            realData = res.map { item ->
+                PembayaranData(
+                    name = item.customer_name ?: "Unknown",
+                    initial = (item.customer_name ?: "U").take(1).uppercase(),
+                    initialBg = Color(0xFFD1C4E9),
+                    phone = item.phone ?: "-",
+                    payDate = item.created_at?.take(19)?.replace("T", " ") ?: "",
+                    payMonth = "${item.bulan} ${item.tahun}",
+                    amount = "Rp. ${String.format("%,d", (item.amount ?: 0.0).toLong()).replace(",", ".")}",
+                    area = item.area ?: "-",
+                    admin = "Admin By ${item.admin_name ?: "Unknown"}"
+                )
+            }
+            // Auto apply default filter on load
+            displayedData = realData.filter { item ->
+                (filterAdmin == "All" || item.admin == filterAdmin) &&
+                (filterArea == "All" || item.area == filterArea)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
-    var displayedData by remember { mutableStateOf(dummyData) }
+
 
     val filterOptionsDariSampai = listOf("hari ini", "kemarin", "minggu ini", "bulan ini")
-    val filterOptionsAdmin = if (currentUser?.role == UserRole.COLLECTOR) listOf(currentUser?.name ?: "All") else listOf("All") + dummyData.map { it.admin }.distinct()
-    val filterOptionsArea = listOf("All") + dummyData.map { it.area }.distinct()
+    val filterOptionsAdmin by remember(realData, currentUser) {
+        derivedStateOf {
+            if (currentUser?.role == UserRole.COLLECTOR) listOf("Admin By ${currentUser?.name}") else listOf("All") + realData.map { it.admin }.distinct()
+        }
+    }
+    val filterOptionsArea by remember(realData) {
+        derivedStateOf {
+            listOf("All") + realData.map { it.area }.distinct()
+        }
+    }
 
     Scaffold(
         containerColor = bgMain,
@@ -135,7 +163,7 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                         Icon(Icons.Default.Info, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp).background(Color.White, CircleShape).padding(2.dp))
                         Button(
                             onClick = {
-                                displayedData = dummyData.filter { item ->
+                                displayedData = realData.filter { item ->
                                     (filterAdmin == "All" || item.admin == filterAdmin) &&
                                     (filterArea == "All" || item.area == filterArea)
                                 }

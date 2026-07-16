@@ -1,33 +1,49 @@
 import re
 
-with open('app/src/main/java/com/example/ui/screens/CustomersScreen.kt', 'r') as f:
+with open("app/src/main/java/com/example/ui/screens/CustomersScreen.kt", "r") as f:
     content = f.read()
 
-# Make sure Toast is imported
-if "import android.widget.Toast" not in content:
-    content = content.replace("import androidx.compose.ui.unit.sp\n", "import androidx.compose.ui.unit.sp\nimport android.widget.Toast\nimport androidx.compose.ui.platform.LocalContext\n")
+# 1. Update CustomerItem signature
+content = content.replace(
+    "fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit) {",
+    "fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit, onIsolirCustomer: (Customer) -> Unit = {}) {"
+)
 
-# Find the CustomerItem definition
-old_item_def = "fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit) {"
-new_item_def = """fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit) {
-    val context = LocalContext.current"""
-content = content.replace(old_item_def, new_item_def)
+# 2. Add Block icon for BELUM BAYAR
+icon_row = """                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (customer.status.contains("BELUM BAYAR", ignoreCase = true)) {
+                        IconButton(onClick = { onIsolirCustomer(customer) }) {
+                            Icon(androidx.compose.material.icons.Icons.Default.Block, contentDescription = "Isolir", tint = errorRed)
+                        }
+                    }
+                    IconButton"""
+content = content.replace(
+    """                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton""",
+    icon_row
+)
 
-# Add the edit icon
-old_icons = """                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { onDeleteCustomer(customer) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = errorRed)
-                    }
-                Box("""
-new_icons = """                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { Toast.makeText(context, "Fitur edit pelanggan akan segera hadir", Toast.LENGTH_SHORT).show() }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan)
-                    }
-                    IconButton(onClick = { onDeleteCustomer(customer) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = errorRed)
-                    }
-                Box("""
-content = content.replace(old_icons, new_icons)
+# 3. Handle onIsolirCustomer in the items list
+items_replacement = """                    CustomerItem(customer, onNavigateToCustomerDetail, onDeleteCustomer = { customerToDelete ->
+                        customerToDeleteState = customerToDelete
+                        showDeleteConfirm = true
+                    }, onIsolirCustomer = { customerToIsolir ->
+                        coroutineScope.launch {
+                            try {
+                                com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
+                                android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    })"""
+content = content.replace(
+    """                    CustomerItem(customer, onNavigateToCustomerDetail, onDeleteCustomer = { customerToDelete ->
+                        customerToDeleteState = customerToDelete
+                        showDeleteConfirm = true
+                    })""",
+    items_replacement
+)
 
-with open('app/src/main/java/com/example/ui/screens/CustomersScreen.kt', 'w') as f:
+with open("app/src/main/java/com/example/ui/screens/CustomersScreen.kt", "w") as f:
     f.write(content)

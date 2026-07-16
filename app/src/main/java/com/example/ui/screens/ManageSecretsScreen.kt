@@ -54,8 +54,10 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
     val successGreen = Color(0xFF00FF00)
 
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
     var currentFilter by remember { mutableStateOf(SecretFilter.ALL) }
+    var searchQuery by remember { mutableStateOf("") }
     
     val allSecrets = remember { mutableStateListOf<PPPoESecret>() }
     var networkError by remember { mutableStateOf<String?>(null) }
@@ -75,12 +77,14 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
     }
 
     val displayedSecrets = allSecrets.filter {
-        when (currentFilter) {
+        val matchesFilter = when (currentFilter) {
             SecretFilter.ALL -> true
             SecretFilter.ONLINE -> it.status == "Online"
             SecretFilter.OFFLINE -> it.status == "Offline"
             SecretFilter.DISABLED -> it.status == "Disabled"
         }
+        val matchesSearch = searchQuery.isBlank() || it.name.contains(searchQuery, ignoreCase = true)
+        matchesFilter && matchesSearch
     }
 
     val totalSecrets = allSecrets.size
@@ -171,6 +175,23 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(8.dp))
             
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Cari Secret...", color = textSecondary) },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = neonCyan,
+                    unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
+                    focusedTextColor = textMain,
+                    unfocusedTextColor = textMain,
+                    cursorColor = neonCyan
+                ),
+                shape = RoundedCornerShape(12.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "Daftar Secrets (${currentFilter.name})",
@@ -195,16 +216,37 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
                             successGreen = successGreen,
                             errorRed = errorRed,
                             onDisable = {
-                                val idx = allSecrets.indexOfFirst { it.id == secret.id }
-                                if (idx != -1) allSecrets[idx] = secret.copy(status = "Disabled")
+                                coroutineScope.launch {
+                                    try {
+                                        com.example.ui.data.remote.ApiClient.apiService.disableMikrotikSecret(areaId, mapOf("secretId" to secret.id))
+                                        val idx = allSecrets.indexOfFirst { it.id == secret.id }
+                                        if (idx != -1) allSecrets[idx] = secret.copy(status = "Disabled")
+                                    } catch(e: Exception) {
+                                        android.widget.Toast.makeText(context, "Gagal disable secret: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             },
                             onEnable = {
-                                val idx = allSecrets.indexOfFirst { it.id == secret.id }
-                                if (idx != -1) allSecrets[idx] = secret.copy(status = "Offline")
+                                coroutineScope.launch {
+                                    try {
+                                        com.example.ui.data.remote.ApiClient.apiService.enableMikrotikSecret(areaId, mapOf("secretId" to secret.id))
+                                        val idx = allSecrets.indexOfFirst { it.id == secret.id }
+                                        if (idx != -1) allSecrets[idx] = secret.copy(status = "Offline")
+                                    } catch(e: Exception) {
+                                        android.widget.Toast.makeText(context, "Gagal enable secret: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             },
                             onRemoveActive = {
-                                val idx = allSecrets.indexOfFirst { it.id == secret.id }
-                                if (idx != -1) allSecrets[idx] = secret.copy(status = "Offline", ipAddress = "", uptime = "")
+                                coroutineScope.launch {
+                                    try {
+                                        com.example.ui.data.remote.ApiClient.apiService.removeActiveMikrotikSecret(areaId, mapOf("secretName" to secret.name))
+                                        val idx = allSecrets.indexOfFirst { it.id == secret.id }
+                                        if (idx != -1) allSecrets[idx] = secret.copy(status = "Offline", ipAddress = "", uptime = "")
+                                    } catch(e: Exception) {
+                                        android.widget.Toast.makeText(context, "Gagal remove active: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                         )
                     }
