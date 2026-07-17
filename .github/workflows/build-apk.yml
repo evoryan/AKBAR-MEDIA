@@ -30,11 +30,16 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
-      # Mem-build APK mentah dengan konfigurasi Gradle yang sudah aman
+      # LANGKAH BARU: Membuat file debug.keystore otomatis agar validasi awal Gradle lolos
+      - name: Generate Dummy Debug Keystore
+        run: |
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
+      # Mem-build APK Release mentah
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      # Menandatangani APK mentah menggunakan GitHub Secrets Anda secara resmi
+      # Menandatangani APK menggunakan GitHub Secrets asli Anda
       - name: Sign Release APK
         uses: r0adkll/sign-android-release@v1
         id: sign_app
@@ -46,7 +51,7 @@ jobs:
           keyPassword: ${{ secrets.KEY_PASSWORD }}
           singleOutputFile: true
 
-      # Mengunggah APK Rilis Resmi yang aman dari konflik instalasi update
+      # Mengunggah APK Resmi hasil tanda tangan digital Anda
       - name: Upload Official Release APK
         uses: actions/upload-artifact@v4
         with:
