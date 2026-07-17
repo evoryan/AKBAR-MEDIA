@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch: # Memungkinkan build secara manual dari tab Actions
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,16 +18,15 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17' # Gunakan Java 17 sesuai dengan standar Gradle terbaru
+          java-version: '17'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+        with:
+          gradle-version: '9.3.1'
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: gradle assembleRelease
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
