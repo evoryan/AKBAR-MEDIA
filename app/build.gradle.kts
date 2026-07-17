@@ -31,9 +31,9 @@ android {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/akbarmedia-release.jks"
       storeFile = file(keystorePath)
-      storePassword = "password"
-      keyAlias = "upload"
-      keyPassword = "password"
+      storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "password"
+      keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
+      keyPassword = System.getenv("KEY_PASSWORD") ?: "password"
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
