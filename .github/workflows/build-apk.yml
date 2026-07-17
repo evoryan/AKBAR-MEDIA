@@ -3,8 +3,8 @@ name: Build Android APK
 on:
   push:
     branches:
-      - main  # Ganti ke master jika branch utama Anda bernama master
-  workflow_dispatch: # Memungkinkan Anda memicu build secara manual dari web GitHub
+      - main  # Sesuaikan jika branch utama Anda bernama master
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,12 +14,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. DIUBAH: Menggunakan JDK 20 agar sinkron dengan format Keystore Anda
-      - name: Setup JDK 20
+      # Menggunakan JDK 17 Resmi & Stabil
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '20'
+          java-version: '17'
 
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v2
@@ -30,12 +30,11 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x gradlew
 
-      # 2. DIUBAH: Mem-build APK versi Release (bukan debug)
+      # Mem-build APK mentah dengan konfigurasi Gradle yang sudah aman
       - name: Build Release APK
-        run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file="" -Pandroid.injected.signing.store.password="" -Pandroid.injected.signing.key.alias="" -Pandroid.injected.signing.key.password=""
+        run: ./gradlew assembleRelease
 
-
-      # 3. LANGKAH BARU: Menandatangani APK menggunakan 4 GitHub Secrets Anda
+      # Menandatangani APK mentah menggunakan GitHub Secrets Anda secara resmi
       - name: Sign Release APK
         uses: r0adkll/sign-android-release@v1
         id: sign_app
@@ -47,7 +46,7 @@ jobs:
           keyPassword: ${{ secrets.KEY_PASSWORD }}
           singleOutputFile: true
 
-      # 4. DIUBAH: Mengunggah file APK resmi hasil tanda tangan digital Anda
+      # Mengunggah APK Rilis Resmi yang aman dari konflik instalasi update
       - name: Upload Official Release APK
         uses: actions/upload-artifact@v4
         with:
