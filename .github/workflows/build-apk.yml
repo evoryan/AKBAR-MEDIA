@@ -1,5 +1,4 @@
 name: Build Android APK
-run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file="" -Pandroid.injected.signing.store.password="" -Pandroid.injected.signing.key.alias="" -Pandroid.injected.signing.key.password=""
 
 on:
   push:
@@ -33,7 +32,8 @@ jobs:
 
       # 2. DIUBAH: Mem-build APK versi Release (bukan debug)
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file="" -Pandroid.injected.signing.store.password="" -Pandroid.injected.signing.key.alias="" -Pandroid.injected.signing.key.password=""
+
 
       # 3. LANGKAH BARU: Menandatangani APK menggunakan 4 GitHub Secrets Anda
       - name: Sign Release APK
