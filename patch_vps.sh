@@ -1,1 +1,0 @@
-echo "Fixing VPS tables..."
