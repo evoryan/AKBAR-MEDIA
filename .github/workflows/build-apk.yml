@@ -51,6 +51,7 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+          buildToolsVersion: "35.0.0"
           singleOutputFile: true
 
       # Mengunggah APK Resmi hasil tanda tangan digital Anda
