@@ -41,14 +41,14 @@ jobs:
         env:
           GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
 
-      # LANGKAH BARU: Menghubungkan otomatis zipalign modern ke environment sistem cloud
+      # Menghubungkan otomatis zipalign modern ke environment sistem cloud
       - name: Setup Android Build Tools Path
         run: |
           LATEST_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
           echo "$LATEST_TOOLS" >> $GITHUB_PATH
           echo "Menggunakan Android Build Tools versi: $LATEST_TOOLS"
 
-      # Menandatangani APK menggunakan GitHub Secrets asli Anda
+      # Menandatangani APK menggunakan GitHub Secrets asli Anda (Hanya ada SATU id: sign_app di sini)
       - name: Sign Release APK
         uses: r0adkll/sign-android-release@v1.0.4
         id: sign_app
@@ -58,26 +58,6 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
-
-      # Mengunggah APK Resmi hasil tanda tangan digital Anda
-      - name: Upload Official Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Akbar-Media-Official-Release
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
-
-      # Menandatangani APK menggunakan GitHub Secrets asli Anda
-      - name: Sign Release APK
-        uses: r0adkll/sign-android-release@v1.0.4
-        id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-          buildToolsVersion: "35.0.0"
-          singleOutputFile: true
 
       # Mengunggah APK Resmi hasil tanda tangan digital Anda
       - name: Upload Official Release APK
