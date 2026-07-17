@@ -35,11 +35,11 @@ jobs:
         run: |
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-      # Mem-build APK Release dengan opsi headless untuk KSP
+      # Mem-build APK Release dengan isolasi JVM penuh agar KSP aman dari error grafis
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --no-daemon
         env:
-          GRADLE_OPTS: -Djava.awt.headless=true
+          GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=-Djava.awt.headless=true"
 
       # Menandatangani APK menggunakan GitHub Secrets asli Anda
       - name: Sign Release APK
