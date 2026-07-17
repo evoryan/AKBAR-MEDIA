@@ -29,7 +29,7 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/akbarmedia-release.jks"
       storeFile = file(keystorePath)
       storePassword = "password"
       keyAlias = "upload"
