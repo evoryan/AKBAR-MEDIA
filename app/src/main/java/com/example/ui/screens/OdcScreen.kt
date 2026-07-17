@@ -48,10 +48,16 @@ fun OdcScreen(onBack: () -> Unit) {
     val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0)
 
     var odcList by remember { mutableStateOf<List<com.example.ui.data.OdcItem>>(emptyList()) }
+    var areaList by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
+    var odpList by remember { mutableStateOf<List<com.example.ui.data.OdpItem>>(emptyList()) }
+    var rasioList by remember { mutableStateOf<List<com.example.ui.data.RasioItem>>(emptyList()) }
     LaunchedEffect(Unit) {
         try {
             val res = ApiClient.apiService.getOdcList()
             odcList = res
+            areaList = ApiClient.apiService.getAreas()
+            odpList = ApiClient.apiService.getOdpList()
+            rasioList = ApiClient.apiService.getRasioList()
         } catch(e: retrofit2.HttpException) {
                                 val errBody = e.response()?.errorBody()?.string()
                                 Log.e("OdcScreen", "HTTP Error: $errBody", e)
@@ -121,7 +127,7 @@ fun OdcScreen(onBack: () -> Unit) {
                                 Column {
                                     Text(item.name, color = textMain, fontWeight = FontWeight.Medium, fontSize = 16.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text(item.location, color = textSecondary, fontSize = 14.sp)
+                                    Text(item.location + " | Area: " + item.area, color = textSecondary, fontSize = 14.sp)
                                     if (item.portCount > 0) {
                                         Text("Port: ${item.portCount} | Input: ${item.portInput}", color = primaryBg, fontSize = 12.sp)
                                     }
@@ -175,6 +181,7 @@ fun OdcScreen(onBack: () -> Unit) {
 
     if (showDialog) {
         var name by remember { mutableStateOf(editItem?.name ?: "") }
+            var area by remember { mutableStateOf(editItem?.area ?: "") }
         var location by remember { mutableStateOf(editItem?.location ?: "") }
         var portCount by remember { mutableStateOf(editItem?.portCount?.toString() ?: "") }
         var portInput by remember { mutableStateOf(editItem?.portInput ?: "") }
@@ -211,6 +218,41 @@ fun OdcScreen(onBack: () -> Unit) {
                             unfocusedTextColor = textMain
                         )
                     )
+                    
+                    var areaExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedTextField(
+                            value = area,
+                            onValueChange = { area = it },
+                            label = { Text("Area") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryBg,
+                                unfocusedBorderColor = cardBorder,
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { areaExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Area")
+                                }
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = areaExpanded,
+                            onDismissRequest = { areaExpanded = false },
+                            modifier = Modifier.background(cardBg)
+                        ) {
+                            areaList.forEach { a ->
+                                DropdownMenuItem(
+                                    text = { Text(a.name, color = textMain) },
+                                    onClick = {
+                                        area = a.name
+                                        areaExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     var portCountExpanded by remember { mutableStateOf(false) }
                     val portOptions = listOf("1:2" to "2", "1:4" to "4", "1:8" to "8", "1:16" to "16")
                     
@@ -260,7 +302,10 @@ fun OdcScreen(onBack: () -> Unit) {
                             }
                         }
                     }
+                    
                     var portInputExpanded by remember { mutableStateOf(false) }
+                    val sumberOptions = odcList.map { it.name to it.redamanOut } + odpList.map { it.name to it.redamanOut } + rasioList.flatMap { listOf(it.name + " (Out A)" to it.redamanOutA, it.name + " (Out B)" to it.redamanOutB) }
+                    
                     Box {
                         OutlinedTextField(
                             value = portInput,
@@ -274,21 +319,35 @@ fun OdcScreen(onBack: () -> Unit) {
                             ),
                             trailingIcon = {
                                 IconButton(onClick = { portInputExpanded = true }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih ODC")
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Sumber")
                                 }
                             }
                         )
                         DropdownMenu(
                             expanded = portInputExpanded,
                             onDismissRequest = { portInputExpanded = false },
-                            modifier = Modifier.background(cardBg)
+                            modifier = Modifier.background(cardBg).heightIn(max = 250.dp)
                         ) {
-                            odcList.forEach { odc ->
+                            sumberOptions.forEach { option ->
                                 DropdownMenuItem(
-                                    text = { Text(odc.name, color = textMain) },
+                                    text = { Text(option.first, color = textMain) },
                                     onClick = {
-                                        portInput = odc.name
+                                        portInput = option.first
+                                        redamanIn = option.second
                                         portInputExpanded = false
+                                        
+                                        // Auto-calculate redamanOut based on new redamanIn and portCount
+                                        val rIn = option.second.toFloatOrNull()
+                                        val rSplitter = when (portCount) {
+                                            "2" -> 4.0f
+                                            "4" -> 7.2f
+                                            "8" -> 10.5f
+                                            "16" -> 13.8f
+                                            else -> 0.0f
+                                        }
+                                        if (rIn != null && rSplitter > 0.0f) {
+                                            redamanOut = String.format(java.util.Locale.US, "%.2f", rIn - rSplitter)
+                                        }
                                     }
                                 )
                             }
@@ -340,7 +399,8 @@ fun OdcScreen(onBack: () -> Unit) {
                                     portCount = portCount.toIntOrNull() ?: 0,
                                     portInput = portInput,
                                     redamanIn = redamanIn,
-                                    redamanOut = redamanOut
+                                    redamanOut = redamanOut,
+                                    area = area
                                 )
                                 ApiClient.apiService.addOdc(newItem)
                                 odcList = ApiClient.apiService.getOdcList()
@@ -364,7 +424,8 @@ fun OdcScreen(onBack: () -> Unit) {
                                     portCount = portCount.toIntOrNull() ?: 0,
                                     portInput = portInput,
                                     redamanIn = redamanIn,
-                                    redamanOut = redamanOut
+                                    redamanOut = redamanOut,
+                                    area = area
                                 )
                                 ApiClient.apiService.updateOdc(updatedItem.id, updatedItem)
                                 odcList = ApiClient.apiService.getOdcList()

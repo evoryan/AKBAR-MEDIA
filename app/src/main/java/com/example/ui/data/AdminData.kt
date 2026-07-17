@@ -13,6 +13,7 @@ data class AdminUser(val id: String, var name: String, var username: String, var
 
 object UserSession {
     val currentUser = MutableStateFlow<AdminUser?>(null)
+    var hasCheckedForUpdate = false
     
     fun hasDeletePrivilege(): Boolean {
         return currentUser.value?.role == UserRole.SUPER_ADMIN

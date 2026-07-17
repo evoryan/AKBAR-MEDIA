@@ -7,5 +7,6 @@ data class RasioItem(
     val size: String = "",
     @com.squareup.moshi.Json(name = "redaman_in") val redamanIn: String = "",
     @com.squareup.moshi.Json(name = "redaman_out_a") val redamanOutA: String = "",
-    @com.squareup.moshi.Json(name = "redaman_out_b") val redamanOutB: String = ""
+    @com.squareup.moshi.Json(name = "redaman_out_b") val redamanOutB: String = "",
+    val area: String = ""
 )

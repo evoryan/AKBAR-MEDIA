@@ -812,11 +812,24 @@ app.get('/api/rasio', async (req, res) => {
 
 app.post('/api/rasio', async (req, res) => {
     try {
-        const { name, location, size, redaman_in, redaman_out_a, redaman_out_b } = req.body;
-        const [result] = await req.pool.query(
-            'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '']
-        );
+        const { name, location, size, redaman_in, redaman_out_a, redaman_out_b, area } = req.body;
+        let result;
+        try {
+            [result] = await req.pool.query(
+                'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '']
+            );
+        } catch(e) {
+            if (e.message && e.message.includes("Unknown column")) {
+                await req.pool.query(`ALTER TABLE rasio ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                [result] = await req.pool.query(
+                    'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '']
+                );
+            } else {
+                throw e;
+            }
+        }
         res.json({ message: "Rasio ditambahkan", id: result.insertId.toString() });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan server" });
@@ -826,11 +839,23 @@ app.post('/api/rasio', async (req, res) => {
 app.put('/api/rasio/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, location, size, redaman_in, redaman_out_a, redaman_out_b } = req.body;
-        await req.pool.query(
-            'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ? WHERE id = ?',
-            [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', id]
-        );
+        const { name, location, size, redaman_in, redaman_out_a, redaman_out_b, area } = req.body;
+        try {
+            await req.pool.query(
+                'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ?, area = ? WHERE id = ?',
+                [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', id]
+            );
+        } catch(e) {
+            if (e.message && e.message.includes("Unknown column")) {
+                await req.pool.query(`ALTER TABLE rasio ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(
+                    'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ?, area = ? WHERE id = ?',
+                    [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', id]
+                );
+            } else {
+                throw e;
+            }
+        }
         res.json({ message: "Rasio diupdate" });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan server" });
@@ -956,20 +981,20 @@ app.delete('/api/inventory/:id', async (req, res) => {
 app.put('/api/odc/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, location, portCount, portInput, redaman_in, redaman_out } = req.body;
+        const { name, location, portCount, portInput, redaman_in, redaman_out, area } = req.body;
         const parsedPortCount = parseInt(portCount) || 0;
         try {
             await req.pool.query(
-                'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
-                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
+                'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ?, area = ? WHERE id = ?',
+                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '', id]
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
                 await req.pool.query(
-                    'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
-                    [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
+                    'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ?, area = ? WHERE id = ?',
+                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '', id]
                 );
             } else {
                 throw e;
@@ -995,7 +1020,7 @@ app.put('/api/odp/:id', async (req, res) => {
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
                 await req.pool.query(
                     'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
                     [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
@@ -1412,21 +1437,21 @@ app.post('/api/areas', async (req, res) => {
 
 app.post('/api/odc', async (req, res) => {
     try {
-        const { name, location, portCount, portInput, redaman_in, redaman_out } = req.body;
+        const { name, location, portCount, portInput, redaman_in, redaman_out, area } = req.body;
         const parsedPortCount = parseInt(portCount) || 0;
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO odc_list (name, location, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
-                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
+                'INSERT INTO odc_list (name, location, portCount, portInput, redaman_in, redaman_out, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '']
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
                 [result] = await req.pool.query(
-                    'INSERT INTO odc_list (name, location, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
-                    [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
+                    'INSERT INTO odc_list (name, location, portCount, portInput, redaman_in, redaman_out, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '']
                 );
             } else {
                 throw e;
@@ -1452,7 +1477,7 @@ app.post('/api/odp', async (req, res) => {
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
                 [result] = await req.pool.query(
                     'INSERT INTO odp_list (name, odcId, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
                     [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']

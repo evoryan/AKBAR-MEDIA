@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS odc_list (
     portCount INT DEFAULT 0,
     portInput VARCHAR(100) DEFAULT '',
     redaman_in VARCHAR(50) DEFAULT '',
-    redaman_out VARCHAR(50) DEFAULT ''
+    redaman_out VARCHAR(50) DEFAULT '',
+    area VARCHAR(100) DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS odp_list (
@@ -33,7 +34,8 @@ CREATE TABLE IF NOT EXISTS odp_list (
     portInput VARCHAR(100) DEFAULT '',
     redaman_in VARCHAR(50) DEFAULT '',
     redaman_out VARCHAR(50) DEFAULT '',
-    FOREIGN KEY (odcId) REFERENCES odc_list(id) ON DELETE CASCADE
+    area VARCHAR(100) DEFAULT ''
+    
 );
 
 CREATE TABLE IF NOT EXISTS rasio (
@@ -43,7 +45,8 @@ CREATE TABLE IF NOT EXISTS rasio (
     size VARCHAR(50),
     redaman_in VARCHAR(50),
     redaman_out_a VARCHAR(50),
-    redaman_out_b VARCHAR(50)
+    redaman_out_b VARCHAR(50),
+    area VARCHAR(100) DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS customers (

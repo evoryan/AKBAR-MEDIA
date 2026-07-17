@@ -44,6 +44,8 @@ fun JaringanScreen(onBack: () -> Unit) {
     var odpList by remember { mutableStateOf<List<OdpItem>>(emptyList()) }
     var rasioList by remember { mutableStateOf<List<RasioItem>>(emptyList()) }
     var customerList by remember { mutableStateOf<List<Customer>>(emptyList()) }
+    var areaList by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
+    var filterArea by remember { mutableStateOf("All") }
     var isLoading by remember { mutableStateOf(true) }
     
     var searchQuery by remember { mutableStateOf("") }
@@ -53,6 +55,7 @@ fun JaringanScreen(onBack: () -> Unit) {
             odcList = ApiClient.apiService.getOdcList()
             odpList = ApiClient.apiService.getOdpList()
             customerList = ApiClient.apiService.getCustomers()
+            areaList = ApiClient.apiService.getAreas()
         } catch (e: Exception) {
             Toast.makeText(context, "Gagal memuat data jaringan", Toast.LENGTH_SHORT).show()
         }
@@ -99,6 +102,47 @@ fun JaringanScreen(onBack: () -> Unit) {
                     }
                 }
                 
+                                // Filter Area
+                item {
+                    val filterOptionsArea = listOf("All") + areaList.map { it.name }.distinct()
+                    var filterAreaExpanded by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = filterArea,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Filter by Area", color = textSecondary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = { filterAreaExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Area", tint = textSecondary)
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryBg, unfocusedBorderColor = cardBorder,
+                                focusedTextColor = textMain, unfocusedTextColor = textMain,
+                                focusedContainerColor = cardBg, unfocusedContainerColor = cardBg
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        DropdownMenu(
+                            expanded = filterAreaExpanded,
+                            onDismissRequest = { filterAreaExpanded = false },
+                            modifier = Modifier.background(cardBg).fillMaxWidth(0.9f)
+                        ) {
+                            filterOptionsArea.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option, color = textMain) },
+                                    onClick = {
+                                        filterArea = option
+                                        filterAreaExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                
                 // Form Pencarian
                 item {
                     OutlinedTextField(
@@ -117,9 +161,9 @@ fun JaringanScreen(onBack: () -> Unit) {
                     )
                 }
                 
-                val filteredOdc = odcList.filter { it.name.contains(searchQuery, true) || it.location.contains(searchQuery, true) }
-                val filteredOdp = odpList.filter { it.name.contains(searchQuery, true) } // wait, odpItem doesn't have location directly? Let's check OdcOdpData.kt! Ah odp doesn't have location, it just has odcId.
-                val filteredRasio = rasioList.filter { it.name.contains(searchQuery, true) || it.location.contains(searchQuery, true) }
+                val filteredOdc = odcList.filter { (filterArea == "All" || it.area == filterArea) && (it.name.contains(searchQuery, true) || it.location.contains(searchQuery, true)) }
+                val filteredOdp = odpList.filter { (filterArea == "All" || it.area == filterArea) && (it.name.contains(searchQuery, true)) } // wait, odpItem doesn't have location directly? Let's check OdcOdpData.kt! Ah odp doesn't have location, it just has odcId.
+                val filteredRasio = rasioList.filter { (filterArea == "All" || it.area == filterArea) && (it.name.contains(searchQuery, true) || it.location.contains(searchQuery, true)) }
                 
                 if (filteredOdc.isNotEmpty()) {
                     item { Text("Data ODC", color = primaryBg, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
@@ -188,7 +232,8 @@ fun ExpandableOdcItem(odc: OdcItem, usedOdps: List<OdpItem>, cardBg: Color, text
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.HorizontalDivider(color = cardBorder)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Lokasi: ${odc.location}", color = textSecondary, fontSize = 14.sp)
+                Text("Lokasi: ${odc.location} | Area: ${odc.area}", color = textSecondary, fontSize = 14.sp)
+                Text("Sumber Input: ${odc.portInput}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman In: ${odc.redamanIn}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman Out: ${odc.redamanOut}", color = textSecondary, fontSize = 14.sp)
                 
@@ -232,7 +277,8 @@ fun ExpandableOdpItem(odp: OdpItem, odc: OdcItem?, users: List<Customer>, cardBg
                 androidx.compose.material3.HorizontalDivider(color = cardBorder)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Induk ODC: ${odc?.name ?: "Unknown"}", color = textSecondary, fontSize = 14.sp)
-                Text("Lokasi: ${odc?.location ?: "-"}", color = textSecondary, fontSize = 14.sp)
+                Text("Lokasi: ${odc?.location ?: "-"} | Area: ${odp.area}", color = textSecondary, fontSize = 14.sp)
+                Text("Sumber Input: ${odp.portInput}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman In: ${odp.redamanIn}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman Out: ${odp.redamanOut}", color = textSecondary, fontSize = 14.sp)
                 
@@ -275,7 +321,7 @@ fun ExpandableRasioItem(rasio: RasioItem, cardBg: Color, textMain: Color, textSe
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.HorizontalDivider(color = cardBorder)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Lokasi: ${rasio.location}", color = textSecondary, fontSize = 14.sp)
+                Text("Lokasi: ${rasio.location} | Area: ${rasio.area}", color = textSecondary, fontSize = 14.sp)
                 Text("Ukuran Rasio: ${rasio.size}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman A: ${rasio.redamanOutA}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman B: ${rasio.redamanOutB}", color = textSecondary, fontSize = 14.sp)

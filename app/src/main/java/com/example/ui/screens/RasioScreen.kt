@@ -39,6 +39,9 @@ fun RasioScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var rasioList by remember { mutableStateOf<List<RasioItem>>(emptyList()) }
+    var areaList by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
+    var odcList by remember { mutableStateOf<List<com.example.ui.data.OdcItem>>(emptyList()) }
+    var odpList by remember { mutableStateOf<List<com.example.ui.data.OdpItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showDialog by remember { mutableStateOf(false) }
     var editItem by remember { mutableStateOf<RasioItem?>(null) }
@@ -46,6 +49,9 @@ fun RasioScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         try {
             rasioList = ApiClient.apiService.getRasioList()
+            areaList = ApiClient.apiService.getAreas()
+            odcList = ApiClient.apiService.getOdcList()
+            odpList = ApiClient.apiService.getOdpList()
         } catch (e: Exception) {
             Toast.makeText(context, "Gagal memuat rasio", Toast.LENGTH_SHORT).show()
         } finally {
@@ -105,7 +111,7 @@ fun RasioScreen(onBack: () -> Unit) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(item.name, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text("Lokasi: ${item.location}", color = textSecondary, fontSize = 12.sp)
+                                Text("Lokasi: ${item.location} | Area: ${item.area}", color = textSecondary, fontSize = 12.sp)
                                 Text("Ukuran: ${item.size}", color = textSecondary, fontSize = 12.sp)
                                 Text("In: ${item.redamanIn} | Out A: ${item.redamanOutA} | Out B: ${item.redamanOutB}", color = textSecondary, fontSize = 12.sp)
                             }
@@ -136,6 +142,7 @@ fun RasioScreen(onBack: () -> Unit) {
     
     if (showDialog) {
         var name by remember { mutableStateOf(editItem?.name ?: "") }
+            var area by remember { mutableStateOf(editItem?.area ?: "") }
         var location by remember { mutableStateOf(editItem?.location ?: "") }
         var size by remember { mutableStateOf(editItem?.size ?: "") }
         var redamanIn by remember { mutableStateOf(editItem?.redamanIn ?: "") }
@@ -168,6 +175,41 @@ fun RasioScreen(onBack: () -> Unit) {
                             focusedTextColor = textMain, unfocusedTextColor = textMain
                         )
                     )
+                    
+                    var areaExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedTextField(
+                            value = area,
+                            onValueChange = { area = it },
+                            label = { Text("Area") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryBg,
+                                unfocusedBorderColor = cardBorder,
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { areaExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Area")
+                                }
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = areaExpanded,
+                            onDismissRequest = { areaExpanded = false },
+                            modifier = Modifier.background(cardBg)
+                        ) {
+                            areaList.forEach { a ->
+                                DropdownMenuItem(
+                                    text = { Text(a.name, color = textMain) },
+                                    onClick = {
+                                        area = a.name
+                                        areaExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     var sizeExpanded by remember { mutableStateOf(false) }
                     val sizeOptions = listOf(
                         "01:99" to Pair(20.0f, 0.05f),
@@ -230,6 +272,45 @@ fun RasioScreen(onBack: () -> Unit) {
                             }
                         }
                     }
+                    
+                    var sumberPort by remember { mutableStateOf("") }
+                    var sumberPortExpanded by remember { mutableStateOf(false) }
+                    val sumberOptions = odcList.map { it.name to it.redamanOut } + odpList.map { it.name to it.redamanOut } + rasioList.flatMap { listOf(it.name + " (Out A)" to it.redamanOutA, it.name + " (Out B)" to it.redamanOutB) }
+                    
+                    Box {
+                        OutlinedTextField(
+                            value = sumberPort,
+                            onValueChange = { sumberPort = it },
+                            label = { Text("Sumber Port Input") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryBg,
+                                unfocusedBorderColor = cardBorder,
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { sumberPortExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Sumber")
+                                }
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = sumberPortExpanded,
+                            onDismissRequest = { sumberPortExpanded = false },
+                            modifier = Modifier.background(cardBg).heightIn(max = 250.dp)
+                        ) {
+                            sumberOptions.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.first, color = textMain) },
+                                    onClick = {
+                                        sumberPort = option.first
+                                        redamanIn = option.second
+                                        sumberPortExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         value = redamanIn,
                         onValueChange = { 
@@ -279,8 +360,9 @@ fun RasioScreen(onBack: () -> Unit) {
                         size = size,
                         redamanIn = redamanIn,
                         redamanOutA = redamanOutA,
-                        redamanOutB = redamanOutB
-                    )
+                        redamanOutB = redamanOutB,
+                                    area = area
+                                )
                     coroutineScope.launch {
                         try {
                             if (editItem == null) {
@@ -289,6 +371,9 @@ fun RasioScreen(onBack: () -> Unit) {
                                 ApiClient.apiService.updateRasio(newItem.id, newItem)
                             }
                             rasioList = ApiClient.apiService.getRasioList()
+            areaList = ApiClient.apiService.getAreas()
+            odcList = ApiClient.apiService.getOdcList()
+            odpList = ApiClient.apiService.getOdpList()
                             showDialog = false
                         } catch (e: Exception) {
                             Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()

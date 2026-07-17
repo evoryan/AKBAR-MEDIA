@@ -1,4 +1,5 @@
 package com.example.ui.screens
+import kotlinx.coroutines.launch
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,12 +49,35 @@ fun DashboardScreen(
     val currentUser by UserSession.currentUser.collectAsState()
 
     
-    var selectedMonth by remember { mutableStateOf("Agustus") }
-    var selectedYear by remember { mutableStateOf("2026") }
+    val mContext = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val currentLocalDate = java.time.LocalDate.now()
+    val monthNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    val currentMonthName = monthNames.getOrElse(currentLocalDate.monthValue - 1) { "Agustus" }
+    var selectedMonth by remember { mutableStateOf(currentMonthName) }
+    var selectedYear by remember { mutableStateOf(currentLocalDate.year.toString()) }
     var expandedMonth by remember { mutableStateOf(false) }
     var expandedYear by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            if (!UserSession.hasCheckedForUpdate) {
+                UserSession.hasCheckedForUpdate = true
+                try {
+                    val currentVersion = mContext.packageManager.getPackageInfo(mContext.packageName, 0).versionName ?: "1.0.0"
+                    val api = com.example.data.GithubApiService.create()
+                    val release = api.getLatestRelease("evoryan", "AKBAR-MEDIA")
+                    val latestVersion = release.tag_name.removePrefix("v")
+                    val currVerNum = currentVersion.removePrefix("v")
+                    if (latestVersion != currVerNum) {
+                        android.widget.Toast.makeText(mContext, "Update tersedia: ${release.name}", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    // Ignore silent fail
+                }
+            }
+        }
+
         viewModel.fetchDashboardSummary()
     }
 
@@ -94,13 +118,14 @@ fun DashboardScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                val context = LocalContext.current
+                val mContext = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(com.example.ui.data.SettingsManager.companyName, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = { 
                         viewModel.fetchDashboardSummary()
-                        Toast.makeText(context, "Refreshing data...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(mContext, "Refreshing data...", Toast.LENGTH_SHORT).show()
                     }, modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
                     }
