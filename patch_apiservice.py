@@ -1,28 +1,22 @@
 import re
 
-with open("app/src/main/java/com/example/ui/data/remote/ApiService.kt", "r") as f:
+with open('app/src/main/java/com/example/ui/data/remote/ApiService.kt', 'r') as f:
     content = f.read()
 
-target = """    @POST("api/mikrotik/secrets/{id}")
-    suspend fun addMikrotikSecret(@Path("id") id: String, @Body request: Map<String, String>): ApiResponse"""
+if "import com.example.ui.data.RasioItem" not in content:
+    content = content.replace("import com.example.ui.data.OdcItem", "import com.example.ui.data.OdcItem\nimport com.example.ui.data.RasioItem")
 
-rep = """    @POST("api/mikrotik/secrets/{id}")
-    suspend fun addMikrotikSecret(@Path("id") id: String, @Body request: Map<String, String>): ApiResponse
+if "fun getRasioList" not in content:
+    content = content.replace("suspend fun getOdcList(): List<OdcItem>", "suspend fun getOdcList(): List<OdcItem>\n    @GET(\"api/rasio\")\n    suspend fun getRasioList(): List<RasioItem>")
 
-    @POST("api/mikrotik/secrets/{id}/disable")
-    suspend fun disableMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse
-    
-    @POST("api/mikrotik/secrets/{id}/enable")
-    suspend fun enableMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse
-    
-    @POST("api/mikrotik/secrets/{id}/remove-active")
-    suspend fun removeActiveMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse"""
+if "fun addRasio" not in content:
+    content = content.replace("suspend fun addOdc(@Body item: com.example.ui.data.OdcItem): ApiResponse", "suspend fun addOdc(@Body item: com.example.ui.data.OdcItem): ApiResponse\n    @POST(\"api/rasio\")\n    suspend fun addRasio(@Body item: com.example.ui.data.RasioItem): ApiResponse")
 
-if target in content:
-    content = content.replace(target, rep)
-    with open("app/src/main/java/com/example/ui/data/remote/ApiService.kt", "w") as f:
-        f.write(content)
-    print("Patched successfully")
-else:
-    print("Target not found")
+if "fun updateRasio" not in content:
+    content = content.replace("suspend fun updateOdc(@Path(\"id\") id: String, @Body item: com.example.ui.data.OdcItem): ApiResponse", "suspend fun updateOdc(@Path(\"id\") id: String, @Body item: com.example.ui.data.OdcItem): ApiResponse\n    @PUT(\"api/rasio/{id}\")\n    suspend fun updateRasio(@Path(\"id\") id: String, @Body item: com.example.ui.data.RasioItem): ApiResponse")
 
+if "fun deleteRasio" not in content:
+    content = content.replace("suspend fun deleteOdc(@Path(\"id\") id: String)", "suspend fun deleteOdc(@Path(\"id\") id: String)\n    @DELETE(\"api/rasio/{id}\")\n    suspend fun deleteRasio(@Path(\"id\") id: String)")
+
+with open('app/src/main/java/com/example/ui/data/remote/ApiService.kt', 'w') as f:
+    f.write(content)

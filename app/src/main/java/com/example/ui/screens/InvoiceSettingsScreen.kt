@@ -80,11 +80,12 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
             Text("Preview Invoice", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                val currentMonthName = remember { java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("id", "ID")).format(java.util.Date()) }
                 com.example.ui.components.ThermalInvoiceView(
                     headerText = headerText,
                     footerText = footerText,
                     customer = null,
-                    months = "1 Bulan",
+                    months = currentMonthName,
                     totalAmount = "Rp 150.000"
                 )
             }

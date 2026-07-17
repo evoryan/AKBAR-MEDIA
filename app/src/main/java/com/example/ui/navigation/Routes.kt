@@ -112,3 +112,8 @@ object BackupRestoreRoute
 
 @Serializable
 object InvoiceSettingsRoute
+
+@Serializable
+object JaringanRoute
+@Serializable
+object RasioRoute

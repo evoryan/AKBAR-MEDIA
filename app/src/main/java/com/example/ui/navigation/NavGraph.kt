@@ -93,7 +93,15 @@ fun AkbarMediaNavGraph() {
                     onNavigateToBotWa = { navController.navigate(BotWaRoute) },
                     onNavigateToPembukuan = { navController.navigate(PembukuanRoute) },
                     onNavigateToStockBarang = { navController.navigate(StockBarangRoute) },
-                    onNavigateToSetting = { navController.navigate(SettingRoute) }
+                    onNavigateToSetting = { navController.navigate(SettingRoute) },
+                    onNavigateToJaringan = { navController.navigate(JaringanRoute) }
+                )
+            }
+
+            
+            composable<JaringanRoute> {
+                com.example.ui.screens.JaringanScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -255,6 +263,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToDaftarAdmin = { navController.navigate(DaftarAdminRoute) },
                     onNavigateToOdc = { navController.navigate(OdcRoute) },
                     onNavigateToOdp = { navController.navigate(OdpRoute) },
+                    onNavigateToRasio = { navController.navigate(RasioRoute) },
                     onNavigateToGatewayPayment = { navController.navigate(GatewayPaymentRoute) },
                     onNavigateToCompanySettings = { navController.navigate(CompanySettingsRoute) },
                     onNavigateToBackupRestore = { navController.navigate(BackupRestoreRoute) },
@@ -284,6 +293,13 @@ fun AkbarMediaNavGraph() {
             composable<GantiPinRoute> { GantiPinScreen(onBack = { navController.popBackStack() }) }
             composable<DaftarAdminRoute> { DaftarAdminScreen(onBack = { navController.popBackStack() }) }
             composable<OdcRoute> { OdcScreen(onBack = { navController.popBackStack() }) }
+            
+            composable<RasioRoute> {
+                com.example.ui.screens.RasioScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             composable<OdpRoute> { OdpScreen(onBack = { navController.popBackStack() }) }
             composable<GatewayPaymentRoute> { GatewayPaymentScreen(onBack = { navController.popBackStack() }) }
             composable<CompanySettingsRoute> { com.example.ui.screens.CompanySettingsScreen(onBack = { navController.popBackStack() }) }

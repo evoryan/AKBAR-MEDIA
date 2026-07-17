@@ -1,44 +1,4 @@
-// --- AUTO PATCH NODE-ROUTEROS FOR !EMPTY BUG (FIXED) ---
-const fs = require('fs');
-const path = require('path');
-
-function patchNodeRouterOS() {
-    try {
-        let channelPath = path.join(__dirname, 'node_modules', 'node-routeros', 'dist', 'Channel.js');
-        if (!fs.existsSync(channelPath)) {
-            channelPath = path.join(__dirname, 'node_modules', 'routeros-client', 'node_modules', 'node-routeros', 'dist', 'Channel.js');
-        }
-
-        if (fs.existsSync(channelPath)) {
-            let chContent = fs.readFileSync(channelPath, 'utf8');
-            let changed = false;
-
-            // If it has the BAD patch with this.close()
-            if (chContent.includes("this.emit('done', this.data);\n                this.close();")) {
-                chContent = chContent.replace("case '!empty':\n                this.emit('done', this.data);\n                this.close();\n                break;", "case '!empty':\n                break;");
-                changed = true;
-            } 
-            // If it has no !empty support at all
-            else if (!chContent.includes("case '!empty':")) {
-                chContent = chContent.replace("case '!done':", "case '!empty':\n                break;\n            case '!done':");
-                changed = true;
-            }
-
-            if (changed) {
-                fs.writeFileSync(channelPath, chContent);
-                console.log("Auto-patched node-routeros for !empty support successfully at " + channelPath);
-            }
-        }
-    } catch (err) {
-        console.error("Failed to auto-patch node-routeros:", err);
-    }
-}
-patchNodeRouterOS();
-// ------------------------------------------------
-
-
 const express = require('express');
-
 const cron = require('node-cron');
 const { RouterOSClient } = require('routeros-client');
 const cors = require('cors');
@@ -51,7 +11,6 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use((req, res, next) => { console.log(req.method, req.url); next(); });
 app.get('/api/ping', (req, res) => res.json({ status: 'ok' }));
 
 
@@ -271,9 +230,15 @@ async function initAllDatabases() {
             )`).catch(e=>{});
 
             await tPool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
+            
             await tPool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
             await tPool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
+
 
             await tPool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
@@ -307,7 +272,6 @@ app.get('/api/dashboard/pppoe-offline', async (req, res) => {
                 const client = new RouterOSClient({
                     host, user: area.mikrotikUser, password: area.mikrotikPassword, port, timeout: 3000
                 });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
                 const api = await client.connect();
                 
                 const activeMenu = api.menu('/ppp/active');
@@ -343,14 +307,14 @@ app.post('/api/billing/pay', async (req, res) => {
         
         // Get customer name
         const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [customerId]);
-        if (customers.length === 0) return res.status(400).json({ error: "Customer tidak ditemukan di database" });
+        if (customers.length === 0) return res.status(404).json({ error: "Customer not found" });
         const customerName = customers[0].name;
         
         // Ensure table exists
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
         
-        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             customer_id INT,
@@ -367,7 +331,7 @@ app.post('/api/billing/pay', async (req, res) => {
         const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
         let desc = `Pembayaran tagihan pelanggan ${customerName}`;
         if (tagihan.length > 0) {
-            await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
+            await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
             await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ? WHERE id = ?', [adminName, tagihan[0].id]);
             desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
         }
@@ -377,7 +341,7 @@ app.post('/api/billing/pay', async (req, res) => {
 
         // Add to pembukuan
         try {
-            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
+            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
             await req.pool.query('INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)', 
                 ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash', adminName || 'Admin']);
         } catch (e) {
@@ -409,65 +373,6 @@ app.post('/api/billing/pay', async (req, res) => {
             console.error("Warning: notifications table might be missing", e.message);
         }
 
-        
-        // Automatis Enable Secret Mikrotik
-        try {
-            const [custData] = await req.pool.query('SELECT area, username, pppoe_secret FROM customers WHERE id = ?', [customerId]);
-            if (custData.length > 0) {
-                const customer = custData[0];
-                const identifier = customer.pppoe_secret || customer.username;
-                if (identifier && customer.area) {
-                    const [areas] = await req.pool.query('SELECT * FROM areas WHERE name = ? OR id = ?', [customer.area, customer.area]);
-                    if (areas.length > 0) {
-                        const area = areas[0];
-                        if (area.routerIp && area.mikrotikUser && area.mikrotikPassword) {
-                            let host = area.routerIp;
-                            let port = 8728;
-                            if (host.includes(':')) {
-                                const parts = host.split(':');
-                                host = parts[0];
-                                port = parseInt(parts[1]);
-                            }
-                            
-                            const client = new RouterOSClient({
-                                host: host,
-                                user: area.mikrotikUser,
-                                password: area.mikrotikPassword,
-                                port: port,
-                                timeout: 5000
-                            });
-                            client.on('error', (err) => { console.error('RouterOS Client Error in auto-enable:', err.message || err); });
-                            
-                            await client.connect();
-                            
-                            let realId = null;
-                            let results = await client.rosApi.write('/ppp/secret/print', [`?name=${identifier}`]);
-                            if (results.length > 0) realId = results[0]['.id'] || results[0].id;
-                            
-                            if (realId) {
-                                try {
-                                    await client.rosApi.write('/ppp/secret/enable', [
-                                        `=.id=${realId}`
-                                    ]);
-                                    console.log(`Auto-enabled Mikrotik secret for ${identifier}`);
-                                } catch (err) {
-                                    if (err.message && err.message.includes('!empty')) {
-                                        console.log(`Ignored !empty response from Mikrotik while auto-enabling ${identifier}`);
-                                    } else {
-                                        console.error("Failed to auto-enable secret:", err.message);
-                                    }
-                                }
-                            }
-                            
-                            client.close();
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("Error auto-enabling Mikrotik secret:", e.message);
-        }
-
         res.json({ message: "Pembayaran berhasil dicatat" });
     } catch (error) {
         console.error("Payment API Error:", error);
@@ -490,14 +395,14 @@ app.post('/api/billing/delete', async (req, res) => {
         const { customerId } = req.body;
         // Get customer name
         const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [customerId]);
-        if (customers.length === 0) return res.status(400).json({ error: "Customer tidak ditemukan di database" });
+        if (customers.length === 0) return res.status(404).json({ error: "Customer not found" });
         const customerName = customers[0].name;
         
         // Ensure table exists
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
         
-        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             customer_id INT,
@@ -586,25 +491,10 @@ app.get('/api/dashboard/summary', async (req, res) => {
         
         const monthlyRevenue = totalPemasukan - totalPengeluaran;
 
-                let totalGlobalRevenue = 0;
-        try {
-            const [custRows] = await req.pool.query('SELECT price FROM customers WHERE status IS NULL OR status != "TERHAPUS"');
-            custRows.forEach(row => {
-                if (row.price) {
-                    const priceStr = String(row.price).replace(/\.0$/, '').replace(/[^0-9]/g, '');
-                    const priceVal = parseInt(priceStr);
-                    if (!isNaN(priceVal)) totalGlobalRevenue += priceVal;
-                }
-            });
-        } catch(e) {
-            console.error("Error calculating global revenue", e);
-        }
-
         res.json({
             totalCustomers: customers[0].total,
             monthlyRevenue: monthlyRevenue,
-            totalGlobalRevenue: totalGlobalRevenue,
-            activePPPoE: customers[0].total,
+            activePPPoE: customers[0].total, // simplified
             activeHotspot: 0,
             paidCustomers: paidCustomers[0].paid,
             unpaidCustomers: unpaidCustomers[0].unpaid
@@ -623,19 +513,11 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ error: "Username dan password tidak boleh kosong" });
         }
         
-        // Auto add status column if not exist
-        await masterPool.query("ALTER TABLE users ADD COLUMN status VARCHAR(20) DEFAULT 'ACTIVE'").catch(e=>{});
-
         // Always check master database for login
         const [rows] = await masterPool.query('SELECT * FROM users WHERE username = ? AND password = ?', [username, password]);
         
         if (rows.length > 0) {
             const user = rows[0];
-            
-            if (user.status === 'DISABLED') {
-                return res.status(403).json({ error: "Akun/Tenant Anda dinonaktifkan. Hubungi Administrator." });
-            }
-
             const { password: userPassword, ...userWithoutPassword } = user;
             userWithoutPassword.id = userWithoutPassword.id.toString();
             
@@ -730,8 +612,16 @@ app.get('/api/pembukuan', async (req, res) => {
             summary.categories[row.category || 'Lain-lain'] = Number(row.total);
         });
         
-        // Fetch from pengeluaran table removed to prevent double-counting
-        // Since all pengeluaran items are now stored in pembukuan table
+        // Also fetch from pengeluaran table
+        try {
+            const [pengeluaranRows] = await req.pool.query('SELECT category, amount FROM pengeluaran');
+            pengeluaranRows.forEach(row => {
+                summary.pengeluaran += Number(row.amount);
+                summary.categories[row.category] = (summary.categories[row.category] || 0) + Number(row.amount);
+            });
+        } catch(e) {
+            console.log("pengeluaran table might not exist yet");
+        }
 
         res.json(summary);
     } catch (error) {
@@ -744,7 +634,7 @@ app.get('/api/pembukuan', async (req, res) => {
 
 app.get('/api/pembayaran', async (req, res) => {
     try {
-        await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
+        await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
         const [rows] = await req.pool.query(`
             SELECT 
                 t.id, t.bulan, t.tahun, t.amount, t.admin_name, t.created_at,
@@ -754,16 +644,6 @@ app.get('/api/pembayaran', async (req, res) => {
             WHERE t.status = 'LUNAS CASH'
             ORDER BY t.created_at DESC
         `);
-        res.json(rows);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
-
-app.get('/api/pembukuan/test_all', async (req, res) => {
-    try {
-        const [rows] = await masterPool.query('SELECT * FROM pembukuan ORDER BY id DESC');
         res.json(rows);
     } catch (error) {
         console.error(error);
@@ -785,34 +665,11 @@ app.put('/api/pembukuan/:id', async (req, res) => {
     try {
         await req.pool.query("ALTER TABLE pembukuan MODIFY COLUMN type VARCHAR(50)").catch(e => {});
         const { type, category, amount, description } = req.body;
-        const newCategory = category || 'Lain-lain';
-        
-        const [rows] = await req.pool.query('SELECT * FROM pembukuan WHERE id = ?', [req.params.id]);
-        if (rows.length > 0) {
-            const oldRow = rows[0];
-            const oldAmount = oldRow.amount || 0;
-            const oldCategory = oldRow.category || 'Lain-lain';
-            
-            if (oldRow.type === 'pemasukan') {
-                await req.pool.query('UPDATE pemasukan SET amount = amount - ? WHERE category = ?', [oldAmount, oldCategory]).catch(e => console.error(e));
-            } else if (oldRow.type === 'pengeluaran') {
-                await req.pool.query('UPDATE pengeluaran SET amount = amount - ? WHERE category = ?', [oldAmount, oldCategory]).catch(e => console.error(e));
-            }
-            
-            if (type === 'pemasukan') {
-                await req.pool.query('INSERT INTO pemasukan (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)', [newCategory, amount, description]).catch(e => console.error(e));
-            } else if (type === 'pengeluaran') {
-                await req.pool.query('INSERT INTO pengeluaran (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)', [newCategory, amount, description]).catch(e => console.error(e));
-            }
-            
-            // Note: If description changes significantly, we don't try to automatically re-link tagihan here to avoid complex edge cases.
-        }
-
         await req.pool.query(
             'UPDATE pembukuan SET type = ?, category = ?, amount = ?, description = ? WHERE id = ?',
-            [type, newCategory, amount, description, req.params.id]
+            [type, category || 'Lain-lain', amount, description, req.params.id]
         );
-        res.json({ message: "Pembukuan diperbarui dan data terkait disesuaikan" });
+        res.json({ message: "Pembukuan diperbarui" });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Terjadi kesalahan server" });
@@ -821,36 +678,8 @@ app.put('/api/pembukuan/:id', async (req, res) => {
 
 app.delete('/api/pembukuan/:id', async (req, res) => {
     try {
-        const [rows] = await req.pool.query('SELECT * FROM pembukuan WHERE id = ?', [req.params.id]);
-        if (rows.length > 0) {
-            const oldRow = rows[0];
-            const oldAmount = oldRow.amount || 0;
-            const oldCategory = oldRow.category || 'Lain-lain';
-            
-            // Adjust summary tables
-            if (oldRow.type === 'pemasukan') {
-                await req.pool.query('UPDATE pemasukan SET amount = amount - ? WHERE category = ?', [oldAmount, oldCategory]).catch(e => console.error(e));
-            } else if (oldRow.type === 'pengeluaran') {
-                await req.pool.query('UPDATE pengeluaran SET amount = amount - ? WHERE category = ?', [oldAmount, oldCategory]).catch(e => console.error(e));
-            }
-
-            // Revert tagihan if it's a payment
-            if (oldRow.description && oldRow.description.startsWith('Pembayaran tagihan pelanggan')) {
-                const match = oldRow.description.match(/Pembayaran tagihan pelanggan (.*?) \((.*?) (\d+)\)/);
-                if (match) {
-                    const custName = match[1];
-                    const bulan = match[2];
-                    const tahun = match[3];
-                    const [custs] = await req.pool.query('SELECT id FROM customers WHERE name = ?', [custName]);
-                    if (custs.length > 0) {
-                        await req.pool.query('UPDATE tagihan_bulanan SET status = "BELUM BAYAR", admin_name = NULL WHERE customer_id = ? AND bulan = ? AND tahun = ?', [custs[0].id, bulan, tahun]).catch(e => console.error(e));
-                        await req.pool.query('UPDATE customers SET status = "BELUM BAYAR" WHERE id = ?', [custs[0].id]).catch(e => console.error(e));
-                    }
-                }
-            }
-        }
         await req.pool.query('DELETE FROM pembukuan WHERE id = ?', [req.params.id]);
-        res.json({ message: "Pembukuan dihapus dan data terkait disesuaikan" });
+        res.json({ message: "Pembukuan dihapus" });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Terjadi kesalahan server" });
@@ -860,7 +689,7 @@ app.delete('/api/pembukuan/:id', async (req, res) => {
 app.post('/api/setoran', async (req, res) => {
     try {
         const { adminName, amount } = req.body;
-        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
+        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
         await req.pool.query(
             'INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)',
             ['setor', amount, `Setoran oleh ${adminName}`, 'Setoran', adminName]
@@ -970,6 +799,53 @@ app.get('/api/areas', async (req, res) => {
     }
 });
 
+
+app.get('/api/rasio', async (req, res) => {
+    try {
+        const [rows] = await req.pool.query('SELECT * FROM rasio');
+        const rasioList = rows.map(r => ({ ...r, id: r.id.toString() }));
+        res.json(rasioList);
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan server" });
+    }
+});
+
+app.post('/api/rasio', async (req, res) => {
+    try {
+        const { name, location, size, redaman_in, redaman_out_a, redaman_out_b } = req.body;
+        const [result] = await req.pool.query(
+            'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '']
+        );
+        res.json({ message: "Rasio ditambahkan", id: result.insertId.toString() });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan server" });
+    }
+});
+
+app.put('/api/rasio/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, location, size, redaman_in, redaman_out_a, redaman_out_b } = req.body;
+        await req.pool.query(
+            'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ? WHERE id = ?',
+            [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', id]
+        );
+        res.json({ message: "Rasio diupdate" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan server" });
+    }
+});
+
+app.delete('/api/rasio/:id', async (req, res) => {
+    try {
+        await req.pool.query('DELETE FROM rasio WHERE id = ?', [req.params.id]);
+        res.json({ message: "Rasio berhasil dihapus" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan server" });
+    }
+});
+
 app.get('/api/odc', async (req, res) => {
     try {
         const [rows] = await req.pool.query('SELECT * FROM odc_list');
@@ -1007,15 +883,7 @@ app.delete('/api/areas/:id', async (req, res) => {
 app.get('/api/admins', async (req, res) => {
     try {
         const db_name = req.user ? req.user.db_name : 'app_db';
-        // Try to get from tenant DB first, fallback to masterPool
-        let rows = [];
-        try {
-            const [tenantRows] = await req.pool.query('SELECT id, name, username, role FROM users');
-            rows = tenantRows;
-        } catch (e) {
-            const [masterRows] = await masterPool.query('SELECT id, name, username, role FROM users WHERE db_name = ?', [db_name]);
-            rows = masterRows;
-        }
+        const [rows] = await masterPool.query('SELECT id, name, username, role FROM users WHERE db_name = ?', [db_name]);
         const admins = rows.map(r => ({ ...r, id: r.id.toString() }));
         res.json(admins);
     } catch (error) {
@@ -1060,19 +928,7 @@ app.get('/api/stock_history', async (req, res) => {
 app.delete('/api/admins/:id', async (req, res) => {
     try {
         const db_name = req.user ? req.user.db_name : 'app_db';
-        // Delete from master DB (using id)
-        const [rows] = await masterPool.query('SELECT username FROM users WHERE id = ? AND db_name = ?', [req.params.id, db_name]);
-        const username = rows.length > 0 ? rows[0].username : null;
-        
         await masterPool.query('DELETE FROM users WHERE id = ? AND db_name = ?', [req.params.id, db_name]);
-        
-        // Also delete from tenant DB
-        try {
-            if (req.pool && req.pool !== masterPool && username) {
-                await req.pool.query('DELETE FROM users WHERE username = ?', [username]);
-            }
-        } catch (e) { console.error("Error deleting from tenant DB:", e.message); }
-        
         res.json({ message: "Admin berhasil dihapus" });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
@@ -1100,20 +956,20 @@ app.delete('/api/inventory/:id', async (req, res) => {
 app.put('/api/odc/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, location, portCount, portInput } = req.body;
+        const { name, location, portCount, portInput, redaman_in, redaman_out } = req.body;
         const parsedPortCount = parseInt(portCount) || 0;
         try {
             await req.pool.query(
-                'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ? WHERE id = ?',
-                [name, location, parsedPortCount, portInput || '', id]
+                'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
+                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
                 await req.pool.query(
-                    'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ? WHERE id = ?',
-                    [name, location, parsedPortCount, portInput || '', id]
+                    'UPDATE odc_list SET name = ?, location = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
+                    [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
                 );
             } else {
                 throw e;
@@ -1128,21 +984,21 @@ app.put('/api/odc/:id', async (req, res) => {
 app.put('/api/odp/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { odcId, name, portCount, portInput } = req.body;
+        const { odcId, name, portCount, portInput, redaman_in, redaman_out } = req.body;
         const parsedOdcId = parseInt(odcId) || 0;
         const parsedPortCount = parseInt(portCount) || 0;
         try {
             await req.pool.query(
-                'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ? WHERE id = ?',
-                [name, parsedOdcId, parsedPortCount, portInput || '', id]
+                'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
+                [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
                 await req.pool.query(
-                    'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ? WHERE id = ?',
-                    [name, parsedOdcId, parsedPortCount, portInput || '', id]
+                    'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
+                    [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
                 );
             } else {
                 throw e;
@@ -1177,7 +1033,7 @@ app.delete('/api/odp/:id', async (req, res) => {
 app.get('/api/customers/:id/history', async (req, res) => {
     try {
         const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [req.params.id]);
-        if (customers.length === 0) return res.status(400).json({ error: "Customer tidak ditemukan di database" });
+        if (customers.length === 0) return res.status(404).json({ error: "Customer not found" });
         const customerName = customers[0].name;
         const [rows] = await req.pool.query('SELECT * FROM pembukuan WHERE description LIKE ? ORDER BY created_at DESC', [`%${customerName}%`]);
         const history = rows.map(r => ({ ...r, id: r.id.toString(), amount: r.amount.toString() }));
@@ -1185,30 +1041,6 @@ app.get('/api/customers/:id/history', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Terjadi kesalahan server" });
-    }
-});
-
-app.put('/api/customers/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, phone, area, address, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
-        const registerDate = req.body.registerDate || req.body.register_date;
-        const isolateDate = req.body.isolateDate || req.body.isolate_date;
-        const packageName = req.body.packageName || req.body.package_name;
-        const pppoeSecret = req.body.pppoeSecret || req.body.pppoe_secret;
-        const odpId = req.body.odpId || req.body.odp_id;
-        const odpPort = req.body.odpPort || req.body.odp_port;
-        
-        const parsedOdpId = (odpId !== undefined && odpId !== null && odpId !== '') ? parseInt(odpId) : null;
-        
-        await req.pool.query(
-            'UPDATE customers SET name=?, phone=?, area=?, address=?, username=?, billingDate=?, status=?, price=?, discount=?, register_date=?, isolate_date=?, package_name=?, pppoe_secret=?, odp_id=?, odp_port=?, additionalCost1=?, additionalCost2=? WHERE id=?',
-            [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', id]
-        );
-        res.json({ message: "Pelanggan berhasil diupdate" });
-    } catch (error) {
-        console.error("API Error (update customer):", error.message);
-        res.status(500).json({ error: error.message || "Terjadi kesalahan saat update pelanggan" });
     }
 });
 
@@ -1221,130 +1053,9 @@ app.delete('/api/customers/:id', async (req, res) => {
     }
 });
 
-app.post('/api/customers/:id/isolir', tenantContext, async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log("ISOLIR REQUEST for id:", id);
-        const [customers] = await req.pool.query('SELECT * FROM customers WHERE id = ?', [id]);
-        if (customers.length === 0) {
-            console.log("Customer not found in DB:", id);
-            return res.status(400).json({ error: "Customer tidak ditemukan di database" });
-        }
-        const customer = customers[0];
-
-        const identifier = customer.pppoe_secret || customer.username;
-        if (!identifier) return res.status(400).json({ error: "Customer does not have PPPoE secret or username" });
-
-        let [areas] = await req.pool.query('SELECT * FROM areas WHERE name = ?', [customer.area]);
-        if (areas.length === 0) {
-            // Fallback to first available area if not found, useful if area="Semua"
-            const [allAreas] = await req.pool.query('SELECT * FROM areas LIMIT 1');
-            if (allAreas.length > 0) {
-                areas = allAreas;
-            } else {
-                return res.status(400).json({ error: "Area router tidak ditemukan" });
-            }
-        }
-        const area = areas[0];
-
-        let host = area.routerIp;
-        let port = 8728;
-        if (host.includes(':')) {
-            const parts = host.split(':');
-            host = parts[0];
-            port = parseInt(parts[1]);
-        }
-        
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
-
-        await client.connect();
-        
-        // Find exact item safely
-        let realId = null;
-        let secretName = null;
-        let results = await client.rosApi.write('/ppp/secret/print', [`?.id=${identifier}`]);
-        console.log("Mikrotik print result for .id=", identifier, " is ", results);
-        if (results.length > 0) {
-            realId = results[0]['.id'] || results[0].id;
-            secretName = results[0].name;
-        } else {
-            results = await client.rosApi.write('/ppp/secret/print', [`?name=${identifier}`]);
-            console.log("Mikrotik print result for name=", identifier, " is ", results);
-            if (results.length > 0) {
-                realId = results[0]['.id'] || results[0].id;
-                secretName = results[0].name;
-            }
-        }
-
-        if (realId) {
-            try {
-                await client.rosApi.write('/ppp/secret/disable', [
-                    `=.id=${realId}`
-                ]);
-            } catch (err) {
-                if (err.message && err.message.includes('!empty')) {
-                    console.log("Ignored !empty response from Mikrotik (Disable)");
-                } else {
-                    throw err;
-                }
-            }
-            
-            if (secretName) {
-                try {
-                    let activeResults = await client.rosApi.write('/ppp/active/print', [`?name=${secretName}`]);
-                    if (activeResults.length > 0) {
-                        let activeId = activeResults[0]['.id'] || activeResults[0].id;
-                        try {
-                            await client.rosApi.write('/ppp/active/remove', [
-                                `=.id=${activeId}`
-                            ]);
-                        } catch (err) {
-                            if (err.message && err.message.includes('!empty')) {
-                                console.log("Ignored !empty response from Mikrotik (Active Remove)");
-                            } else {
-                                throw err;
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to remove active connection:", e.message);
-                }
-            }
-        } else {
-            console.log("Secret not found in Mikrotik, but proceeding as success to avoid breaking flow");
-        }
-        
-        client.close();
-        
-        // Update customer status in database
-        try {
-            await req.pool.query('UPDATE customers SET status = ? WHERE id = ?', ['ISOLIR', id]);
-        } catch (dbErr) {
-            console.error("Error updating customer status:", dbErr);
-        }
-
-        res.json({ message: "Pelanggan berhasil di-isolir" });
-    } catch (error) {
-        console.error("Error isolating customer:", error);
-        let msg = error.message;
-        if (error.stack && error.stack.includes('routeros')) {
-             msg = "Koneksi ke Mikrotik gagal atau timeout.";
-        }
-        res.status(500).json({ error: "Gagal mengisolir pelanggan: " + msg });
-    }
-});
-
-
 app.post('/api/customers', async (req, res) => {
     try {
-        const { name, phone, area, address, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
+        const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
         const registerDate = req.body.registerDate || req.body.register_date;
         const isolateDate = req.body.isolateDate || req.body.isolate_date;
         const packageName = req.body.packageName || req.body.package_name;
@@ -1356,12 +1067,11 @@ app.post('/api/customers', async (req, res) => {
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
+                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
             );
         } catch (e) {
             if (e.message && e.message.includes("Unknown column")) {
-                await req.pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
@@ -1372,8 +1082,8 @@ app.post('/api/customers', async (req, res) => {
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 
                 [result] = await req.pool.query(
-                    'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [name, phone, area, address || '', username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
+                    'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
                 );
             } else {
                 throw e;
@@ -1702,21 +1412,21 @@ app.post('/api/areas', async (req, res) => {
 
 app.post('/api/odc', async (req, res) => {
     try {
-        const { name, location, portCount, portInput } = req.body;
+        const { name, location, portCount, portInput, redaman_in, redaman_out } = req.body;
         const parsedPortCount = parseInt(portCount) || 0;
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO odc_list (name, location, portCount, portInput) VALUES (?, ?, ?, ?)',
-                [name, location, parsedPortCount, portInput || '']
+                'INSERT INTO odc_list (name, location, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
+                [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
                 [result] = await req.pool.query(
-                    'INSERT INTO odc_list (name, location, portCount, portInput) VALUES (?, ?, ?, ?)',
-                    [name, location, parsedPortCount, portInput || '']
+                    'INSERT INTO odc_list (name, location, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
+                    [name, location, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
                 );
             } else {
                 throw e;
@@ -1730,22 +1440,22 @@ app.post('/api/odc', async (req, res) => {
 
 app.post('/api/odp', async (req, res) => {
     try {
-        const { odcId, name, portCount, portInput } = req.body;
+        const { odcId, name, portCount, portInput, redaman_in, redaman_out } = req.body;
         const parsedOdcId = parseInt(odcId) || 0;
         const parsedPortCount = parseInt(portCount) || 0;
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO odp_list (name, odcId, portCount, portInput) VALUES (?, ?, ?, ?)',
-                [name, parsedOdcId, parsedPortCount, portInput || '']
+                'INSERT INTO odp_list (name, odcId, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
+                [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
-                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
                 [result] = await req.pool.query(
-                    'INSERT INTO odp_list (name, odcId, portCount, portInput) VALUES (?, ?, ?, ?)',
-                    [name, parsedOdcId, parsedPortCount, portInput || '']
+                    'INSERT INTO odp_list (name, odcId, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
+                    [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
                 );
             } else {
                 throw e;
@@ -1788,10 +1498,6 @@ app.put('/api/admins/:id', async (req, res) => {
     try {
         const { name, username, role, password } = req.body;
         const db_name = req.user ? req.user.db_name : 'app_db';
-        // Get old username from master to update tenant DB properly
-        const [oldUserRows] = await masterPool.query('SELECT username FROM users WHERE id = ? AND db_name = ?', [req.params.id, db_name]);
-        const oldUsername = oldUserRows.length > 0 ? oldUserRows[0].username : null;
-        
         // Check if username is already taken by someone else
         const [existing] = await masterPool.query('SELECT id FROM users WHERE username = ? AND id != ?', [username, req.params.id]);
         if (existing.length > 0) {
@@ -1800,18 +1506,8 @@ app.put('/api/admins/:id', async (req, res) => {
         
         if (password) {
             await masterPool.query('UPDATE users SET name = ?, username = ?, role = ?, password = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', password, req.params.id, db_name]);
-            try {
-                if (req.pool && req.pool !== masterPool && oldUsername) {
-                    await req.pool.query('UPDATE users SET name = ?, username = ?, role = ?, password = ? WHERE username = ?', [name, username, role || 'ADMIN', password, oldUsername]);
-                }
-            } catch (e) { console.error("Error updating tenant DB:", e.message); }
         } else {
             await masterPool.query('UPDATE users SET name = ?, username = ?, role = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', req.params.id, db_name]);
-            try {
-                if (req.pool && req.pool !== masterPool && oldUsername) {
-                    await req.pool.query('UPDATE users SET name = ?, username = ?, role = ? WHERE username = ?', [name, username, role || 'ADMIN', oldUsername]);
-                }
-            } catch (e) { console.error("Error updating tenant DB:", e.message); }
         }
         res.json({ message: "Admin diperbarui" });
     } catch (error) {
@@ -1826,18 +1522,6 @@ app.post('/api/admins', async (req, res) => {
             'INSERT INTO users (name, username, role, password, db_name) VALUES (?, ?, ?, ?, ?)',
             [name, username, role || 'ADMIN', password || '', db_name]
         );
-        
-        // Also insert into tenant DB
-        try {
-            if (req.pool && req.pool !== masterPool) {
-                // Check if table exists
-                await req.pool.query(
-                    'INSERT INTO users (name, username, role, password) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, role=?, password=?',
-                    [name, username, role || 'ADMIN', password || '', name, role || 'ADMIN', password || '']
-                );
-            }
-        } catch (e) { console.error("Error inserting to tenant DB:", e.message); }
-        
         res.json({ message: "Admin ditambahkan", id: result.insertId.toString() });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
@@ -1845,7 +1529,43 @@ app.post('/api/admins', async (req, res) => {
 });
 
 
-app.get('/api/mikrotik/status/:id', tenantContext, async (req, res) => {
+
+app.get('/api/mikrotik/traffic/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const interfaceName = req.query.interface;
+        if (!interfaceName) return res.status(400).json({ error: "interface parameter required" });
+
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+
+        const area = rows[0];
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+
+        const api = await client.connect();
+        const interfaceMenu = api.menu('/interface');
+        const traffic = await interfaceMenu.exec('monitor-traffic', { interface: interfaceName, once: '' });
+        client.close();
+        
+        res.json(traffic);
+    } catch (error) {
+        console.error("Mikrotik traffic error:", error.message);
+        res.status(500).json({ error: "Failed to connect to Mikrotik: " + error.message });
+    }
+});
+
+app.get('/api/mikrotik/status/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
@@ -1865,7 +1585,6 @@ app.get('/api/mikrotik/status/:id', tenantContext, async (req, res) => {
             port: parseInt(port) || 8728,
             timeout: 5000
         });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
 
         const api = await client.connect();
 
@@ -1893,7 +1612,7 @@ app.get('/api/mikrotik/status/:id', tenantContext, async (req, res) => {
     }
 });
 
-app.post('/api/mikrotik/secrets/:id', tenantContext, async (req, res) => {
+app.post('/api/mikrotik/secrets/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { name, password, profile } = req.body;
@@ -1914,7 +1633,6 @@ app.post('/api/mikrotik/secrets/:id', tenantContext, async (req, res) => {
             port: parseInt(port) || 8728,
             timeout: 5000
         });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
 
         const api = await client.connect();
         
@@ -1933,7 +1651,7 @@ app.post('/api/mikrotik/secrets/:id', tenantContext, async (req, res) => {
     }
 });
 
-app.get('/api/mikrotik/profiles/:id', tenantContext, async (req, res) => {
+app.get('/api/mikrotik/profiles/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
@@ -1952,7 +1670,6 @@ app.get('/api/mikrotik/profiles/:id', tenantContext, async (req, res) => {
             port: parseInt(port) || 8728,
             timeout: 5000
         });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
 
         const api = await client.connect();
         
@@ -1973,263 +1690,7 @@ app.get('/api/mikrotik/profiles/:id', tenantContext, async (req, res) => {
     }
 });
 
-
-app.post('/api/mikrotik/secrets/:id/disable', tenantContext, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const identifier = req.body.secretId || req.body.secretName;
-        
-        if (!identifier) return res.status(400).json({ error: "secretId is required" });
-
-        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
-        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
-        const area = rows[0];
-        
-        let host = area.routerIp;
-        let port = 8728;
-        if (host.includes(':')) {
-            const parts = host.split(':');
-            host = parts[0];
-            port = parseInt(parts[1]);
-        }
-        
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
-
-        await client.connect();
-        
-        // Find exact item safely
-        let realId = null;
-        let secretName = null;
-        let results = await client.rosApi.write('/ppp/secret/print', [`?.id=${identifier}`]);
-        console.log("Mikrotik print result for .id=", identifier, " is ", results);
-        if (results.length > 0) {
-            realId = results[0]['.id'] || results[0].id;
-            secretName = results[0].name;
-        } else {
-            results = await client.rosApi.write('/ppp/secret/print', [`?name=${identifier}`]);
-            console.log("Mikrotik print result for name=", identifier, " is ", results);
-            if (results.length > 0) {
-                realId = results[0]['.id'] || results[0].id;
-                secretName = results[0].name;
-            }
-        }
-
-        if (!realId) {
-            client.close();
-            return res.status(400).json({ error: "Secret tidak ditemukan di Mikrotik" });
-        }
-        
-        try {
-            await client.rosApi.write('/ppp/secret/disable', [
-                `=.id=${realId}`
-            ]);
-        } catch (err) {
-            if (err.message && err.message.includes('!empty')) {
-                console.log("Ignored !empty response from Mikrotik (Disable)");
-            } else {
-                throw err;
-            }
-        }
-        
-        if (secretName) {
-            try {
-                let activeResults = await client.rosApi.write('/ppp/active/print', [`?name=${secretName}`]);
-                if (activeResults.length > 0) {
-                    let activeId = activeResults[0]['.id'] || activeResults[0].id;
-                    try {
-                        await client.rosApi.write('/ppp/active/remove', [
-                            `=.id=${activeId}`
-                        ]);
-                    } catch (err) {
-                        if (err.message && err.message.includes('!empty')) {
-                            console.log("Ignored !empty response from Mikrotik (Active Remove)");
-                        } else {
-                            throw err;
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error("Failed to remove active connection:", e.message);
-            }
-        }
-        
-        client.close();
-
-        if (secretName) {
-            try {
-                // Update customer status to ISOLIR
-                await req.pool.query(
-                    "UPDATE customers SET status = 'ISOLIR' WHERE (username = ? OR pppoe_secret = ?) ", 
-                    [secretName, secretName]
-                );
-            } catch (dbErr) {
-                console.error("Error updating customer status after disable:", dbErr);
-            }
-        }
-
-        res.json({ message: "Secret berhasil di-disable dan active connection diremove (jika ada)" });
-    } catch (error) {
-        console.error("Error disabling Mikrotik secret:", error);
-        res.status(500).json({ error: "Gagal mendisable secret: " + error.message });
-    }
-});
-app.post('/api/mikrotik/secrets/:id/enable', tenantContext, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const identifier = req.body.secretId || req.body.secretName;
-        
-        if (!identifier) return res.status(400).json({ error: "secretId is required" });
-
-        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
-        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
-        const area = rows[0];
-        
-        let host = area.routerIp;
-        let port = 8728;
-        if (host.includes(':')) {
-            const parts = host.split(':');
-            host = parts[0];
-            port = parseInt(parts[1]);
-        }
-        
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
-
-        await client.connect();
-        
-        let realId = null;
-        let results = await client.rosApi.write('/ppp/secret/print', [`?.id=${identifier}`]);
-        console.log("Mikrotik print result for .id=", identifier, " is ", results);
-        if (results.length > 0) {
-            realId = results[0]['.id'] || results[0].id;
-        } else {
-            results = await client.rosApi.write('/ppp/secret/print', [`?name=${identifier}`]);
-            if (results.length > 0) realId = results[0]['.id'] || results[0].id;
-        }
-
-        if (!realId) {
-            client.close();
-            return res.status(400).json({ error: "Secret tidak ditemukan di Mikrotik" });
-        }
-        
-        try {
-            await client.rosApi.write('/ppp/secret/enable', [
-                `=.id=${realId}`
-            ]);
-        } catch (err) {
-            if (err.message && err.message.includes('!empty')) {
-                console.log("Ignored !empty response from Mikrotik (Enable)");
-            } else {
-                throw err;
-            }
-        }
-        
-        client.close();
-
-        let secretName = null;
-        if (results.length > 0) {
-            secretName = results[0].name;
-        }
-
-        if (secretName) {
-            try {
-                const [custs] = await req.pool.query('SELECT id FROM customers WHERE username = ? OR pppoe_secret = ?', [secretName, secretName]);
-                if (custs.length > 0) {
-                    const custId = custs[0].id;
-                    const [tagihan] = await req.pool.query('SELECT id FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR"', [custId]);
-                    if (tagihan.length > 0) {
-                        await req.pool.query("UPDATE customers SET status = 'BELUM BAYAR' WHERE id = ?", [custId]);
-                    } else {
-                        await req.pool.query("UPDATE customers SET status = 'LUNAS CASH' WHERE id = ?", [custId]);
-                    }
-                }
-            } catch (dbErr) {
-                console.error("Error updating customer status after enable:", dbErr);
-            }
-        }
-
-        res.json({ message: "Secret berhasil di-enable" });
-    } catch (error) {
-        console.error("Error enabling Mikrotik secret:", error);
-        res.status(500).json({ error: "Gagal meng-enable secret: " + error.message });
-    }
-});
-app.post('/api/mikrotik/secrets/:id/remove-active', tenantContext, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const identifier = req.body.secretName || req.body.secretId;
-        
-        if (!identifier) return res.status(400).json({ error: "secretName is required" });
-
-        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
-        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
-        const area = rows[0];
-        
-        let host = area.routerIp;
-        let port = 8728;
-        if (host.includes(':')) {
-            const parts = host.split(':');
-            host = parts[0];
-            port = parseInt(parts[1]);
-        }
-        
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
-
-        await client.connect();
-        
-        let activeId = null;
-        let results = await client.rosApi.write('/ppp/active/print', [`?name=${identifier}`]);
-        if (results.length > 0) {
-            activeId = results[0]['.id'] || results[0].id;
-        } else {
-            results = await client.rosApi.write('/ppp/active/print', [`?.id=${identifier}`]);
-            if (results.length > 0) activeId = results[0]['.id'] || results[0].id;
-        }
-
-        if (activeId) {
-            try {
-                await client.rosApi.write('/ppp/active/remove', [
-                    `=.id=${activeId}`
-                ]);
-            } catch (err) {
-                if (err.message && err.message.includes('!empty')) {
-                    console.log("Ignored !empty response from Mikrotik (Active Remove)");
-                } else {
-                    throw err;
-                }
-            }
-            client.close();
-            return res.json({ message: "Active connection berhasil diremove" });
-        } else {
-            client.close();
-            return res.status(404).json({ error: "Active connection tidak ditemukan" });
-        }
-    } catch (error) {
-        console.error("Error removing active connection:", error);
-        res.status(500).json({ error: "Gagal meremove active connection: " + error.message });
-    }
-});
-app.get('/api/mikrotik/secrets/:id', tenantContext, async (req, res) => {
+app.get('/api/mikrotik/secrets/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
@@ -2249,7 +1710,6 @@ app.get('/api/mikrotik/secrets/:id', tenantContext, async (req, res) => {
             port: parseInt(port) || 8728,
             timeout: 5000
         });
-        client.on('error', (err) => { console.error('RouterOS Client Error:', err.message || err); });
 
         const api = await client.connect();
         
@@ -2267,7 +1727,7 @@ app.get('/api/mikrotik/secrets/:id', tenantContext, async (req, res) => {
             const isActive = activeNames.includes(s.name);
             const activeDetail = isActive ? activePppoe.find(p => p.name === s.name) : null;
             return {
-                id: s['.id'] || s.id,
+                id: s['.id'],
                 name: s.name,
                 profile: s.profile,
                 status: isActive ? "Online" : ((s.disabled === 'true' || s.disabled === true) ? "Disabled" : "Offline"),
@@ -2283,17 +1743,7 @@ app.get('/api/mikrotik/secrets/:id', tenantContext, async (req, res) => {
     }
 });
 
-
-process.on('uncaughtException', (err) => {
-    console.error('UNCAUGHT EXCEPTION:', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('UNHANDLED REJECTION:', reason);
-});
-
 const PORT = 4500;
-
 
 cron.schedule('1 0 * * *', async () => {
     console.log('Menjalankan cron job tagihan bulanan...');
@@ -2349,8 +1799,6 @@ cron.schedule('1 0 * * *', async () => {
     }
 });
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });
-server.keepAliveTimeout = 65000;
-server.headersTimeout = 66000;

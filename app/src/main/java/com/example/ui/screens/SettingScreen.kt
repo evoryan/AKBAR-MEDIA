@@ -50,6 +50,7 @@ fun SettingScreen(
     onNavigateToDaftarAdmin: () -> Unit,
     onNavigateToOdc: () -> Unit,
     onNavigateToOdp: () -> Unit,
+    onNavigateToRasio: () -> Unit,
     onNavigateToGatewayPayment: () -> Unit,
     onNavigateToCompanySettings: () -> Unit,
     onNavigateToBackupRestore: () -> Unit,
@@ -200,6 +201,8 @@ fun SettingScreen(
                     SettingItem(icon = Icons.Default.DeviceHub, title = "ODC", subtitle = "Kelola ODC", iconTint = textMain, onClick = onNavigateToOdc)
                     HorizontalDivider(color = cardBorder)
                     SettingItem(icon = Icons.Default.Hub, title = "ODP", subtitle = "Kelola ODP", iconTint = textMain, onClick = onNavigateToOdp)
+                    HorizontalDivider(color = cardBorder)
+                    SettingItem(icon = Icons.Default.AccountTree, title = "Rasio", subtitle = "Kelola Data Rasio", iconTint = textMain, onClick = onNavigateToRasio)
                 }
             }
 

@@ -1,4 +1,6 @@
-CREATE DATABASE IF NOT EXISTS app_db;
+import re
+
+sql = """CREATE DATABASE IF NOT EXISTS app_db;
 USE app_db;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -156,3 +158,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     message VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+with open('VPS/init.sql', 'w') as f:
+    f.write(sql)

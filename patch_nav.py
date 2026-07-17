@@ -1,40 +1,23 @@
 import re
 
-with open("app/src/main/java/com/example/ui/navigation/NavGraph.kt", "r") as f:
+with open('app/src/main/java/com/example/ui/navigation/NavGraph.kt', 'r') as f:
     content = f.read()
 
-target1 = """@Serializable
-object HistoryStockRoute
+if "object JaringanRoute" not in content:
+    content = content.replace("@Serializable\nobject DashboardRoute", "@Serializable\nobject JaringanRoute\n@Serializable\nobject DashboardRoute")
 
-@Serializable
-object SettingRoute"""
+if "onNavigateToJaringan = { navController.navigate(JaringanRoute) }" not in content:
+    content = content.replace("onNavigateToSetting = { navController.navigate(SettingRoute) }", "onNavigateToSetting = { navController.navigate(SettingRoute) },\n                    onNavigateToJaringan = { navController.navigate(JaringanRoute) }")
 
-rep1 = """@Serializable
-object HistoryStockRoute
+jaringan_composable = """
+            composable<JaringanRoute> {
+                com.example.ui.screens.JaringanScreen(
+                    onBack = { navController.popBackStack() }
+                )
+            }
+"""
+if "JaringanScreen" not in content:
+    content = content.replace("composable<CustomersRoute> {", jaringan_composable + "\n            composable<CustomersRoute> {")
 
-@Serializable
-object BackupRestoreRoute
-
-@Serializable
-object SettingRoute"""
-
-target2 = """                    onNavigateToCompanySettings = { navController.navigate(CompanySettingsRoute) },"""
-
-rep2 = """                    onNavigateToCompanySettings = { navController.navigate(CompanySettingsRoute) },
-                    onNavigateToBackupRestore = { navController.navigate(BackupRestoreRoute) },"""
-
-target3 = """            composable<CompanySettingsRoute> { com.example.ui.screens.CompanySettingsScreen(onBack = { navController.popBackStack() }) }"""
-
-rep3 = """            composable<CompanySettingsRoute> { com.example.ui.screens.CompanySettingsScreen(onBack = { navController.popBackStack() }) }
-            composable<BackupRestoreRoute> { com.example.ui.screens.BackupRestoreScreen(onBack = { navController.popBackStack() }) }"""
-
-if target2 in content:
-    if target1 in content:
-        content = content.replace(target1, rep1)
-    content = content.replace(target2, rep2)
-    content = content.replace(target3, rep3)
-    with open("app/src/main/java/com/example/ui/navigation/NavGraph.kt", "w") as f:
-        f.write(content)
-    print("Patched NavGraph.kt")
-else:
-    print("Target not found")
+with open('app/src/main/java/com/example/ui/navigation/NavGraph.kt', 'w') as f:
+    f.write(content)

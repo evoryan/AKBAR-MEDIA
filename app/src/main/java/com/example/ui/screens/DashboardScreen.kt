@@ -41,6 +41,7 @@ fun DashboardScreen(
     onNavigateToPembukuan: () -> Unit,
     onNavigateToStockBarang: () -> Unit,
     onNavigateToSetting: () -> Unit,
+    onNavigateToJaringan: () -> Unit,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -365,7 +366,7 @@ fun DashboardScreen(
                     MenuItem(icon = Icons.Default.Router, title = "Mikrotik", tint = primaryBg, onClick = onNavigateToMikrotik)
                     MenuItem(icon = Icons.Default.Dns, title = "ACS", tint = primaryBg, onClick = onNavigateToAcs)
                     MenuItem(icon = Icons.Default.Chat, title = "Bot WA", tint = Color(0xFF00FF4D), onClick = onNavigateToBotWa)
-                    MenuItem(icon = Icons.Default.Report, title = "Pengaduan", tint = textErrorPrimary, onClick = {})
+                    MenuItem(icon = Icons.Default.AccountTree, title = "Jaringan", tint = primaryBg, onClick = onNavigateToJaringan)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 

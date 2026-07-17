@@ -6,6 +6,7 @@ import com.example.ui.screens.Customer
 import com.example.ui.screens.AcsDevice
 import com.example.ui.screens.Area
 import com.example.ui.data.OdcItem
+import com.example.ui.data.RasioItem
 import com.example.ui.data.OdpItem
 import com.example.ui.data.CategoryItem
 import com.example.ui.data.InventoryItem
@@ -147,6 +148,8 @@ interface ApiService {
 
     @GET("api/odc")
     suspend fun getOdcList(): List<OdcItem>
+    @GET("api/rasio")
+    suspend fun getRasioList(): List<RasioItem>
 
     @GET("api/odp")
     suspend fun getOdpList(): List<OdpItem>
@@ -174,6 +177,8 @@ interface ApiService {
 
     @DELETE("api/odc/{id}")
     suspend fun deleteOdc(@Path("id") id: String)
+    @DELETE("api/rasio/{id}")
+    suspend fun deleteRasio(@Path("id") id: String)
 
     @DELETE("api/odp/{id}")
     suspend fun deleteOdp(@Path("id") id: String)
@@ -212,12 +217,16 @@ interface ApiService {
 
     @POST("api/odc")
     suspend fun addOdc(@Body item: com.example.ui.data.OdcItem): ApiResponse
+    @POST("api/rasio")
+    suspend fun addRasio(@Body item: com.example.ui.data.RasioItem): ApiResponse
 
     @POST("api/odp")
     suspend fun addOdp(@Body item: com.example.ui.data.OdpItem): ApiResponse
 
     @PUT("api/odc/{id}")
     suspend fun updateOdc(@Path("id") id: String, @Body item: com.example.ui.data.OdcItem): ApiResponse
+    @PUT("api/rasio/{id}")
+    suspend fun updateRasio(@Path("id") id: String, @Body item: com.example.ui.data.RasioItem): ApiResponse
 
     @PUT("api/odp/{id}")
     suspend fun updateOdp(@Path("id") id: String, @Body item: com.example.ui.data.OdpItem): ApiResponse
