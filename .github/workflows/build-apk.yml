@@ -1,4 +1,5 @@
 name: Build Android APK
+run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file="" -Pandroid.injected.signing.store.password="" -Pandroid.injected.signing.key.alias="" -Pandroid.injected.signing.key.password=""
 
 on:
   push:
