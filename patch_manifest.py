@@ -1,23 +1,26 @@
 import re
-
 with open("app/src/main/AndroidManifest.xml", "r") as f:
     content = f.read()
 
-target = """        <activity
-            android:name=".MainActivity\""""
+permissions = """    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />"""
 
-rep = """        <service
-            android:name=".MyFirebaseMessagingService"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
+content = content.replace('<uses-permission android:name="android.permission.INTERNET" />', permissions)
 
-        <activity
-            android:name=".MainActivity\""""
+provider = """        </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>"""
 
-content = content.replace(target, rep)
+content = content.replace("""        </activity>
+    </application>""", provider)
 
 with open("app/src/main/AndroidManifest.xml", "w") as f:
     f.write(content)
