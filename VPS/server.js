@@ -6,11 +6,17 @@ const axios = require('axios');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
 const { sendTenantNotification } = require('./fcm_service');
+const whatsappGateway = require('./whatsapp-gateway');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Mount WhatsApp gateway routes
+app.use('/api/wa', whatsappGateway.router);
+whatsappGateway.initWhatsApp();
+
 app.get('/api/ping', (req, res) => res.json({ status: 'ok' }));
 
 

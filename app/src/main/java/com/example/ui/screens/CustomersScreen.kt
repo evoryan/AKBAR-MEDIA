@@ -286,8 +286,8 @@ fun CustomersScreen(
 
         LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredCustomers) { customer ->
                     
@@ -342,7 +342,6 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
     val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
     val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
-    val yellowBadge = Color(0xFFD4AF37)
     val greenText = Color(0xFF00FF4D)
     val errorRed = Color(0xFFFF003C)
     val redText = Color(0xFFFF4C4C)
@@ -352,52 +351,90 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(10.dp))
             .clickable { onNavigateToCustomerDetail(customer.id) }
-            .padding(16.dp)
+            .padding(10.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            // Left Column
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = customer.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = "${customer.phone} • ${customer.area}", fontSize = 12.sp, color = textSecondary)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(text = "Status :", fontSize = 12.sp, color = textSecondary)
-                Text(text = customer.status, fontSize = 12.sp, color = statusColor, fontWeight = FontWeight.Bold)
-            }
-            
-            // Right Column
-            Column(horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (customer.status.contains("BELUM BAYAR", ignoreCase = true)) {
-                        IconButton(onClick = { onIsolirCustomer(customer) }) {
-                            Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = errorRed)
-                        }
-                    }
-                    IconButton(onClick = { onEditCustomer(customer.id) }) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan)
-                    }
-                    IconButton(onClick = { onDeleteCustomer(customer) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = errorRed)
-                    }
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(neonCyan.copy(alpha = 0.2f))
-                        .border(1.dp, neonCyan, CircleShape),
-                    contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left Info Column
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(text = customer.id, color = neonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(neonCyan.copy(alpha = 0.15f))
+                            .border(0.5.dp, neonCyan, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = customer.id, color = neonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(text = customer.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textMain, maxLines = 1)
                 }
                 
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(text = customer.price, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textMain)
-                Text(text = customer.discount, fontSize = 12.sp, color = greenText)
+                Text(text = "${customer.phone} • ${customer.area}", fontSize = 11.sp, color = textSecondary, maxLines = 1)
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = customer.status,
+                        fontSize = 11.sp,
+                        color = statusColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (!customer.discount.isNullOrEmpty() && customer.discount != "0" && !customer.discount.contains("Rp. 0") && !customer.discount.contains("Dskn : Rp. 0")) {
+                        Text(
+                            text = customer.discount.replace("- Dskn : ", "Dskn: "),
+                            fontSize = 11.sp,
+                            color = greenText
+                        )
+                    }
+                }
+            }
+            
+            // Right Price & Actions Column
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(text = customer.price, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textMain)
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    if (customer.status.contains("BELUM BAYAR", ignoreCase = true)) {
+                        IconButton(
+                            onClick = { onIsolirCustomer(customer) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = errorRed, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    IconButton(
+                        onClick = { onEditCustomer(customer.id) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan, modifier = Modifier.size(16.dp))
+                    }
+                    IconButton(
+                        onClick = { onDeleteCustomer(customer) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = errorRed, modifier = Modifier.size(16.dp))
+                    }
+                }
             }
         }
     }

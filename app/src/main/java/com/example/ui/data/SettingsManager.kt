@@ -51,4 +51,41 @@ object SettingsManager {
     var supportByText: String
         get() = prefs.getString(KEY_SUPPORT_BY, "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit") ?: "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit"
         set(value) = prefs.edit().putString(KEY_SUPPORT_BY, value).apply()
+
+    // WhatsApp Gateway Settings
+    var waGatewayEnabled: Boolean
+        get() = prefs.getBoolean("wa_gateway_enabled", true)
+        set(value) = prefs.edit().putBoolean("wa_gateway_enabled", value).apply()
+
+    var waNotifyNewBilling: Boolean
+        get() = prefs.getBoolean("wa_notify_new_billing", true)
+        set(value) = prefs.edit().putBoolean("wa_notify_new_billing", value).apply()
+
+    var waNotifyPaymentSuccess: Boolean
+        get() = prefs.getBoolean("wa_notify_payment_success", true)
+        set(value) = prefs.edit().putBoolean("wa_notify_payment_success", value).apply()
+
+    var waNotifyIsolir: Boolean
+        get() = prefs.getBoolean("wa_notify_isolir", true)
+        set(value) = prefs.edit().putBoolean("wa_notify_isolir", value).apply()
+
+    var waNotifyOtp: Boolean
+        get() = prefs.getBoolean("wa_notify_otp", true)
+        set(value) = prefs.edit().putBoolean("wa_notify_otp", value).apply()
+
+    var waTemplateNewBilling: String
+        get() = prefs.getString("wa_template_new_billing", "Halo {nama},\nTagihan internet AKBAR MEDIA Anda untuk bulan {bulan} telah terbit sebesar {nominal}.\n\nHarap segera melakukan pembayaran sebelum jatuh tempo.\n\nTerima kasih.") ?: ""
+        set(value) = prefs.edit().putString("wa_template_new_billing", value).apply()
+
+    var waTemplatePaymentSuccess: String
+        get() = prefs.getString("wa_template_payment_success", "Halo {nama},\nTerima kasih, pembayaran tagihan internet AKBAR MEDIA untuk bulan {bulan} sejumlah {nominal} telah kami terima dan dinyatakan LUNAS.\n\nSalam,\nAKBAR MEDIA") ?: ""
+        set(value) = prefs.edit().putString("wa_template_payment_success", value).apply()
+
+    var waTemplateIsolir: String
+        get() = prefs.getString("wa_template_isolir", "Halo {nama},\nLayanan internet Anda sementara dinonaktifkan karena belum melakukan pembayaran tagihan bulan {bulan}.\n\nSilakan lakukan pembayaran untuk mengaktifkan kembali layanan.\n\nTerima kasih.") ?: ""
+        set(value) = prefs.edit().putString("wa_template_isolir", value).apply()
+
+    var waTemplateOtp: String
+        get() = prefs.getString("wa_template_otp", "Kode OTP Anda adalah: {otp}\n\nJangan membagikan kode ini kepada siapa pun.\n\nAKBAR MEDIA") ?: ""
+        set(value) = prefs.edit().putString("wa_template_otp", value).apply()
 }

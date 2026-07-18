@@ -162,7 +162,16 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
                         if (formattedPhone.startsWith("0")) {
                             formattedPhone = "62" + formattedPhone.substring(1)
                         }
-                        val text = "Halo ${customer?.name},\nTerima kasih, pembayaran tagihan internet untuk bulan ${months} sejumlah ${formattedAmount} telah kami terima dan lunas.\n\nSalam,\n${com.example.ui.data.SettingsManager.companyName}"
+                        val rawTemplate = if (com.example.ui.data.SettingsManager.waGatewayEnabled && com.example.ui.data.SettingsManager.waNotifyPaymentSuccess) {
+                            com.example.ui.data.SettingsManager.waTemplatePaymentSuccess
+                        } else {
+                            "Halo {nama},\nTerima kasih, pembayaran tagihan internet untuk bulan {bulan} sejumlah {nominal} telah kami terima dan lunas.\n\nSalam,\n{perusahaan}"
+                        }
+                        val text = rawTemplate
+                            .replace("{nama}", customer?.name ?: "")
+                            .replace("{bulan}", months)
+                            .replace("{nominal}", formattedAmount)
+                            .replace("{perusahaan}", com.example.ui.data.SettingsManager.companyName)
                         val intent = Intent(Intent.ACTION_VIEW)
                         intent.data = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=${Uri.encode(text)}")
                         context.startActivity(intent)

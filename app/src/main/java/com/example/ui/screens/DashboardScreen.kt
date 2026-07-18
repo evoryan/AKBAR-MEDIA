@@ -119,7 +119,7 @@ fun DashboardScreen(
         ) {
             Column {
                 val mContext = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
+                val coroutineScope = rememberCoroutineScope()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(com.example.ui.data.SettingsManager.companyName, fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     Spacer(modifier = Modifier.width(8.dp))

@@ -58,11 +58,42 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
     var customer by remember { mutableStateOf<Customer?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     
-    val monthsToPay = remember { mutableStateListOf("Tagihan Bulan Ini") }
+    val currentMonth = remember {
+        val cal = java.util.Calendar.getInstance()
+        val sdf = java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("id", "ID"))
+        sdf.format(cal.time)
+    }
+    
+    fun getMonthNameWithOffset(offset: Int): String {
+        val cal = java.util.Calendar.getInstance()
+        cal.add(java.util.Calendar.MONTH, offset)
+        val sdf = java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("id", "ID"))
+        return sdf.format(cal.time)
+    }
+
+    val monthsToPay = remember { mutableStateListOf(currentMonth) }
     var showConfirmDialog by remember { mutableStateOf(false) }
+    
+    var customDiscount by remember { mutableStateOf(0) }
+    var showDiscountDialog by remember { mutableStateOf(false) }
+    var discountInputText by remember { mutableStateOf("") }
+    
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    var selectedOptionText by remember { mutableStateOf("1 Bulan ($currentMonth)") }
+    
+    val options = remember {
+        listOf(
+            "1 Bulan ($currentMonth)" to listOf(getMonthNameWithOffset(0)),
+            "2 Bulan (${getMonthNameWithOffset(0).substringBefore(" ")} - ${getMonthNameWithOffset(1)})" to (0..1).map { getMonthNameWithOffset(it) },
+            "3 Bulan (${getMonthNameWithOffset(0).substringBefore(" ")} - ${getMonthNameWithOffset(2)})" to (0..2).map { getMonthNameWithOffset(it) },
+            "6 Bulan (${getMonthNameWithOffset(0).substringBefore(" ")} - ${getMonthNameWithOffset(5)})" to (0..5).map { getMonthNameWithOffset(it) },
+            "12 Bulan / 1 Tahun (${getMonthNameWithOffset(0).substringBefore(" ")} - ${getMonthNameWithOffset(11)})" to (0..11).map { getMonthNameWithOffset(it) }
+        )
+    }
     
     val monthlyFee = customer?.price?.replace(Regex("\\.0$"), "")?.replace(Regex("[^0-9]"), "")?.toIntOrNull() ?: 0
     val totalAmount = monthsToPay.size * monthlyFee
+    val finalAmount = (totalAmount - customDiscount).coerceAtLeast(0)
     
     androidx.compose.runtime.LaunchedEffect(customerId) {
         try {
@@ -77,10 +108,19 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
             isLoading = false
         }
     }
+    
+    androidx.compose.runtime.LaunchedEffect(customer) {
+        if (customer != null) {
+            val parsed = customer?.discount?.replace(Regex("[^0-9]"), "")?.toIntOrNull() ?: 0
+            customDiscount = parsed
+        }
+    }
+    
     val formatter = NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
     val coroutineScope = rememberCoroutineScope()
     val currentUser by UserSession.currentUser.collectAsState()
     val totalFormatted = "Rp. ${formatter.format(totalAmount)}"
+    val finalFormatted = "Rp. ${formatter.format(finalAmount)}"
 
     Scaffold(
         containerColor = bgMain,
@@ -181,53 +221,116 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     Text(customer?.packageName ?: "Reguler", color = textMain, fontSize = 14.sp)
                     Text(customer?.price ?: "Rp. 0", color = textMain, fontSize = 14.sp)
                 }
-                if (!customer?.discount.isNullOrEmpty() && customer?.discount != "0") {
+                if (customDiscount > 0) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Diskon", color = textMain, fontSize = 14.sp)
-                        Text("- ${customer?.discount}", color = Color.Green, fontSize = 14.sp)
+                        Text("- Rp. ${formatter.format(customDiscount)}", color = Color.Green, fontSize = 14.sp)
                     }
                 }
                 
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Biaya Perbulannya", color = textSecondary, fontSize = 14.sp)
-                    Text(customer?.price ?: "Rp. 0", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    val basePrice = customer?.price ?: "Rp. 0"
+                    Text(basePrice, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Bulan", color = textSecondary, fontSize = 12.sp)
+                Text("Bulan yang Akan Dibayar", color = textSecondary, fontSize = 12.sp)
+                
+                ExposedDropdownMenuBox(
+                    expanded = dropdownExpanded,
+                    onExpandedChange = { dropdownExpanded = !dropdownExpanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = selectedOptionText,
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded)
+                        },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textMain.copy(alpha = 0.5f),
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain,
+                            focusedTrailingIconColor = neonCyan,
+                            unfocusedTrailingIconColor = textMain.copy(alpha = 0.5f)
+                        )
+                    )
+                    ExposedDropdownMenu(
+                        expanded = dropdownExpanded,
+                        onDismissRequest = { dropdownExpanded = false },
+                        containerColor = cardBg
+                    ) {
+                        options.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.first, color = textMain) },
+                                onClick = {
+                                    selectedOptionText = option.first
+                                    monthsToPay.clear()
+                                    monthsToPay.addAll(option.second)
+                                    dropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Rincian Bulan Tagihan:", color = textSecondary, fontSize = 12.sp)
                 monthsToPay.forEach { month ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(month, color = textMain, fontSize = 14.sp)
-                        if (monthsToPay.size > 1) {
-                            IconButton(
-                                onClick = { monthsToPay.remove(month) },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = "Hapus", tint = Color.Red, modifier = Modifier.size(16.dp))
-                            }
-                        }
+                        Text("• $month", color = textMain, fontSize = 14.sp)
                     }
                 }
             }
 
-            // Total Card
-            Row(
+            // Total & Hasil Akhir Card
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
                     .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Total Pembayaran", color = textMain, fontSize = 16.sp)
-                Text(totalFormatted, color = neonCyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Total Tagihan", color = textSecondary, fontSize = 14.sp)
+                    Text(totalFormatted, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                }
+                if (customDiscount > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Potongan Diskon", color = successGreen, fontSize = 14.sp)
+                        Text("- Rp. ${formatter.format(customDiscount)}", color = successGreen, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                HorizontalDivider(color = cardBorder.copy(alpha = 0.1f), thickness = 0.5.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Hasil Akhir", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(finalFormatted, color = neonCyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
             // Discount Card
@@ -237,12 +340,19 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
                     .border(1.dp, successGreen.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                    .clickable { /*TODO*/ }
+                    .clickable { 
+                        discountInputText = if (customDiscount > 0) customDiscount.toString() else ""
+                        showDiscountDialog = true
+                    }
                     .padding(16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Tambahkan Diskon", color = successGreen, fontSize = 14.sp)
+                Text(
+                    if (customDiscount > 0) "Ubah Diskon (Rp. ${formatter.format(customDiscount)})" else "Tambahkan Diskon",
+                    color = successGreen,
+                    fontSize = 14.sp
+                )
                 Icon(Icons.Default.Edit, contentDescription = "Edit Discount", tint = successGreen)
             }
 
@@ -312,7 +422,7 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 onDismissRequest = { showConfirmDialog = false },
                 containerColor = bgMain,
                 title = { Text("Konfirmasi Pembayaran", color = textMain, fontWeight = FontWeight.Bold) },
-                text = { Text("Apakah Anda yakin ingin menyelesaikan pembayaran ini sejumlah $totalFormatted?", color = textSecondary) },
+                text = { Text("Apakah Anda yakin ingin menyelesaikan pembayaran ini sejumlah $finalFormatted?", color = textSecondary) },
                 confirmButton = {
                     Button(
                         onClick = { 
@@ -322,10 +432,10 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                                     val req = com.example.ui.data.remote.PaymentRequest(
                                         customerId = customerId,
                                         adminName = currentUser?.name ?: "Admin",
-                                        totalAmount = totalAmount.toDouble()
+                                        totalAmount = finalAmount.toDouble()
                                     )
                                     ApiClient.apiService.payBilling(req)
-                                    onNavigateToSuccess(customerId, totalAmount.toString(), monthsToPay.joinToString(", "))
+                                    onNavigateToSuccess(customerId, finalAmount.toString(), monthsToPay.joinToString(", "))
                                 } catch (e: Exception) {
                                     android.widget.Toast.makeText(context, "Pembayaran gagal: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                                 }
@@ -339,6 +449,63 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 dismissButton = {
                     TextButton(onClick = { showConfirmDialog = false }) {
                         Text("Tidak", color = textMain)
+                    }
+                }
+            )
+        }
+
+        if (showDiscountDialog) {
+            AlertDialog(
+                onDismissRequest = { showDiscountDialog = false },
+                containerColor = bgMain,
+                title = { Text("Tambahkan Diskon", color = textMain, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Masukkan nominal diskon yang ingin diberikan:", color = textSecondary, fontSize = 14.sp)
+                        OutlinedTextField(
+                            value = discountInputText,
+                            onValueChange = { input ->
+                                if (input.all { it.isDigit() }) {
+                                    discountInputText = input
+                                }
+                            },
+                            label = { Text("Nominal Diskon (Rp)", color = textMain.copy(alpha = 0.7f)) },
+                            placeholder = { Text("Contoh: 10000", color = textSecondary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = successGreen,
+                                unfocusedBorderColor = textMain.copy(alpha = 0.5f),
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain,
+                                focusedLabelColor = successGreen,
+                                unfocusedLabelColor = textMain.copy(alpha = 0.7f)
+                            ),
+                            singleLine = true
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val amt = discountInputText.toIntOrNull() ?: 0
+                            if (amt > totalAmount) {
+                                Toast.makeText(context, "Diskon tidak boleh melebihi total tagihan!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                customDiscount = amt
+                                showDiscountDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = successGreen, contentColor = Color.Black)
+                    ) {
+                        Text("Simpan", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDiscountDialog = false }) {
+                        Text("Batal", color = textMain)
                     }
                 }
             )
