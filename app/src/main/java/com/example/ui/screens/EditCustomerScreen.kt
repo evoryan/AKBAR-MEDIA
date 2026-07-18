@@ -203,6 +203,18 @@ fun EditCustomerScreen(customerId: String,
             // Fetch Profiles
             try {
                 profiles = ApiClient.apiService.getMikrotikProfiles(selectedArea!!.id)
+                if (profiles.isEmpty()) {
+                    profiles = listOf(
+                        com.example.ui.data.remote.MikrotikProfile("1", "default"),
+                        com.example.ui.data.remote.MikrotikProfile("2", "1M"),
+                        com.example.ui.data.remote.MikrotikProfile("3", "2M"),
+                        com.example.ui.data.remote.MikrotikProfile("4", "3M"),
+                        com.example.ui.data.remote.MikrotikProfile("5", "4M"),
+                        com.example.ui.data.remote.MikrotikProfile("6", "5M"),
+                        com.example.ui.data.remote.MikrotikProfile("7", "10M"),
+                        com.example.ui.data.remote.MikrotikProfile("8", "20M")
+                    )
+                }
             } catch (e: Exception) {
                 profiles = listOf(
                     com.example.ui.data.remote.MikrotikProfile("1", "default"),

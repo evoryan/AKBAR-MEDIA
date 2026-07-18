@@ -142,13 +142,45 @@ fun RasioScreen(onBack: () -> Unit) {
     
     if (showDialog) {
         var name by remember { mutableStateOf(editItem?.name ?: "") }
-            var area by remember { mutableStateOf(editItem?.area ?: "") }
+        var area by remember { mutableStateOf(editItem?.area ?: "") }
         var location by remember { mutableStateOf(editItem?.location ?: "") }
         var size by remember { mutableStateOf(editItem?.size ?: "") }
         var redamanIn by remember { mutableStateOf(editItem?.redamanIn ?: "") }
         var redamanOutA by remember { mutableStateOf(editItem?.redamanOutA ?: "") }
         var redamanOutB by remember { mutableStateOf(editItem?.redamanOutB ?: "") }
         
+        val sizeOptions = listOf(
+            "01:99" to Pair(20.0f, 0.05f),
+            "02:98" to Pair(17.0f, 0.10f),
+            "03:97" to Pair(15.2f, 0.13f),
+            "04:96" to Pair(14.0f, 0.18f),
+            "05:95" to Pair(13.0f, 0.22f),
+            "06:94" to Pair(12.2f, 0.27f),
+            "07:93" to Pair(11.5f, 0.32f),
+            "08:92" to Pair(11.0f, 0.36f),
+            "09:91" to Pair(10.5f, 0.41f),
+            "10:90" to Pair(10.0f, 0.46f),
+            "15:85" to Pair(8.2f, 0.71f),
+            "20:80" to Pair(7.0f, 0.97f),
+            "25:75" to Pair(6.0f, 1.25f),
+            "30:70" to Pair(5.2f, 1.55f),
+            "35:65" to Pair(4.6f, 1.87f),
+            "40:60" to Pair(4.0f, 2.22f),
+            "45:55" to Pair(3.5f, 2.60f),
+            "50:50" to Pair(3.0f, 3.00f)
+        )
+
+        val calculateOutputs = { currentIn: String, currentSize: String ->
+            val rIn = currentIn.toFloatOrNull()
+            if (rIn != null) {
+                val selectedOption = sizeOptions.find { it.first == currentSize }
+                if (selectedOption != null) {
+                    redamanOutA = String.format(java.util.Locale.US, "%.2f", rIn - selectedOption.second.first)
+                    redamanOutB = String.format(java.util.Locale.US, "%.2f", rIn - selectedOption.second.second)
+                }
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showDialog = false },
             containerColor = cardBg,
@@ -211,26 +243,6 @@ fun RasioScreen(onBack: () -> Unit) {
                         }
                     }
                     var sizeExpanded by remember { mutableStateOf(false) }
-                    val sizeOptions = listOf(
-                        "01:99" to Pair(20.0f, 0.05f),
-                        "02:98" to Pair(17.0f, 0.10f),
-                        "03:97" to Pair(15.2f, 0.13f),
-                        "04:96" to Pair(14.0f, 0.18f),
-                        "05:95" to Pair(13.0f, 0.22f),
-                        "06:94" to Pair(12.2f, 0.27f),
-                        "07:93" to Pair(11.5f, 0.32f),
-                        "08:92" to Pair(11.0f, 0.36f),
-                        "09:91" to Pair(10.5f, 0.41f),
-                        "10:90" to Pair(10.0f, 0.46f),
-                        "15:85" to Pair(8.2f, 0.71f),
-                        "20:80" to Pair(7.0f, 0.97f),
-                        "25:75" to Pair(6.0f, 1.25f),
-                        "30:70" to Pair(5.2f, 1.55f),
-                        "35:65" to Pair(4.6f, 1.87f),
-                        "40:60" to Pair(4.0f, 2.22f),
-                        "45:55" to Pair(3.5f, 2.60f),
-                        "50:50" to Pair(3.0f, 3.00f)
-                    )
                     
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
@@ -262,11 +274,7 @@ fun RasioScreen(onBack: () -> Unit) {
                                     onClick = {
                                         size = option.first
                                         sizeExpanded = false
-                                        val rIn = redamanIn.toFloatOrNull()
-                                        if (rIn != null) {
-                                            redamanOutA = String.format(java.util.Locale.US, "%.2f", rIn - option.second.first)
-                                            redamanOutB = String.format(java.util.Locale.US, "%.2f", rIn - option.second.second)
-                                        }
+                                        calculateOutputs(redamanIn, option.first)
                                     }
                                 )
                             }
@@ -306,6 +314,7 @@ fun RasioScreen(onBack: () -> Unit) {
                                         sumberPort = option.first
                                         redamanIn = option.second
                                         sumberPortExpanded = false
+                                        calculateOutputs(option.second, size)
                                     }
                                 )
                             }
@@ -315,14 +324,7 @@ fun RasioScreen(onBack: () -> Unit) {
                         value = redamanIn,
                         onValueChange = { 
                             redamanIn = it 
-                            val rIn = it.toFloatOrNull()
-                            if (rIn != null) {
-                                val selectedOption = sizeOptions.find { it.first == size }
-                                if (selectedOption != null) {
-                                    redamanOutA = String.format(java.util.Locale.US, "%.2f", rIn - selectedOption.second.first)
-                                    redamanOutB = String.format(java.util.Locale.US, "%.2f", rIn - selectedOption.second.second)
-                                }
-                            }
+                            calculateOutputs(it, size)
                         },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                         label = { Text("Redaman Input") },

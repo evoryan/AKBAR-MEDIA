@@ -305,26 +305,25 @@ fun DashboardScreen(
                 }
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
 
         // Summary Grid
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // Active Customers
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(28.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(gridSuccessBg)
-                    .border(1.dp, gridSuccessBorder, RoundedCornerShape(28.dp))
-                    .padding(20.dp)
+                    .border(1.dp, gridSuccessBorder, RoundedCornerShape(16.dp))
+                    .padding(12.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = iconSuccess, modifier = Modifier.size(24.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = iconSuccess, modifier = Modifier.size(20.dp))
                     Column {
                         when (val state = uiState) {
-                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
-                            is DashboardState.Success -> Text("${state.data.totalCustomers}", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
-                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                            is DashboardState.Success -> Text("${state.data.totalCustomers}", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                         }
                         Text("Aktif", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
                     }
@@ -335,18 +334,18 @@ fun DashboardScreen(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(28.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(gridErrorBg)
-                    .border(1.dp, gridErrorBorder, RoundedCornerShape(28.dp))
-                    .padding(20.dp)
+                    .border(1.dp, gridErrorBorder, RoundedCornerShape(16.dp))
+                    .padding(12.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Error, contentDescription = null, tint = iconError, modifier = Modifier.size(24.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.Error, contentDescription = null, tint = iconError, modifier = Modifier.size(20.dp))
                     Column {
                         when (val state = uiState) {
-                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textErrorPrimary)
-                            is DashboardState.Success -> Text("${state.data.unpaidCustomers}", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textErrorPrimary)
-                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 28.sp, color = textErrorPrimary)
+                            is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
+                            is DashboardState.Success -> Text("${state.data.unpaidCustomers}", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
+                            is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
                         }
                         Text("Belum Bayar", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = textErrorSecondary)
                     }

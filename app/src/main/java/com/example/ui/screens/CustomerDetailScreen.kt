@@ -81,7 +81,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                 if (!c.pppoeSecret.isNullOrEmpty()) {
                     try {
                         val acsList = ApiClient.apiService.getAcsDevices()
-                        acsDevice = acsList.find { it.username.trim().equals(c.pppoeSecret?.trim(), ignoreCase = true) }
+                        acsDevice = acsList.find { (it.username ?: "").trim().equals(c.pppoeSecret?.trim(), ignoreCase = true) }
                     } catch (e: Exception) {}
                     
                     // Get Mikrotik Secret Status

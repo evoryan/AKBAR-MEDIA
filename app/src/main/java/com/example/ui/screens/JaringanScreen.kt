@@ -280,7 +280,9 @@ fun ExpandableOdpItem(odp: OdpItem, odpList: List<OdpItem>, odcList: List<OdcIte
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.HorizontalDivider(color = cardBorder)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Area: ${odp.area}", color = textSecondary, fontSize = 14.sp)
+                val parentOdc = odcList.find { it.id == odp.odcId } ?: odcList.find { it.name == odp.portInput } ?: odcList.find { odp.portInput.contains(it.name) }
+                val displayArea = odp.area.takeIf { it.isNotEmpty() } ?: parentOdc?.area.orEmpty()
+                Text("Area: ${displayArea.takeIf { it.isNotEmpty() } ?: "-"}", color = textSecondary, fontSize = 14.sp)
                 Text("Sumber Input: ${odp.portInput}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman In: ${odp.redamanIn}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman Out: ${odp.redamanOut}", color = textSecondary, fontSize = 14.sp)

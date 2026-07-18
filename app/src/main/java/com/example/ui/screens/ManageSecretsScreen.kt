@@ -82,9 +82,34 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
                 profilesList = com.example.ui.data.remote.ApiClient.apiService.getMikrotikProfiles(areaId)
                 if (profilesList.isNotEmpty()) {
                     addProfile = profilesList[0].name
+                } else {
+                    // Fallback list of standard profiles
+                    profilesList = listOf(
+                        com.example.ui.data.remote.MikrotikProfile("1", "default"),
+                        com.example.ui.data.remote.MikrotikProfile("2", "1M"),
+                        com.example.ui.data.remote.MikrotikProfile("3", "2M"),
+                        com.example.ui.data.remote.MikrotikProfile("4", "3M"),
+                        com.example.ui.data.remote.MikrotikProfile("5", "4M"),
+                        com.example.ui.data.remote.MikrotikProfile("6", "5M"),
+                        com.example.ui.data.remote.MikrotikProfile("7", "10M"),
+                        com.example.ui.data.remote.MikrotikProfile("8", "20M")
+                    )
+                    addProfile = "default"
                 }
             } catch(e: Exception) {
-                android.widget.Toast.makeText(context, "Gagal memuat profil: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "Gagal memuat profil, menggunakan cadangan: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                // Fallback list of standard profiles on failure
+                profilesList = listOf(
+                    com.example.ui.data.remote.MikrotikProfile("1", "default"),
+                    com.example.ui.data.remote.MikrotikProfile("2", "1M"),
+                    com.example.ui.data.remote.MikrotikProfile("3", "2M"),
+                    com.example.ui.data.remote.MikrotikProfile("4", "3M"),
+                    com.example.ui.data.remote.MikrotikProfile("5", "4M"),
+                    com.example.ui.data.remote.MikrotikProfile("6", "5M"),
+                    com.example.ui.data.remote.MikrotikProfile("7", "10M"),
+                    com.example.ui.data.remote.MikrotikProfile("8", "20M")
+                )
+                addProfile = "default"
             } finally {
                 isProfilesLoading = false
             }
@@ -321,11 +346,20 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
                         coroutineScope.launch {
                             try {
                                 isLoading = true
-                                com.example.ui.data.remote.ApiClient.apiService.deleteMikrotikSecret(areaId, secretToDelete!!.name)
+                                com.example.ui.data.remote.ApiClient.apiService.deleteMikrotikSecret(areaId, mapOf("name" to secretToDelete!!.name))
                                 val secrets = com.example.ui.data.remote.ApiClient.apiService.getMikrotikSecrets(areaId)
                                 allSecrets.clear()
                                 allSecrets.addAll(secrets)
                                 secretToDelete = null
+                            } catch(e: retrofit2.HttpException) {
+                                val errorMsg = try {
+                                    val json = e.response()?.errorBody()?.string()
+                                    val obj = org.json.JSONObject(json)
+                                    obj.getString("error")
+                                } catch(err: Exception) {
+                                    e.message()
+                                }
+                                android.widget.Toast.makeText(context, "Error: $errorMsg", android.widget.Toast.LENGTH_LONG).show()
                             } catch(e: Exception) {
                                 android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                             } finally {

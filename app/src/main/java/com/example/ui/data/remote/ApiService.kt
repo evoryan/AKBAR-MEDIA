@@ -74,7 +74,7 @@ data class PaymentRequest(val customerId: String, val adminName: String, val tot
 data class DeleteBillingRequest(val customerId: String)
 
 data class MikrotikProfile(
-    val id: String,
+    val id: String? = null,
     val name: String
 )
 
@@ -275,8 +275,8 @@ interface ApiService {
     @POST("api/mikrotik/secrets/{id}/remove-active")
     suspend fun removeActiveMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse
 
-    @DELETE("api/mikrotik/secrets/{id}/{secretName}")
-    suspend fun deleteMikrotikSecret(@Path("id") areaId: String, @Path("secretName") secretName: String): ApiResponse
+    @POST("api/mikrotik/secrets/{id}/delete")
+    suspend fun deleteMikrotikSecret(@Path("id") areaId: String, @Body request: Map<String, String>): ApiResponse
 
 
 

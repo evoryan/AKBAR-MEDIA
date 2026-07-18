@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SignalWifi4Bar
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,15 +38,15 @@ import androidx.compose.material.icons.filled.ArrowDropUp
 
 
 data class AcsDevice(
-    val id: String,
-    val username: String,
-    val isOnline: Boolean,
-    val ssid: String = "Unknown",
-    val wifiPassword: String = "-",
-    val connectedUsers: Int = 0,
-    val customerNumber: String = "-",
-    val rxPower: String = "-",
-    val areaName: String = ""
+    val id: String?,
+    val username: String?,
+    val isOnline: Boolean?,
+    val ssid: String? = "Unknown",
+    val wifiPassword: String? = "-",
+    val connectedUsers: Int? = 0,
+    val customerNumber: String? = "-",
+    val rxPower: String? = "-",
+    val areaName: String? = ""
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +68,7 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
     var allDevices by remember { mutableStateOf<List<AcsDevice>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var selectedArea by remember { mutableStateOf<com.example.ui.screens.Area?>(null) }
 
     LaunchedEffect(Unit) {
         try {
@@ -80,13 +82,14 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
     }
 
     val displayedDevices = allDevices.filter { 
-        it.username.contains(searchQuery, ignoreCase = true) &&
-        (!showOnlyOffline || !it.isOnline)
+        (it.username ?: "").contains(searchQuery, ignoreCase = true) &&
+        (!showOnlyOffline || it.isOnline != true) &&
+        (selectedArea == null || it.areaName == selectedArea?.name)
     }
     
     val totalDevices = allDevices.size
-    val onlineDevices = allDevices.count { it.isOnline }
-    val offlineDevices = allDevices.count { !it.isOnline }
+    val onlineDevices = allDevices.count { it.isOnline == true }
+    val offlineDevices = allDevices.count { it.isOnline != true }
 
     Scaffold(containerColor = bgMain,
         topBar = {
@@ -168,7 +171,6 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
                     }
                     
                     var expandedArea by remember { mutableStateOf(false) }
-                    var selectedArea by remember { mutableStateOf<com.example.ui.screens.Area?>(null) }
                     
     var areas by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
     LaunchedEffect(Unit) {
@@ -248,22 +250,57 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
             }
 
             // Device List
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(displayedDevices.withIndex().toList()) { (index, device) ->
-                    AcsDeviceItem(
-                        index = index + 1,
-                        device = device,
-                        cardBg = cardBg,
-                        textMain = textMain,
-                        textSecondary = textSecondary,
-                        warningYellow = warningYellow,
-                        primaryCyan = primaryCyan,
-                        errorRed = errorRed,
-                        successGreen = successGreen
-                    )
+            if (displayedDevices.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(top = 32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.WifiOff,
+                            contentDescription = null,
+                            tint = textSecondary,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = "Tidak ada perangkat ACS ditemukan",
+                            color = textMain,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "Silakan pastikan konfigurasi API ACS di menu Server Area sudah benar dan perangkat Anda terhubung.",
+                            color = textSecondary,
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(displayedDevices.withIndex().toList()) { (index, device) ->
+                        AcsDeviceItem(
+                            index = index + 1,
+                            device = device,
+                            cardBg = cardBg,
+                            textMain = textMain,
+                            textSecondary = textSecondary,
+                            warningYellow = warningYellow,
+                            primaryCyan = primaryCyan,
+                            errorRed = errorRed,
+                            successGreen = successGreen
+                        )
+                    }
                 }
             }
         }
@@ -303,6 +340,7 @@ fun AcsDeviceItem(
     var isUpdating by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val isErrorItem = device.id?.startsWith("error_") == true
     
     Card(
         modifier = Modifier
@@ -318,30 +356,46 @@ fun AcsDeviceItem(
             ) {
                 Text(index.toString(), color = textMain, fontSize = 14.sp, modifier = Modifier.weight(0.15f))
                 Column(modifier = Modifier.weight(0.45f)) {
-                    Text(device.username, color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        text = device.username ?: "Unknown",
+                        color = if (isErrorItem) errorRed else textMain,
+                        fontSize = 14.sp,
+                        fontWeight = if (isErrorItem) FontWeight.Bold else FontWeight.Medium
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(if (device.isOnline) successGreen else errorRed)
+                                .background(if (isErrorItem) warningYellow else (if (device.isOnline == true) successGreen else errorRed))
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (device.isOnline) "Online" else "Offline",
-                            color = if (device.isOnline) successGreen else errorRed,
+                            text = if (isErrorItem) "Gagal Koneksi" else (if (device.isOnline == true) "Online" else "Offline"),
+                            color = if (isErrorItem) warningYellow else (if (device.isOnline == true) successGreen else errorRed),
                             fontSize = 10.sp
                         )
-                        if (device.areaName.isNotEmpty()) {
+                        if (!device.areaName.isNullOrEmpty()) {
                             Text(" • ${device.areaName}", color = primaryCyan, fontSize = 10.sp)
                         }
                     }
                 }
                 
-                Column(modifier = Modifier.weight(0.4f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    AcsActionButton("Set SSID", warningYellow, Icons.Default.Build) { showSsidDialog = true }
-                    AcsActionButton("Set Password", primaryCyan, Icons.Default.Build) { showPasswordDialog = true }
-                    AcsActionButton("Restart", errorRed, Icons.Default.Refresh) { showRestartDialog = true }
+                if (!isErrorItem) {
+                    Column(modifier = Modifier.weight(0.4f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        AcsActionButton("Set SSID", warningYellow, Icons.Default.Build) { showSsidDialog = true }
+                        AcsActionButton("Set Password", primaryCyan, Icons.Default.Build) { showPasswordDialog = true }
+                        AcsActionButton("Restart", errorRed, Icons.Default.Refresh) { showRestartDialog = true }
+                    }
+                } else {
+                    Box(modifier = Modifier.weight(0.4f), contentAlignment = Alignment.CenterEnd) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Error Connection",
+                            tint = errorRed,
+                            modifier = Modifier.size(24.dp).padding(end = 4.dp)
+                        )
+                    }
                 }
             }
             
@@ -354,11 +408,34 @@ fun AcsDeviceItem(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AcsDetailRow("SSID", device.ssid, textMain, textSecondary)
-                    AcsDetailRow("Password", device.wifiPassword, textMain, textSecondary)
-                    AcsDetailRow("User Konek", device.connectedUsers.toString(), textMain, textSecondary)
-                    AcsDetailRow("Nomor Pelanggan", device.customerNumber, textMain, textSecondary)
-                    AcsDetailRow("Redaman", if (device.rxPower != "-" && device.rxPower.isNotEmpty()) "${device.rxPower} dBm" else "-", textMain, textSecondary)
+                    if (isErrorItem) {
+                        Text(
+                            text = "Detail Kesalahan:",
+                            color = errorRed,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                        Text(
+                            text = device.ssid ?: "Unknown error",
+                            color = textMain,
+                            fontSize = 12.sp,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Saran Perbaikan:\n1. Pastikan port (misal :7557) diisi jika domain/IP membutuhkan port khusus.\n2. Pastikan credentials ACS User & ACS Password sudah sesuai.\n3. Periksa koneksi internet ke GenieACS server Anda.",
+                            color = textSecondary,
+                            fontSize = 11.sp,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                    } else {
+                        AcsDetailRow("SSID", device.ssid ?: "Unknown", textMain, textSecondary)
+                        AcsDetailRow("Password", device.wifiPassword ?: "-", textMain, textSecondary)
+                        AcsDetailRow("User Konek", (device.connectedUsers ?: 0).toString(), textMain, textSecondary)
+                        AcsDetailRow("Nomor Pelanggan", device.customerNumber ?: "-", textMain, textSecondary)
+                        AcsDetailRow("Redaman", if (device.rxPower != null && device.rxPower != "-" && device.rxPower!!.isNotEmpty()) "${device.rxPower} dBm" else "-", textMain, textSecondary)
+                    }
                 }
             }
         }
@@ -368,7 +445,7 @@ fun AcsDeviceItem(
         AcsActionDialog(
             title = "Ubah SSID",
             description = "Silahkan ubah nama wifi anda.",
-            initialValue = device.ssid,
+            initialValue = device.ssid ?: "",
             label = "Nama WiFi Baru",
             isUpdating = isUpdating,
             updateResult = updateResult,
@@ -381,7 +458,7 @@ fun AcsDeviceItem(
                 updateResult = null
                 coroutineScope.launch {
                     try {
-                        val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "set_ssid", "value" to newSsid, "areaName" to device.areaName))
+                        val res = ApiClient.apiService.acsAction(device.id ?: "", mapOf("action" to "set_ssid", "value" to newSsid, "areaName" to (device.areaName ?: "")))
                         updateResult = res.message
                     } catch(e: Exception) {
                         updateResult = "Gagal: ${e.message}"
@@ -413,7 +490,7 @@ fun AcsDeviceItem(
                     updateResult = null
                     coroutineScope.launch {
                         try {
-                            val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "set_password", "value" to newPass, "areaName" to device.areaName))
+                            val res = ApiClient.apiService.acsAction(device.id ?: "", mapOf("action" to "set_password", "value" to newPass, "areaName" to (device.areaName ?: "")))
                             updateResult = res.message
                         } catch(e: Exception) {
                             updateResult = "Gagal: ${e.message}"
@@ -442,7 +519,7 @@ fun AcsDeviceItem(
                 updateResult = null
                 coroutineScope.launch {
                     try {
-                        val res = ApiClient.apiService.acsAction(device.id, mapOf("action" to "reboot", "areaName" to device.areaName))
+                        val res = ApiClient.apiService.acsAction(device.id ?: "", mapOf("action" to "reboot", "areaName" to (device.areaName ?: "")))
                         updateResult = res.message
                     } catch(e: Exception) {
                         updateResult = "Gagal: ${e.message}"

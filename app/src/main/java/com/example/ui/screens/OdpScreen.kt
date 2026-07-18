@@ -79,6 +79,7 @@ fun OdpScreen(onBack: () -> Unit) {
 
     var showDialog by remember { mutableStateOf(false) }
     var editItem by remember { mutableStateOf<OdpItem?>(null) }
+    var itemToDelete by remember { mutableStateOf<OdpItem?>(null) }
 
     Scaffold(
         containerColor = bgMain,
@@ -118,7 +119,8 @@ fun OdpScreen(onBack: () -> Unit) {
                 contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
             ) {
                 items(odpList) { item ->
-                    val odc = odcList.find { it.id == item.odcId }
+                    val odc = odcList.find { it.id == item.odcId } ?: odcList.find { it.name == item.portInput } ?: odcList.find { item.portInput.contains(it.name) }
+                    val displayArea = item.area.takeIf { it.isNotEmpty() } ?: odc?.area.orEmpty()
                     var isExpanded by remember { mutableStateOf(false) }
                     Column(
                         modifier = Modifier
@@ -140,7 +142,7 @@ fun OdpScreen(onBack: () -> Unit) {
                                 Column {
                                     Text(item.name, color = textMain, fontWeight = FontWeight.Medium, fontSize = 16.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text("ODC: ${odc?.name ?: "Unknown"} | Area: ${item.area}", color = textSecondary, fontSize = 14.sp)
+                                    Text("ODC: ${odc?.name ?: "Unknown"} | Area: ${displayArea.takeIf { it.isNotEmpty() } ?: "-"}", color = textSecondary, fontSize = 14.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text("Port: ${item.portCount} | Input: ${item.portInput}", color = primaryBg, fontSize = 14.sp)
                                 }
@@ -154,19 +156,7 @@ fun OdpScreen(onBack: () -> Unit) {
                                     Icon(Icons.Default.Edit, contentDescription = "Edit", tint = primaryBg)
                                 }
                                 IconButton(onClick = {
-                                    
-            coroutineScope.launch {
-                try {
-                    ApiClient.apiService.deleteOdp(item.id)
-                    odpList = odpList.filter { it.id != item.id }
-                } catch(e: retrofit2.HttpException) {
-                                val errBody = e.response()?.errorBody()?.string()
-                                Log.e("OdpScreen", "HTTP Error: $errBody", e)
-                                Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
-                            } catch (e: Exception) {
-                }
-            }
-        
+                                    itemToDelete = item
                                 }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color(0xFFFF003C))
                                 }
@@ -192,13 +182,13 @@ fun OdpScreen(onBack: () -> Unit) {
     }
 
     if (showDialog) {
-        var name by remember { mutableStateOf(editItem?.name ?: "") }
-            var area by remember { mutableStateOf(editItem?.area ?: "") }
-        var portCount by remember { mutableStateOf(editItem?.portCount?.toString() ?: "") }
-        var portInput by remember { mutableStateOf(editItem?.portInput ?: "") }
-        var redamanIn by remember { mutableStateOf(editItem?.redamanIn ?: "") }
-        var redamanOut by remember { mutableStateOf(editItem?.redamanOut ?: "") }
-        var selectedOdc = "0"
+        var name by remember(editItem) { mutableStateOf(editItem?.name ?: "") }
+        var area by remember(editItem) { mutableStateOf(editItem?.area ?: "") }
+        var portCount by remember(editItem) { mutableStateOf(editItem?.portCount?.toString() ?: "") }
+        var portInput by remember(editItem) { mutableStateOf(editItem?.portInput ?: "") }
+        var redamanIn by remember(editItem) { mutableStateOf(editItem?.redamanIn ?: "") }
+        var redamanOut by remember(editItem) { mutableStateOf(editItem?.redamanOut ?: "") }
+        var selectedOdc by remember(editItem) { mutableStateOf(editItem?.odcId ?: "0") }
         
 
         AlertDialog(
@@ -220,6 +210,43 @@ fun OdpScreen(onBack: () -> Unit) {
                             unfocusedTextColor = textMain
                         )
                     )
+
+                    var odcExpanded by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = odcList.find { it.id == selectedOdc }?.name ?: "Pilih ODC",
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("Koneksi ODC") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryBg,
+                                unfocusedBorderColor = cardBorder,
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { odcExpanded = !odcExpanded }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih ODC")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().clickable { odcExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = odcExpanded,
+                            onDismissRequest = { odcExpanded = false },
+                            modifier = Modifier.background(cardBg).fillMaxWidth(0.9f)
+                        ) {
+                            odcList.forEach { o ->
+                                DropdownMenuItem(
+                                    text = { Text(o.name, color = textMain) },
+                                    onClick = {
+                                        selectedOdc = o.id
+                                        odcExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     var portCountExpanded by remember { mutableStateOf(false) }
                     val portOptions = listOf("1:2" to "2", "1:4" to "4", "1:8" to "8", "1:16" to "16")
                     
@@ -321,10 +348,11 @@ fun OdpScreen(onBack: () -> Unit) {
                         }
                     }
                     var areaExpanded by remember { mutableStateOf(false) }
-                    Box {
+                    Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
-                            value = area,
-                            onValueChange = { area = it },
+                            value = area.takeIf { it.isNotEmpty() } ?: "Pilih Area",
+                            onValueChange = { },
+                            readOnly = true,
                             label = { Text("Area") },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryBg,
@@ -333,15 +361,16 @@ fun OdpScreen(onBack: () -> Unit) {
                                 unfocusedTextColor = textMain
                             ),
                             trailingIcon = {
-                                IconButton(onClick = { areaExpanded = true }) {
+                                IconButton(onClick = { areaExpanded = !areaExpanded }) {
                                     Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Area")
                                 }
-                            }
+                            },
+                            modifier = Modifier.fillMaxWidth().clickable { areaExpanded = true }
                         )
                         DropdownMenu(
                             expanded = areaExpanded,
                             onDismissRequest = { areaExpanded = false },
-                            modifier = Modifier.background(cardBg)
+                            modifier = Modifier.background(cardBg).fillMaxWidth(0.9f)
                         ) {
                             areaList.forEach { a ->
                                 DropdownMenuItem(
@@ -392,7 +421,7 @@ fun OdpScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     val port = portCount.toIntOrNull() ?: 0
-                    if (selectedOdc.isEmpty()) {
+                    if (selectedOdc == "0" || selectedOdc.isEmpty()) {
                         Toast.makeText(context, "Silakan pilih ODC terlebih dahulu", Toast.LENGTH_SHORT).show()
                         return@TextButton
                     }
@@ -453,6 +482,42 @@ fun OdpScreen(onBack: () -> Unit) {
             },
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
+        )
+    }
+
+    if (itemToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            containerColor = cardBg,
+            titleContentColor = textMain,
+            textContentColor = textSecondary,
+            title = { Text("Konfirmasi Hapus") },
+            text = { Text("Apakah Anda yakin ingin menghapus ODP '${itemToDelete?.name}'?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val odp = itemToDelete!!
+                    coroutineScope.launch {
+                        try {
+                            ApiClient.apiService.deleteOdp(odp.id)
+                            odpList = odpList.filter { it.id != odp.id }
+                            itemToDelete = null
+                        } catch(e: retrofit2.HttpException) {
+                            val errBody = e.response()?.errorBody()?.string()
+                            Log.e("OdpScreen", "HTTP Error: $errBody", e)
+                            Toast.makeText(context, "Server Error: $errBody", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) {
+                    Text("Hapus", color = Color(0xFFFF003C))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
                     Text("Batal", color = textSecondary)
                 }
             }

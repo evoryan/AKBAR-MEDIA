@@ -1009,21 +1009,21 @@ app.put('/api/odc/:id', async (req, res) => {
 app.put('/api/odp/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { odcId, name, portCount, portInput, redaman_in, redaman_out } = req.body;
+        const { odcId, name, portCount, portInput, redaman_in, redaman_out, area } = req.body;
         const parsedOdcId = parseInt(odcId) || 0;
         const parsedPortCount = parseInt(portCount) || 0;
         try {
             await req.pool.query(
-                'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
-                [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
+                'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ?, area = ? WHERE id = ?',
+                [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '', id]
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
                 await req.pool.query(
-                    'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ? WHERE id = ?',
-                    [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', id]
+                    'UPDATE odp_list SET name = ?, odcId = ?, portCount = ?, portInput = ?, redaman_in = ?, redaman_out = ?, area = ? WHERE id = ?',
+                    [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '', id]
                 );
             } else {
                 throw e;
@@ -1190,14 +1190,26 @@ app.get('/api/acs/devices', async (req, res) => {
         let allDevices = [];
         
         for (const area of areas) {
+            let baseUrl = area.apiDomain.trim();
+            if (!/^https?:\/\//i.test(baseUrl)) {
+                baseUrl = 'http://' + baseUrl;
+            }
+            if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+
             try {
-                let baseUrl = area.apiDomain.trim();
-                if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
-                
-                const response = await axios.get(`${baseUrl}/devices`, {
-                    auth: { username: area.acsUser, password: area.acsPassword },
-                    timeout: 5000
-                });
+                console.log(`[ACS] Fetching devices for area "${area.name}" from URL: ${baseUrl}/devices`);
+                let axiosConfig = { timeout: 5000 };
+                if (area.acsUser && area.acsUser.trim() !== '') {
+                    console.log(`[ACS] Using credentials for "${area.name}": user=${area.acsUser}`);
+                    axiosConfig.auth = {
+                        username: area.acsUser,
+                        password: area.acsPassword || ''
+                    };
+                } else {
+                    console.log(`[ACS] No credentials configured for "${area.name}", sending unauthenticated request`);
+                }
+
+                const response = await axios.get(`${baseUrl}/devices`, axiosConfig);
                 
                 if (response.data && Array.isArray(response.data)) {
                     const devices = response.data.map(d => {
@@ -1347,14 +1359,40 @@ app.get('/api/acs/devices', async (req, res) => {
                     allDevices = allDevices.concat(devices);
                 }
             } catch (err) {
-                console.error(`Failed to fetch ACS devices for area ${area.name}: ${err.message}`);
+                console.error(`[ACS Error] Failed to fetch ACS devices for area "${area.name}" at URL: ${baseUrl}/devices`);
+                console.error(`[ACS Error] Error Message: ${err.message}`);
+                
+                let errorDetails = err.message;
+                if (err.response) {
+                    console.error(`[ACS Error] HTTP Status: ${err.response.status}`);
+                    console.error(`[ACS Error] Response Data:`, typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : err.response.data);
+                    errorDetails += ` (HTTP ${err.response.status}: ${typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : String(err.response.data).substring(0, 150)})`;
+                } else if (err.request) {
+                    console.error(`[ACS Error] No response received from server. Request timed out or host unreachable.`);
+                    errorDetails += ` (Server tidak merespon, pastikan port :7557 sudah terbuka atau host dapat dijangkau)`;
+                } else {
+                    console.error(`[ACS Error] Error Stack:`, err.stack || err);
+                }
+
+                // Add a dynamic virtual error item so users can see the exact backend failure in the mobile app UI
+                allDevices.push({
+                    id: `error_${area.name}_${Date.now()}`,
+                    username: `⚠️ Gagal Terhubung ACS: ${area.name}`,
+                    isOnline: false,
+                    ssid: `Detail Kesalahan: ${errorDetails}`,
+                    wifiPassword: "Periksa IP, Port, dan Kredensial di pengaturan area.",
+                    connectedUsers: 0,
+                    customerNumber: '-',
+                    rxPower: '-',
+                    areaName: area.name
+                });
             }
         }
         
         res.json(allDevices);
     } catch (error) {
         console.error("Error fetching ACS devices:", error);
-        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+        res.status(500).json({ error: error.message || "Terjadi kesalahan" });
     }
 });
 
@@ -1380,6 +1418,9 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
         }
         
         let baseUrl = areaRow.apiDomain.trim();
+        if (!/^https?:\/\//i.test(baseUrl)) {
+            baseUrl = 'http://' + baseUrl;
+        }
         if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
         
         let taskData = {
@@ -1406,10 +1447,14 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
         }
         
         // GenieACS v1.2 format: POST /tasks?connection_request
-        const response = await axios.post(`${baseUrl}/tasks?connection_request`, taskData, {
-            auth: { username: areaRow.acsUser, password: areaRow.acsPassword },
-            timeout: 10000 // give it some time to process
-        });
+        let axiosConfig = { timeout: 10000 };
+        if (areaRow.acsUser && areaRow.acsUser.trim() !== '') {
+            axiosConfig.auth = {
+                username: areaRow.acsUser,
+                password: areaRow.acsPassword || ''
+            };
+        }
+        const response = await axios.post(`${baseUrl}/tasks?connection_request`, taskData, axiosConfig);
         
         res.json({ message: `Aksi ${action} berhasil diproses` });
     } catch (error) {
@@ -1465,22 +1510,22 @@ app.post('/api/odc', async (req, res) => {
 
 app.post('/api/odp', async (req, res) => {
     try {
-        const { odcId, name, portCount, portInput, redaman_in, redaman_out } = req.body;
+        const { odcId, name, portCount, portInput, redaman_in, redaman_out, area } = req.body;
         const parsedOdcId = parseInt(odcId) || 0;
         const parsedPortCount = parseInt(portCount) || 0;
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO odp_list (name, odcId, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
-                [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
+                'INSERT INTO odp_list (name, odcId, portCount, portInput, redaman_in, redaman_out, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '']
             );
         } catch(e) {
             if (e.message && (e.message.includes("Unknown column") || e.message.includes("Unknown column 'portinput'"))) {
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(err=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{}); await req.pool.query(`ALTER TABLE odp_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
                 [result] = await req.pool.query(
-                    'INSERT INTO odp_list (name, odcId, portCount, portInput, redaman_in, redaman_out) VALUES (?, ?, ?, ?, ?, ?)',
-                    [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '']
+                    'INSERT INTO odp_list (name, odcId, portCount, portInput, redaman_in, redaman_out, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [name, parsedOdcId, parsedPortCount, portInput || '', redaman_in || '', redaman_out || '', area || '']
                 );
             } else {
                 throw e;
@@ -1666,13 +1711,13 @@ app.post('/api/mikrotik/secrets/:id', async (req, res) => {
         });
 
         const api = await client.connect();
-        
-        await api.write('/ppp/secret/add', [
-            `=name=${name}`,
-            `=password=${password}`,
-            `=profile=${profile || 'default'}`,
-            `=service=pppoe`
-        ]);
+        const secretMenu = api.menu('/ppp/secret');
+        await secretMenu.add({
+            name: name,
+            password: password,
+            profile: profile || 'default',
+            service: 'pppoe'
+        });
         
         client.close();
         res.json({ message: "Secret berhasil ditambahkan" });
@@ -1711,11 +1756,193 @@ app.delete('/api/mikrotik/secrets/:id/:secretName', async (req, res) => {
             return res.status(404).json({ error: "Secret not found" });
         }
         
-        await secretMenu.remove(secrets[0]['.id']);
+        const secretId = secrets[0]['.id'] || secrets[0]['id'];
+        await secretMenu.remove(secretId);
         client.close();
         res.json({ message: "Secret deleted successfully" });
     } catch (error) {
         console.error("Error deleting Mikrotik secret:", error);
+        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+    }
+});
+
+app.post('/api/mikrotik/secrets/:id/delete', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: "Name is required" });
+        
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+        
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+        
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+        const api = await client.connect();
+        
+        const secretMenu = api.menu('/ppp/secret');
+        const secrets = await secretMenu.where('name', name).get();
+        if (secrets.length === 0) {
+            client.close();
+            return res.status(404).json({ error: "Secret not found" });
+        }
+        
+        const secretId = secrets[0]['.id'] || secrets[0]['id'];
+        if (!secretId) {
+            client.close();
+            return res.status(400).json({ error: "Gagal menemukan ID untuk secret ini di RouterOS" });
+        }
+        
+        await secretMenu.remove(secretId);
+        client.close();
+        res.json({ message: "Secret deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting Mikrotik secret via POST:", error);
+        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+    }
+});
+
+app.post('/api/mikrotik/secrets/:id/disable', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: "Name is required" });
+        
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+        
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+        
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+        const api = await client.connect();
+        
+        const secretMenu = api.menu('/ppp/secret');
+        const secrets = await secretMenu.where('name', name).get();
+        if (secrets.length === 0) {
+            client.close();
+            return res.status(404).json({ error: "Secret not found" });
+        }
+        
+        const secretId = secrets[0]['.id'] || secrets[0]['id'];
+        await secretMenu.set({ disabled: 'yes' }, secretId);
+        
+        // Also remove active connection
+        try {
+            const activeMenu = api.menu('/ppp/active');
+            const actives = await activeMenu.where('name', name).get();
+            if (actives.length > 0) {
+                await activeMenu.remove(actives[0]['.id']);
+            }
+        } catch (activeErr) {
+            console.error("Error kicking active connection on disable:", activeErr.message);
+        }
+        
+        client.close();
+        res.json({ message: "Secret disabled successfully" });
+    } catch (error) {
+        console.error("Error disabling Mikrotik secret:", error);
+        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+    }
+});
+
+app.post('/api/mikrotik/secrets/:id/enable', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: "Name is required" });
+        
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+        
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+        
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+        const api = await client.connect();
+        
+        const secretMenu = api.menu('/ppp/secret');
+        const secrets = await secretMenu.where('name', name).get();
+        if (secrets.length === 0) {
+            client.close();
+            return res.status(404).json({ error: "Secret not found" });
+        }
+        
+        const secretId = secrets[0]['.id'] || secrets[0]['id'];
+        await secretMenu.set({ disabled: 'no' }, secretId);
+        
+        client.close();
+        res.json({ message: "Secret enabled successfully" });
+    } catch (error) {
+        console.error("Error enabling Mikrotik secret:", error);
+        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+    }
+});
+
+app.post('/api/mikrotik/secrets/:id/remove-active', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: "Name is required" });
+        
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+        
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+        
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+        const api = await client.connect();
+        
+        const activeMenu = api.menu('/ppp/active');
+        const actives = await activeMenu.where('name', name).get();
+        if (actives.length === 0) {
+            client.close();
+            return res.status(404).json({ error: "Active connection not found" });
+        }
+        
+        await activeMenu.remove(actives[0]['.id']);
+        client.close();
+        res.json({ message: "Active connection kicked successfully" });
+    } catch (error) {
+        console.error("Error kicking active connection:", error);
         res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
     }
 });
@@ -1748,7 +1975,7 @@ app.get('/api/mikrotik/profiles/:id', async (req, res) => {
         client.close();
         
         const profiles = allProfiles.map(p => ({
-            id: p['.id'],
+            id: p['.id'] || p.name || Math.random().toString(36).substring(7),
             name: p.name
         }));
         
@@ -1796,7 +2023,7 @@ app.get('/api/mikrotik/secrets/:id', async (req, res) => {
             const isActive = activeNames.includes(s.name);
             const activeDetail = isActive ? activePppoe.find(p => p.name === s.name) : null;
             return {
-                id: s['.id'],
+                id: s['.id'] || s.name || Math.random().toString(36).substring(7),
                 name: s.name,
                 profile: s.profile,
                 status: isActive ? "Online" : ((s.disabled === 'true' || s.disabled === true) ? "Disabled" : "Offline"),
