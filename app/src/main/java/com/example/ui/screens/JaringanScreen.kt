@@ -168,8 +168,7 @@ fun JaringanScreen(onBack: () -> Unit) {
                 if (filteredOdc.isNotEmpty()) {
                     item { Text("Data ODC", color = primaryBg, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
                     items(filteredOdc) { odc ->
-                        val usedOdps = odpList.filter { it.odcId == odc.id }
-                        ExpandableOdcItem(odc, usedOdps, cardBg, textMain, textSecondary, primaryBg, cardBorder)
+                        ExpandableOdcItem(odc, odpList, odcList, rasioList, cardBg, textMain, textSecondary, primaryBg, cardBorder)
                     }
                 }
                 
@@ -177,8 +176,7 @@ fun JaringanScreen(onBack: () -> Unit) {
                     item { Text("Data ODP", color = primaryBg, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
                     items(filteredOdp) { odp ->
                         val users = customerList.filter { it.odpId == odp.id }
-                        val odc = odcList.find { it.id == odp.odcId }
-                        ExpandableOdpItem(odp, odc, users, cardBg, textMain, textSecondary, primaryBg, cardBorder)
+                        ExpandableOdpItem(odp, odpList, odcList, rasioList, users, cardBg, textMain, textSecondary, primaryBg, cardBorder)
                     }
                 }
                 
@@ -213,7 +211,7 @@ fun SummaryCardJaringan(title: String, value: String, cardBg: Color, textMain: C
 }
 
 @Composable
-fun ExpandableOdcItem(odc: OdcItem, usedOdps: List<OdpItem>, cardBg: Color, textMain: Color, textSecondary: Color, primaryBg: Color, cardBorder: Color) {
+fun ExpandableOdcItem(odc: OdcItem, odpList: List<OdpItem>, odcList: List<OdcItem>, rasioList: List<RasioItem>, cardBg: Color, textMain: Color, textSecondary: Color, primaryBg: Color, cardBorder: Color) {
     var expanded by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
@@ -238,26 +236,32 @@ fun ExpandableOdcItem(odc: OdcItem, usedOdps: List<OdpItem>, cardBg: Color, text
                 Text("Redaman Out: ${odc.redamanOut}", color = textSecondary, fontSize = 14.sp)
                 
                 Spacer(modifier = Modifier.height(8.dp))
-                val terpakai = usedOdps.size
+                val usedByOdp = odpList.filter { it.portInput == odc.name }
+                val usedByOdc = odcList.filter { it.portInput == odc.name && it.id != odc.id }
+                val terpakai = usedByOdp.size + usedByOdc.size
                 val kosong = (odc.portCount - terpakai).coerceAtLeast(0)
+                
                 Text("Total Port: ${odc.portCount}", color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text("Port Kosong: $kosong", color = Color(0xFF51A351), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text("Port Terpakai: $terpakai", color = Color(0xFFFF9900), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 
-                if (usedOdps.isNotEmpty()) {
+                if (terpakai > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Data ODP Pemakai:", color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    usedOdps.forEach { odp ->
-                        Text("- ${odp.name}", color = textSecondary, fontSize = 12.sp)
+                    Text("Data Pemakai:", color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    usedByOdc.forEach { item ->
+                        Text("- ODC: ${item.name}", color = textSecondary, fontSize = 12.sp)
                     }
+                    usedByOdp.forEach { item ->
+                        Text("- ODP: ${item.name}", color = textSecondary, fontSize = 12.sp)
+                    }
+                    
                 }
             }
         }
     }
 }
-
 @Composable
-fun ExpandableOdpItem(odp: OdpItem, odc: OdcItem?, users: List<Customer>, cardBg: Color, textMain: Color, textSecondary: Color, primaryBg: Color, cardBorder: Color) {
+fun ExpandableOdpItem(odp: OdpItem, odpList: List<OdpItem>, odcList: List<OdcItem>, rasioList: List<RasioItem>, users: List<Customer>, cardBg: Color, textMain: Color, textSecondary: Color, primaryBg: Color, cardBorder: Color) {
     var expanded by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
@@ -276,31 +280,39 @@ fun ExpandableOdpItem(odp: OdpItem, odc: OdcItem?, users: List<Customer>, cardBg
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.HorizontalDivider(color = cardBorder)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Induk ODC: ${odc?.name ?: "Unknown"}", color = textSecondary, fontSize = 14.sp)
-                Text("Lokasi: ${odc?.location ?: "-"} | Area: ${odp.area}", color = textSecondary, fontSize = 14.sp)
+                Text("Area: ${odp.area}", color = textSecondary, fontSize = 14.sp)
                 Text("Sumber Input: ${odp.portInput}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman In: ${odp.redamanIn}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman Out: ${odp.redamanOut}", color = textSecondary, fontSize = 14.sp)
                 
                 Spacer(modifier = Modifier.height(8.dp))
-                val terpakai = users.size
+                val usedByOdp = odpList.filter { it.portInput == odp.name && it.id != odp.id }
+                val usedByOdc = odcList.filter { it.portInput == odp.name }
+                val terpakai = users.size + usedByOdp.size + usedByOdc.size
                 val kosong = (odp.portCount - terpakai).coerceAtLeast(0)
+                
                 Text("Total Port: ${odp.portCount}", color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text("Port Kosong: $kosong", color = Color(0xFF51A351), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text("Port Terpakai: $terpakai", color = Color(0xFFFF9900), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 
-                if (users.isNotEmpty()) {
+                if (terpakai > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Data Pemakai:", color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     users.forEach { user ->
-                        Text("- ${user.name} (${user.odpPort ?: "Port ?"})", color = textSecondary, fontSize = 12.sp)
+                        Text("- Pelanggan: ${user.name}", color = textSecondary, fontSize = 12.sp)
                     }
+                    usedByOdc.forEach { item ->
+                        Text("- ODC: ${item.name}", color = textSecondary, fontSize = 12.sp)
+                    }
+                    usedByOdp.forEach { item ->
+                        Text("- ODP: ${item.name}", color = textSecondary, fontSize = 12.sp)
+                    }
+                    
                 }
             }
         }
     }
 }
-
 @Composable
 fun ExpandableRasioItem(rasio: RasioItem, cardBg: Color, textMain: Color, textSecondary: Color, primaryBg: Color, cardBorder: Color) {
     var expanded by remember { mutableStateOf(false) }

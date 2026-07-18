@@ -1579,8 +1579,14 @@ app.get('/api/mikrotik/traffic/:id', async (req, res) => {
         });
 
         const api = await client.connect();
-        const interfaceMenu = api.menu('/interface');
-        const traffic = await interfaceMenu.exec('monitor-traffic', { interface: interfaceName, once: '' });
+        let traffic = [];
+        try {
+            const interfaceMenu = api.menu('/interface');
+            traffic = await interfaceMenu.exec('monitor-traffic', { interface: interfaceName, once: '' });
+        } catch(err) {
+            // Ignore no such interface errors, user is offline
+            traffic = [{"rx-bits-per-second": 0, "tx-bits-per-second": 0}];
+        }
         client.close();
         
         res.json(traffic);
@@ -1672,6 +1678,44 @@ app.post('/api/mikrotik/secrets/:id', async (req, res) => {
         res.json({ message: "Secret berhasil ditambahkan" });
     } catch (error) {
         console.error("Error adding Mikrotik secret:", error);
+        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+    }
+});
+
+app.delete('/api/mikrotik/secrets/:id/:secretName', async (req, res) => {
+    try {
+        const { id, secretName } = req.params;
+        
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+        
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+        
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+        const api = await client.connect();
+        
+        const secretMenu = api.menu('/ppp/secret');
+        const secrets = await secretMenu.where('name', secretName).get();
+        if (secrets.length === 0) {
+            client.close();
+            return res.status(404).json({ error: "Secret not found" });
+        }
+        
+        await secretMenu.remove(secrets[0]['.id']);
+        client.close();
+        res.json({ message: "Secret deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting Mikrotik secret:", error);
         res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
     }
 });

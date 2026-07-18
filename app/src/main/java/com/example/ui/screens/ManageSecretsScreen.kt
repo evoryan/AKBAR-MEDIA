@@ -10,17 +10,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
@@ -53,16 +57,40 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
     val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
     val errorRed = Color(0xFFFF003C)
     val successGreen = Color(0xFF00FF00)
-
+    
     val coroutineScope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
     var currentFilter by remember { mutableStateOf(SecretFilter.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     
+    var showAddDialog by remember { mutableStateOf(false) }
+    var secretToDelete by remember { mutableStateOf<PPPoESecret?>(null) }
+    var addName by remember { mutableStateOf("") }
+    var addPassword by remember { mutableStateOf("") }
+    var addProfile by remember { mutableStateOf("") }
+    var profilesList by remember { mutableStateOf<List<com.example.ui.data.remote.MikrotikProfile>>(emptyList()) }
+    var isProfilesLoading by remember { mutableStateOf(false) }
+    
     val allSecrets = remember { mutableStateListOf<PPPoESecret>() }
     var networkError by remember { mutableStateOf<String?>(null) }
-    
+
+    LaunchedEffect(showAddDialog) {
+        if (showAddDialog) {
+            try {
+                isProfilesLoading = true
+                profilesList = com.example.ui.data.remote.ApiClient.apiService.getMikrotikProfiles(areaId)
+                if (profilesList.isNotEmpty()) {
+                    addProfile = profilesList[0].name
+                }
+            } catch(e: Exception) {
+                android.widget.Toast.makeText(context, "Gagal memuat profil: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            } finally {
+                isProfilesLoading = false
+            }
+        }
+    }
+
     LaunchedEffect(areaId) {
         try {
             isLoading = true
@@ -87,7 +115,7 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
         val matchesSearch = searchQuery.isBlank() || it.name.contains(searchQuery, ignoreCase = true)
         matchesFilter && matchesSearch
     }
-
+    
     val totalSecrets = allSecrets.size
     val totalOnline = allSecrets.count { it.status == "Online" }
     val totalOffline = allSecrets.count { it.status == "Offline" }
@@ -97,14 +125,19 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
         containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Manage Secrets", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 18.sp) },
+                title = { Text("Manage Secrets", color = textMain, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showAddDialog = true }, containerColor = neonCyan) {
+                Icon(Icons.Default.Add, contentDescription = "Tambah Secret", tint = Color.Black)
+            }
         }
     ) { innerPadding ->
         Column(
@@ -114,136 +147,59 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Ringkasan PPPoE", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-
+            Text("Ringkasan PPPoE", color = textMain, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             if (networkError != null) {
                 Text(networkError!!, color = errorRed, fontSize = 14.sp)
             }
+            
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                SummaryCard(
-                    title = "Total",
-                    value = totalSecrets.toString(),
-                    color = neonCyan,
-                    isSelected = currentFilter == SecretFilter.ALL,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        currentFilter = SecretFilter.ALL
-                        isLoading = true
-                        coroutineScope.launch { delay(500); isLoading = false }
-                    }
-                )
-                SummaryCard(
-                    title = "Online",
-                    value = totalOnline.toString(),
-                    color = successGreen,
-                    isSelected = currentFilter == SecretFilter.ONLINE,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        currentFilter = SecretFilter.ONLINE
-                        isLoading = true
-                        coroutineScope.launch { delay(500); isLoading = false }
-                    }
-                )
-                SummaryCard(
-                    title = "Offline",
-                    value = totalOffline.toString(),
-                    color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666),
-                    isSelected = currentFilter == SecretFilter.OFFLINE,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        currentFilter = SecretFilter.OFFLINE
-                        isLoading = true
-                        coroutineScope.launch { delay(500); isLoading = false }
-                    }
-                )
-                SummaryCard(
-                    title = "Disable",
-                    value = totalDisabled.toString(),
-                    color = errorRed,
-                    isSelected = currentFilter == SecretFilter.DISABLED,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        currentFilter = SecretFilter.DISABLED
-                        isLoading = true
-                        coroutineScope.launch { delay(500); isLoading = false }
-                    }
-                )
+                SummaryCard("Total", totalSecrets.toString(), neonCyan, currentFilter == SecretFilter.ALL, Modifier.weight(1f)) {
+                    currentFilter = SecretFilter.ALL
+                }
+                SummaryCard("Online", totalOnline.toString(), successGreen, currentFilter == SecretFilter.ONLINE, Modifier.weight(1f)) {
+                    currentFilter = SecretFilter.ONLINE
+                }
+                SummaryCard("Offline", totalOffline.toString(), textSecondary, currentFilter == SecretFilter.OFFLINE, Modifier.weight(1f)) {
+                    currentFilter = SecretFilter.OFFLINE
+                }
+                SummaryCard("Disable", totalDisabled.toString(), errorRed, currentFilter == SecretFilter.DISABLED, Modifier.weight(1f)) {
+                    currentFilter = SecretFilter.DISABLED
+                }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
             
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
+                label = { Text("Cari Username") },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Cari Secret...", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)) },
-                singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = neonCyan,
-                    unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
-                    focusedTextColor = textMain,
-                    unfocusedTextColor = textMain,
-                    cursorColor = neonCyan
-                ),
-                shape = RoundedCornerShape(12.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Daftar Secrets (${currentFilter.name})",
-                    color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
+                    focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary,
+                    focusedTextColor = textMain, unfocusedTextColor = textMain
                 )
-                if (isLoading) {
-                    CircularProgressIndicator(color = neonCyan, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                }
-            }
-
-            if (!isLoading) {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            )
+            
+            if (isLoading && allSecrets.isEmpty()) {
+                CircularProgressIndicator(color = neonCyan, modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                     items(displayedSecrets) { secret ->
-                        SecretItem(
+                        SecretCard(
                             secret = secret,
                             areaId = areaId,
-                            cardBg = cardBg,
+                            neonCyan = neonCyan,
                             textMain = textMain,
                             textSecondary = textSecondary,
-                            neonCyan = neonCyan,
+                            cardBg = cardBg,
                             successGreen = successGreen,
                             errorRed = errorRed,
-                            onDisable = {
+                            onDelete = { secretToDelete = secret },
+                            onRefresh = {
                                 coroutineScope.launch {
                                     try {
-                                        com.example.ui.data.remote.ApiClient.apiService.disableMikrotikSecret(areaId, mapOf("secretId" to secret.id))
-                                        val idx = allSecrets.indexOfFirst { it.id == secret.id }
-                                        if (idx != -1) allSecrets[idx] = secret.copy(status = "Disabled")
-                                    } catch(e: Exception) {
-                                        android.widget.Toast.makeText(context, "Gagal disable secret: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
-                            onEnable = {
-                                coroutineScope.launch {
-                                    try {
-                                        com.example.ui.data.remote.ApiClient.apiService.enableMikrotikSecret(areaId, mapOf("secretId" to secret.id))
-                                        val idx = allSecrets.indexOfFirst { it.id == secret.id }
-                                        if (idx != -1) allSecrets[idx] = secret.copy(status = "Offline")
-                                    } catch(e: Exception) {
-                                        android.widget.Toast.makeText(context, "Gagal enable secret: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
-                            onRemoveActive = {
-                                coroutineScope.launch {
-                                    try {
-                                        com.example.ui.data.remote.ApiClient.apiService.removeActiveMikrotikSecret(areaId, mapOf("secretName" to secret.name))
-                                        val idx = allSecrets.indexOfFirst { it.id == secret.id }
-                                        if (idx != -1) allSecrets[idx] = secret.copy(status = "Offline", ipAddress = "", uptime = "")
-                                    } catch(e: Exception) {
-                                        android.widget.Toast.makeText(context, "Gagal remove active: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                                    }
+                                        val secrets = com.example.ui.data.remote.ApiClient.apiService.getMikrotikSecrets(areaId)
+                                        allSecrets.clear()
+                                        allSecrets.addAll(secrets)
+                                    } catch(e: Exception) {}
                                 }
                             }
                         )
@@ -252,154 +208,302 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
             }
         }
     }
+    
+    if (showAddDialog) {
+        var profileExpanded by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            containerColor = cardBg,
+            titleContentColor = textMain,
+            textContentColor = textSecondary,
+            title = { Text("Tambah Secret PPPoE") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (isProfilesLoading) {
+                        CircularProgressIndicator(color = neonCyan)
+                    } else {
+                        OutlinedTextField(
+                            value = addName,
+                            onValueChange = { addName = it },
+                            label = { Text("Username PPPoE") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary,
+                                focusedTextColor = textMain, unfocusedTextColor = textMain
+                            )
+                        )
+                        OutlinedTextField(
+                            value = addPassword,
+                            onValueChange = { addPassword = it },
+                            label = { Text("Password PPPoE") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary,
+                                focusedTextColor = textMain, unfocusedTextColor = textMain
+                            )
+                        )
+                        Box {
+                            OutlinedTextField(
+                                value = addProfile,
+                                onValueChange = {},
+                                label = { Text("Profile PPPoE") },
+                                readOnly = true,
+                                trailingIcon = {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Profil", tint = textMain)
+                                },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary,
+                                    focusedTextColor = textMain, unfocusedTextColor = textMain
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Box(modifier = Modifier.matchParentSize().clickable { profileExpanded = true })
+                            DropdownMenu(
+                                expanded = profileExpanded,
+                                onDismissRequest = { profileExpanded = false },
+                                modifier = Modifier.background(cardBg).heightIn(max = 250.dp)
+                            ) {
+                                profilesList.forEach { p ->
+                                    DropdownMenuItem(
+                                        text = { Text(p.name, color = textMain) },
+                                        onClick = {
+                                            addProfile = p.name
+                                            profileExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    coroutineScope.launch {
+                        try {
+                            isLoading = true
+                            com.example.ui.data.remote.ApiClient.apiService.addMikrotikSecret(
+                                areaId, mapOf("name" to addName, "password" to addPassword, "profile" to addProfile)
+                            )
+                            val secrets = com.example.ui.data.remote.ApiClient.apiService.getMikrotikSecrets(areaId)
+                            allSecrets.clear()
+                            allSecrets.addAll(secrets)
+                            showAddDialog = false
+                            addName = ""
+                            addPassword = ""
+                        } catch(e: Exception) {
+                            android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                }) {
+                    Text("Simpan", color = neonCyan)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
+        )
+    }
+
+    if (secretToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { secretToDelete = null },
+            containerColor = cardBg,
+            titleContentColor = errorRed,
+            textContentColor = textSecondary,
+            title = { Text("Konfirmasi Hapus") },
+            text = { Text("Apakah Anda yakin ingin menghapus secret '${secretToDelete?.name}'?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            try {
+                                isLoading = true
+                                com.example.ui.data.remote.ApiClient.apiService.deleteMikrotikSecret(areaId, secretToDelete!!.name)
+                                val secrets = com.example.ui.data.remote.ApiClient.apiService.getMikrotikSecrets(areaId)
+                                allSecrets.clear()
+                                allSecrets.addAll(secrets)
+                                secretToDelete = null
+                            } catch(e: Exception) {
+                                android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = errorRed)
+                ) {
+                    Text("Hapus", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { secretToDelete = null }) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun SummaryCard(
-    title: String,
-    value: String,
-    color: Color,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Card(
+fun SummaryCard(title: String, value: String, color: Color, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) color.copy(alpha = 0.2f) else Color(0xFF11111A)
-        ),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, color) else null
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) color.copy(alpha = 0.2f) else Color.Transparent)
+            .border(1.dp, color, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 10.sp)
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(value, color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text(title, color = color, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(value, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-fun SecretItem(
-    secret: PPPoESecret,
-    areaId: String,
-    cardBg: Color,
-    textMain: Color,
-    textSecondary: Color,
-    neonCyan: Color,
-    successGreen: Color,
-    errorRed: Color,
-    onDisable: () -> Unit,
-    onEnable: () -> Unit,
-    onRemoveActive: () -> Unit
+fun SecretCard(
+    secret: PPPoESecret, areaId: String, neonCyan: Color, textMain: Color, textSecondary: Color, cardBg: Color,
+    successGreen: Color, errorRed: Color, onDelete: () -> Unit, onRefresh: () -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var expanded by remember { mutableStateOf(false) }
-    val statusColor = when (secret.status) {
-        "Online" -> successGreen
-        "Offline" -> textSecondary
-        "Disabled" -> errorRed
-        else -> textSecondary
-    }
-
-    Card(
+    
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { expanded = !expanded },
-        colors = CardDefaults.cardColors(containerColor = cardBg)
+            .background(cardBg)
+            .border(1.dp, neonCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .clickable { expanded = !expanded }
+            .padding(16.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Person, contentDescription = null, tint = neonCyan)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(secret.name, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text(secret.profile, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
-                    }
+                    Icon(Icons.Default.Person, contentDescription = null, tint = neonCyan, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(secret.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val statusIcon = when (secret.status) {
-                        "Online" -> Icons.Default.CheckCircle
-                        "Disabled" -> Icons.Default.Block
-                        else -> Icons.Default.Cancel
-                    }
-                    Icon(
-                        statusIcon,
-                        contentDescription = null,
-                        tint = statusColor,
-                        modifier = Modifier.size(16.dp)
+                    Text(
+                        text = secret.status,
+                        color = when (secret.status) {
+                            "Online" -> successGreen
+                            "Offline" -> textSecondary
+                            else -> errorRed
+                        },
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(secret.status, color = statusColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        Icons.Default.ArrowDropDown, 
+                        contentDescription = "Expand",
+                        tint = textSecondary,
+                        modifier = Modifier.size(16.dp).rotate(if (expanded) 180f else 0f)
+                    )
                 }
             }
-
+            
             AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(top = 16.dp)) {
-                    HorizontalDivider(color = Color(0xFF333333))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    if (secret.status == "Online") {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("IP Address", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
-                            Text(secret.ipAddress, color = neonCyan, fontSize = 12.sp)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Uptime", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
-                            Text(secret.uptime, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp)
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Text("Traffic (Live)", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 10.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        SimpleTrafficChart(areaId, secret.name)
-                        Spacer(modifier = Modifier.height(16.dp))
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Profile: ${secret.profile}", color = textSecondary, fontSize = 14.sp)
+            if (secret.status == "Online") {
+                Text("IP: ${secret.ipAddress}", color = textSecondary, fontSize = 14.sp)
+                Text("Uptime: ${secret.uptime}", color = textSecondary, fontSize = 14.sp)
+            }
+            
+            if (secret.status == "Online") {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Traffic (Live)", color = textSecondary, fontSize = 10.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                SimpleTrafficChart(areaId, secret.name)
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                if (secret.status == "Disabled") {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                try {
+                                    com.example.ui.data.remote.ApiClient.apiService.enableMikrotikSecret(areaId, mapOf("name" to secret.name))
+                                    onRefresh()
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = successGreen),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, successGreen),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Enable", fontSize = 12.sp)
                     }
-                    
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        if (secret.status == "Disabled") {
-                            Button(
-                                onClick = onEnable,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = successGreen),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, successGreen),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Enable Secret", fontSize = 12.sp)
+                } else {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                try {
+                                    com.example.ui.data.remote.ApiClient.apiService.disableMikrotikSecret(areaId, mapOf("name" to secret.name))
+                                    onRefresh()
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             }
-                        } else {
-                            Button(
-                                onClick = onDisable,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = errorRed),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, errorRed),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.Block, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Disable Secret", fontSize = 12.sp)
-                            }
-                        }
-                        
-                        if (secret.status == "Online") {
-                            Button(
-                                onClick = onRemoveActive,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color(0xFFFF9900)),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9900)),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Remove Active", fontSize = 12.sp)
-                            }
-                        }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = errorRed),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, errorRed),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Block, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Disable", fontSize = 12.sp)
                     }
+                }
+                
+                if (secret.status == "Online") {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                try {
+                                    com.example.ui.data.remote.ApiClient.apiService.removeActiveMikrotikSecret(areaId, mapOf("name" to secret.name))
+                                    onRefresh()
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color(0xFFFF9900)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9900)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Kick", fontSize = 12.sp)
+                    }
+                }
+                
+                Button(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = errorRed),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, errorRed),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Hapus", fontSize = 12.sp)
+                }
+            }
                 }
             }
         }
@@ -408,16 +512,15 @@ fun SecretItem(
 
 @Composable
 fun SimpleTrafficChart(areaId: String, secretName: String) {
-    val trafficDataRx = remember { androidx.compose.runtime.mutableStateListOf<Float>(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f) }
-    val trafficDataTx = remember { androidx.compose.runtime.mutableStateListOf<Float>(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f) }
     var currentRxString by remember { mutableStateOf("0.0 Mbps") }
     var currentTxString by remember { mutableStateOf("0.0 Mbps") }
     
-    val colorTx = Color(0xFF51A351) // Winbox TX Green
-    val colorRx = Color(0xFF2F70B8) // Winbox RX Blue / Yellowish (usually RX is Blue/Red, let's use Blue)
-    val gridColor = Color(0xFF333333)
-    val bgColor = Color(0xFF111111)
-
+    var rxMbps by remember { mutableStateOf(0f) }
+    var txMbps by remember { mutableStateOf(0f) }
+    
+    val colorTx = Color(0xFF51A351) // Upload
+    val colorRx = Color(0xFF2F70B8) // Download
+    
     androidx.compose.runtime.LaunchedEffect(secretName) {
         val iface = "<pppoe-$secretName>"
         while (true) {
@@ -428,128 +531,50 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
                     val rxBits = response.rxBits?.toLongOrNull() ?: response.rx ?: ((response.rxByte ?: 0) * 8)
                     val txBits = response.txBits?.toLongOrNull() ?: response.tx ?: ((response.txByte ?: 0) * 8)
                     
-                    val rxMbps = rxBits.toFloat() / 1_000_000f
-                    val txMbps = txBits.toFloat() / 1_000_000f
-                    
-                    trafficDataRx.removeAt(0)
-                    trafficDataRx.add(rxMbps)
-                    
-                    trafficDataTx.removeAt(0)
-                    trafficDataTx.add(txMbps)
+                    rxMbps = rxBits.toFloat() / 1_000_000f
+                    txMbps = txBits.toFloat() / 1_000_000f
                     
                     currentRxString = response.rxString ?: String.format(java.util.Locale.US, "%.1f Mbps", rxMbps)
                     currentTxString = response.txString ?: String.format(java.util.Locale.US, "%.1f Mbps", txMbps)
                 } else {
-                    trafficDataRx.removeAt(0)
-                    trafficDataRx.add(0f)
-                    trafficDataTx.removeAt(0)
-                    trafficDataTx.add(0f)
                     currentRxString = "0.0 Mbps"
                     currentTxString = "0.0 Mbps"
+                    rxMbps = 0f
+                    txMbps = 0f
                 }
-                
             } catch(e: Exception) {
-                // If API fails, we could either keep 0 or do some mock for visual purpose if not implemented.
-                // We'll just push 0 to show it's flat if no data.
-                trafficDataRx.removeAt(0)
-                trafficDataRx.add(0f)
-                trafficDataTx.removeAt(0)
-                trafficDataTx.add(0f)
-                
-                // Fallback text if we want to show it's offline/error
                 currentRxString = "Err: ${e.message?.take(15)}"
                 currentTxString = "Err"
             }
-            kotlinx.coroutines.delay(1000)
+            kotlinx.coroutines.delay(2000)
         }
     }
     
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF222222))
-            .border(1.dp, Color(0xFF444444), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-            .padding(8.dp)
+            .border(1.dp, Color(0xFF444444), RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(colorTx))
+                Icon(Icons.Default.ArrowDropDown, contentDescription = "Download", tint = colorRx, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("TX: $currentTxString", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text("RX (Download):", color = Color.LightGray, fontSize = 12.sp)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(colorRx))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("RX: $currentRxString", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            }
+            Text(currentRxString, color = colorRx, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
         
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(80.dp)
-                .background(bgColor)
-        ) {
-            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                val maxData = (trafficDataRx.maxOrNull()?.coerceAtLeast(trafficDataTx.maxOrNull() ?: 0f) ?: 100f).coerceAtLeast(10f)
-                val stepX = size.width / (trafficDataRx.size - 1)
-                
-                // Draw Grid
-                val verticalLines = 5
-                val horizontalLines = 3
-                for (i in 0..verticalLines) {
-                    val x = i * (size.width / verticalLines)
-                    drawLine(gridColor, start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = 1f)
-                }
-                for (i in 0..horizontalLines) {
-                    val y = i * (size.height / horizontalLines)
-                    drawLine(gridColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1f)
-                }
-                
-                // Draw TX (Green)
-                val pathTx = androidx.compose.ui.graphics.Path()
-                val pathTxFill = androidx.compose.ui.graphics.Path()
-                trafficDataTx.forEachIndexed { index, value ->
-                    val x = index * stepX
-                    val y = size.height - (value / maxData * size.height)
-                    if (index == 0) {
-                        pathTx.moveTo(x, y)
-                        pathTxFill.moveTo(x, size.height)
-                        pathTxFill.lineTo(x, y)
-                    } else {
-                        pathTx.lineTo(x, y)
-                        pathTxFill.lineTo(x, y)
-                    }
-                }
-                pathTxFill.lineTo(size.width, size.height)
-                pathTxFill.close()
-                drawPath(path = pathTxFill, color = colorTx.copy(alpha = 0.3f))
-                drawPath(path = pathTx, color = colorTx, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
-                
-                // Draw RX (Blue)
-                val pathRx = androidx.compose.ui.graphics.Path()
-                val pathRxFill = androidx.compose.ui.graphics.Path()
-                trafficDataRx.forEachIndexed { index, value ->
-                    val x = index * stepX
-                    val y = size.height - (value / maxData * size.height)
-                    if (index == 0) {
-                        pathRx.moveTo(x, y)
-                        pathRxFill.moveTo(x, size.height)
-                        pathRxFill.lineTo(x, y)
-                    } else {
-                        pathRx.lineTo(x, y)
-                        pathRxFill.lineTo(x, y)
-                    }
-                }
-                pathRxFill.lineTo(size.width, size.height)
-                pathRxFill.close()
-                drawPath(path = pathRxFill, color = colorRx.copy(alpha = 0.3f))
-                drawPath(path = pathRx, color = colorRx, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.ArrowDropDown, contentDescription = "Upload", tint = colorTx, modifier = Modifier.size(16.dp).rotate(180f))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("TX (Upload):", color = Color.LightGray, fontSize = 12.sp)
             }
+            Text(currentTxString, color = colorTx, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
