@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.data.UserSession
 import com.example.ui.data.UserRole
 import androidx.compose.ui.text.SpanStyle
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.platform.LocalContext
@@ -87,6 +89,9 @@ fun BotWaScreen(onBack: () -> Unit) {
         }
     }
 
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("Pengaturan", "QR Paket", "Riwayat")
+
     Scaffold(containerColor = bgMain,
         topBar = {
             TopAppBar(
@@ -100,13 +105,23 @@ fun BotWaScreen(onBack: () -> Unit) {
             )
         }
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            TabRow(selectedTabIndex = selectedTab, containerColor = headerBg, contentColor = neonCyan) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = { Text(title, fontWeight = FontWeight.Bold, color = if (selectedTab == index) neonCyan else textSecondary) }
+                    )
+                }
+            }
+            if (selectedTab == 0) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
             // Status & Linkage Section
             item {
                 if (isWaLinked) {
@@ -664,7 +679,13 @@ fun BotWaScreen(onBack: () -> Unit) {
                 }
             }
         }
+        } else if (selectedTab == 1) {
+            BotWaPackageQrScreen()
+        } else {
+            BotWaHistoryScreen()
+        }
     }
+}
 }
 
 @Composable
@@ -743,6 +764,202 @@ fun TemplateConfigCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(desc, color = textSecondary, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BotWaPackageQrScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var packages by remember { mutableStateOf<List<com.example.ui.screens.InternetPackage>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+
+    fun loadPackages() {
+        coroutineScope.launch {
+            try {
+                packages = com.example.ui.data.remote.ApiClient.apiService.getPackages()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, "Gagal memuat paket: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadPackages()
+    }
+
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = neonCyan)
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Text(
+                    text = "Upload QR Pembayaran Paket",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = textMain
+                )
+                Text(
+                    text = "Gambar ini akan dikirimkan secara otomatis bersama dengan pesan WA (Notifikasi Tagihan/Isolir) untuk pelanggan yang menggunakan paket tersebut.",
+                    fontSize = 13.sp,
+                    color = textMain.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                )
+            }
+
+            items(packages) { pkg ->
+                var isUploading by remember { mutableStateOf(false) }
+                
+                val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                ) { uri: android.net.Uri? ->
+                    uri?.let {
+                        isUploading = true
+                        coroutineScope.launch {
+                            try {
+                                val contentResolver = context.contentResolver
+                                val inputStream = contentResolver.openInputStream(it)
+                                val bytes = inputStream?.readBytes()
+                                if (bytes != null) {
+                                    val mediaType = "image/*".toMediaTypeOrNull()
+                                    val requestBody = bytes.toRequestBody(mediaType)
+                                    val part = okhttp3.MultipartBody.Part.createFormData("image", "qr_${pkg.id}.jpg", requestBody)
+                                    com.example.ui.data.remote.ApiClient.apiService.uploadPackageImage(pkg.id, part)
+                                    android.widget.Toast.makeText(context, "QR Gambar Berhasil Diupload", android.widget.Toast.LENGTH_SHORT).show()
+                                    loadPackages() // Refresh packages to get new URL
+                                }
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Gagal upload: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isUploading = false
+                            }
+                        }
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    shape = RoundedCornerShape(12.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(pkg.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
+                        Text("Harga: Rp ${java.text.NumberFormat.getInstance(java.util.Locale("id", "ID")).format(pkg.price)}", fontSize = 14.sp, color = textMain.copy(alpha=0.7f))
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        if (pkg.qr_image_url != null) {
+                            Text("✓ Gambar QR Terpasang", color = Color(0xFF28A745), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                        } else {
+                            Text("Belum ada gambar QR", color = Color.Red, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        
+                        Button(
+                            onClick = { launcher.launch("image/*") },
+                            colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.White),
+                            shape = RoundedCornerShape(8.dp),
+                            enabled = !isUploading
+                        ) {
+                            if (isUploading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(if (pkg.qr_image_url != null) "Ganti Gambar" else "Upload Gambar", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BotWaHistoryScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var history by remember { mutableStateOf<List<com.example.ui.data.remote.WaHistoryItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+
+    fun loadHistory() {
+        coroutineScope.launch {
+            try {
+                history = com.example.ui.data.remote.ApiClient.apiService.getWaHistory()
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, "Gagal memuat riwayat: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadHistory()
+    }
+
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = neonCyan)
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (history.isEmpty()) {
+                item {
+                    Text("Belum ada riwayat pesan.", color = textMain.copy(alpha=0.6f))
+                }
+            } else {
+                items(history) { item ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text(item.customer_name ?: "Unknown", fontWeight = FontWeight.Bold, color = textMain)
+                                Text(
+                                    text = item.status ?: "UNKNOWN", 
+                                    color = if (item.status == "TERKIRIM") Color(0xFF28A745) else Color.Red,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(item.phone ?: "", color = textMain.copy(alpha=0.6f), fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(item.message ?: "", color = textMain, fontSize = 13.sp)
+                            if (!item.media_url.isNullOrEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("✓ Mengandung Gambar QR", color = neonCyan, fontSize = 11.sp)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(item.created_at ?: "", color = textMain.copy(alpha=0.5f), fontSize = 10.sp)
                         }
                     }
                 }

@@ -13,3 +13,11 @@ CREATE TABLE IF NOT EXISTS users (
 
 INSERT IGNORE INTO users (name, username, password, role, db_name) 
 VALUES ('Super Admin', 'akbar2026', '08Delapan', 'SUPER_ADMIN', 'app_db');
+
+CREATE TABLE IF NOT EXISTS tenant_whatsapp_sessions (
+    tenant_id INT PRIMARY KEY,
+    status VARCHAR(50) NOT NULL DEFAULT 'DISCONNECTED',
+    bot_number VARCHAR(50),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES users(id) ON DELETE CASCADE
+);

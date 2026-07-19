@@ -9,16 +9,33 @@ const { sendTenantNotification } = require('./fcm_service');
 const whatsappGateway = require('./whatsapp-gateway');
 require('dotenv').config();
 
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Mount WhatsApp gateway routes
-app.use('/api/wa', whatsappGateway.router);
-whatsappGateway.initWhatsApp();
+// Setup static serving for uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-app.get('/api/ping', (req, res) => res.json({ status: 'ok' }));
+// Ensure upload directories exist
+const uploadDir = path.join(__dirname, 'uploads', 'packages');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, uploadDir)
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, req.params.id + '-' + uniqueSuffix + path.extname(file.originalname))
+    }
+});
+const upload = multer({ storage: storage });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-akbar';
 
@@ -32,6 +49,15 @@ const masterPool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0
 });
+
+// Pass master pool to WhatsApp Gateway
+whatsappGateway.setMasterPool(masterPool);
+whatsappGateway.loadAllTenantSessions();
+
+// Mount WhatsApp gateway routes for multi-tenant
+app.use('/api/tenant/whatsapp', whatsappGateway.router);
+
+app.get('/api/ping', (req, res) => res.json({ status: 'ok' }));
 
 // Dynamic Tenant Pools Map
 const tenantPools = {};
@@ -52,6 +78,16 @@ function getTenantPool(dbName) {
         // Auto-update schema for tenant database
         tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
         tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        tenantPools[dbName].query(`ALTER TABLE packages ADD COLUMN qr_image_url VARCHAR(255) DEFAULT NULL`).catch(e=>{});
+        tenantPools[dbName].query(`CREATE TABLE IF NOT EXISTS wa_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_name VARCHAR(100),
+            phone VARCHAR(20),
+            message TEXT,
+            media_url VARCHAR(255),
+            status VARCHAR(50),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).catch(e=>{});
     }
     return tenantPools[dbName];
 }
@@ -545,6 +581,16 @@ app.post('/api/login', async (req, res) => {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
+
+app.get('/api/wa/history', async (req, res) => {
+    try {
+        const [rows] = await req.pool.query('SELECT * FROM wa_history ORDER BY created_at DESC');
+        res.json(rows);
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+    }
+});
+
 app.get('/api/customers', async (req, res) => {
     try {
         const [rows] = await req.pool.query('SELECT * FROM customers');
@@ -1174,6 +1220,19 @@ app.put('/api/packages/:id', async (req, res) => {
             [name, speed, price, taxRate, description, req.params.id]
         );
         res.json({ message: "Paket diupdate" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+    }
+});
+
+app.post('/api/packages/:id/image', upload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "No image uploaded" });
+        }
+        const fileUrl = `${req.protocol}://${req.get('host')}/uploads/packages/${req.file.filename}`;
+        await req.pool.query('UPDATE packages SET qr_image_url = ? WHERE id = ?', [fileUrl, req.params.id]);
+        res.json({ message: "Image uploaded successfully", url: fileUrl });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
@@ -2050,7 +2109,7 @@ const PORT = 4500;
 cron.schedule('1 0 * * *', async () => {
     console.log('Menjalankan cron job tagihan bulanan...');
     try {
-        const [users] = await masterPool.query('SELECT DISTINCT db_name FROM users WHERE db_name IS NOT NULL AND db_name != ""');
+        const [users] = await masterPool.query('SELECT id, db_name, name as tenant_name FROM users WHERE db_name IS NOT NULL AND db_name != ""');
         const today = new Date();
         const dateStr = today.getDate().toString();
         const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -2059,6 +2118,7 @@ cron.schedule('1 0 * * *', async () => {
         
         for (const user of users) {
             const dbName = user.db_name;
+            const tenantId = user.id;
             const pool = getTenantPool(dbName);
             try {
                 // Ensure table exists
@@ -2090,6 +2150,28 @@ cron.schedule('1 0 * * *', async () => {
                         );
                         await pool.query('UPDATE customers SET status = "BELUM BAYAR" WHERE id = ?', [customer.id]);
                         console.log(`Tagihan dibuat untuk ${customer.name} di database ${dbName}`);
+
+                        // Send WhatsApp Reminder via Tenant's Bot
+                        if (customer.phone) {
+                            const message = `Halo ${customer.name},\n\nTagihan internet Anda untuk bulan ${currentMonth} ${currentYear} sebesar Rp ${amount.toLocaleString('id-ID')} telah terbit.\nSilakan lakukan pembayaran agar layanan tidak terisolir.\n\nTerima kasih,\n${user.tenant_name}`;
+                            
+                            let qrImageUrl = null;
+                            if (customer.package_name) {
+                                const [pkgRows] = await pool.query('SELECT qr_image_url FROM packages WHERE name = ? LIMIT 1', [customer.package_name]);
+                                if (pkgRows.length > 0 && pkgRows[0].qr_image_url) {
+                                    qrImageUrl = pkgRows[0].qr_image_url;
+                                }
+                            }
+                            
+                            try {
+                                await whatsappGateway.sendTenantMessage(tenantId, customer.phone, message, qrImageUrl);
+                                console.log(`[WA Gateway] Reminder sent to ${customer.phone} via tenant ${tenantId}`);
+                                await pool.query('INSERT INTO wa_history (customer_name, phone, message, media_url, status) VALUES (?, ?, ?, ?, ?)', [customer.name, customer.phone, message, qrImageUrl, 'TERKIRIM']);
+                            } catch (waErr) {
+                                console.error(`[WA Gateway] Failed to send reminder to ${customer.phone} via tenant ${tenantId}: ${waErr.message}`);
+                                await pool.query('INSERT INTO wa_history (customer_name, phone, message, media_url, status) VALUES (?, ?, ?, ?, ?)', [customer.name, customer.phone, message, qrImageUrl, 'GAGAL']);
+                            }
+                        }
                     }
                 }
             } catch (e) {

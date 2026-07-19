@@ -90,7 +90,27 @@ data class TrafficResponse(
     @com.squareup.moshi.Json(name = "tx_string") val txString: String? = null
 )
 
+data class WaHistoryItem(
+    val id: Int,
+    val customer_name: String?,
+    val phone: String?,
+    val message: String?,
+    val media_url: String?,
+    val status: String?,
+    val created_at: String?
+)
+
 interface ApiService {
+    
+    @GET("api/wa/history")
+    suspend fun getWaHistory(): List<WaHistoryItem>
+
+    @Multipart
+    @POST("api/packages/{id}/image")
+    suspend fun uploadPackageImage(
+        @Path("id") id: String,
+        @Part image: okhttp3.MultipartBody.Part
+    ): ApiResponse
     @GET("api/dashboard/pppoe-offline")
     suspend fun getPppoeOffline(): List<OfflinePppoeUser>
 

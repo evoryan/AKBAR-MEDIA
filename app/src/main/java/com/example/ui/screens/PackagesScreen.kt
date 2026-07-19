@@ -50,7 +50,7 @@ data class InternetPackage(
     val speed: String,
     val price: Double,
     val taxRate: Double = 11.0,
-    
+    val qr_image_url: String? = null,
     val description: String = ""
 ) {
     val finalPrice: Double
