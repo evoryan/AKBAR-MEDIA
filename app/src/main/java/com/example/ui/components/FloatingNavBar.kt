@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,11 +30,12 @@ fun FloatingNavBar(
     onNavigateToBilling: () -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
-    val navBg = Color(0xFF11111A)
-    val navBorder = Color(0xFF00FFFF).copy(alpha = 0.3f)
-    val primaryContainer = Color(0xFF00FFFF).copy(alpha = 0.15f)
-    val onPrimaryContainer = Color(0xFF00FFFF)
-    val textSecondary = Color(0xFFAAAAAA)
+    val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val navBg = if(isDark) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val navBorder = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF).copy(alpha = 0.3f) else androidx.compose.ui.graphics.Color(0xFF0066FF).copy(alpha = 0.3f)
+    val primaryContainer = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF).copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color(0xFF0066FF).copy(alpha = 0.15f)
+    val onPrimaryContainer = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+    val textSecondary = if(isDark) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
 
     Box(
         modifier = Modifier

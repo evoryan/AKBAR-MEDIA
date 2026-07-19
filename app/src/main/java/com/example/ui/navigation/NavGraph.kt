@@ -51,7 +51,7 @@ fun AkbarMediaNavGraph() {
 
     val showBottomNav = currentDestination != null && !hideBottomNavRoutes.any { currentDestination.contains(it) }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF05050A))) {
+    Box(modifier = Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
         NavHost(
             navController = navController,
             startDestination = SplashRoute,

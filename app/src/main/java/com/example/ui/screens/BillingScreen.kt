@@ -196,7 +196,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
                     .clip(RectangleShape)
                     .background(cardBg)
                     .border(1.dp, successGreen, RectangleShape)
@@ -223,79 +223,60 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                 }
             }
 
-            // Dropdown Area Filter
+            // Filter and Search Row
             var expanded by remember { mutableStateOf(false) }
-
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp)) {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
-                    OutlinedTextField(
-                        value = selectedArea,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Filter Area", color = textMain.copy(alpha = 0.7f)) },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                        },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = neonCyan,
-                            unfocusedBorderColor = textMain.copy(alpha = 0.5f),
-                            focusedTextColor = textMain,
-                            unfocusedTextColor = textMain,
-                            focusedTrailingIconColor = neonCyan,
-                            unfocusedTrailingIconColor = textMain.copy(alpha = 0.5f),
-                            focusedLabelColor = neonCyan,
-                            unfocusedLabelColor = textMain.copy(alpha = 0.7f)
-                        )
-                    )
-                    ExposedDropdownMenu(
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.weight(1f)) {
+                    ExposedDropdownMenuBox(
                         expanded = expanded,
-                        onDismissRequest = { expanded = false },
-                        containerColor = cardBg
+                        onExpandedChange = { expanded = !expanded }
                     ) {
-                        areas.forEach { area ->
-                            DropdownMenuItem(
-                                text = { Text(area, color = if (selectedArea == area) neonCyan else textMain) },
-                                onClick = {
-                                    selectedArea = area
-                                    expanded = false
-                                }
+                        OutlinedTextField(
+                            value = selectedArea,
+                            onValueChange = {},
+                            readOnly = true,
+                            placeholder = { Text("Area", color = textMain.copy(alpha = 0.7f), fontSize = 14.sp) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = neonCyan, unfocusedBorderColor = textMain.copy(alpha = 0.5f),
+                                focusedTextColor = textMain, unfocusedTextColor = textMain,
+                                focusedTrailingIconColor = neonCyan, unfocusedTrailingIconColor = textMain.copy(alpha = 0.5f),
+                                focusedLabelColor = neonCyan, unfocusedLabelColor = textMain.copy(alpha = 0.7f)
                             )
+                        )
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = cardBg) {
+                            areas.forEach { area ->
+                                DropdownMenuItem(
+                                    text = { Text(area, color = if (selectedArea == area) neonCyan else textMain, fontSize = 14.sp) },
+                                    onClick = { selectedArea = area; expanded = false }
+                                )
+                            }
                         }
                     }
                 }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Cari", color = textMain.copy(alpha = 0.7f), fontSize = 14.sp) },
+                    modifier = Modifier.weight(1f),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = neonCyan, unfocusedBorderColor = textMain.copy(alpha = 0.5f),
+                        focusedTextColor = textMain, unfocusedTextColor = textMain,
+                        focusedLabelColor = neonCyan, unfocusedLabelColor = textMain.copy(alpha = 0.7f)
+                    ),
+                    singleLine = true
+                )
             }
-
-            // Search Field
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Cari Pelanggan", color = textMain.copy(alpha = 0.7f)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = neonCyan,
-                    unfocusedBorderColor = textMain.copy(alpha = 0.5f),
-                    focusedTextColor = textMain,
-                    unfocusedTextColor = textMain,
-                    focusedLabelColor = neonCyan,
-                    unfocusedLabelColor = textMain.copy(alpha = 0.7f)
-                ),
-                singleLine = true
-            )
 
             // Content
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (selectedTabIndex == 0) {
                     // BELUM BAYAR Summary
@@ -305,11 +286,11 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                             .clip(RoundedCornerShape(12.dp))
                             .background(errorRed.copy(alpha = 0.2f))
                             .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                            .padding(16.dp)
+                            .padding(8.dp)
                     ) {
                         Column {
                             Text("Total Tagihan Belum Dibayar", color = textSecondary, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(totalUnpaid, color = errorRed, fontWeight = FontWeight.Bold, fontSize = 24.sp)
                         }
                     }
@@ -318,7 +299,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                     
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(unpaidCustomers) { customer ->
                             BillingCustomerItem(
@@ -343,7 +324,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 }
                             )
                         }
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
+                        item { Spacer(modifier = Modifier.height(8.dp)) }
                     }
                 } else {
                     // SUDAH BAYAR Summary
@@ -353,11 +334,11 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                             .clip(RoundedCornerShape(12.dp))
                             .background(successGreen.copy(alpha = 0.2f))
                             .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                            .padding(16.dp)
+                            .padding(8.dp)
                     ) {
                         Column {
                             Text("Total Tagihan Sudah Dibayar", color = textSecondary, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(totalPaid, color = neonCyan, fontWeight = FontWeight.Bold, fontSize = 24.sp)
                         }
                     }
@@ -366,7 +347,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                     
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(paidCustomers) { customer ->
                             BillingCustomerItem(
@@ -388,7 +369,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 }
                             )
                         }
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
+                        item { Spacer(modifier = Modifier.height(8.dp)) }
                     }
                 }
             }
@@ -419,14 +400,14 @@ fun BillingCustomerItem(
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
 
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Column {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text(customer.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text(customer.phone, color = textSecondary, fontSize = 12.sp)
-                    Text("Area: ${customer.area}", color = textSecondary, fontSize = 12.sp)
+                    Text(customer.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(customer.phone, color = textSecondary, fontSize = 11.sp)
+                    Text("Area: ${customer.area}", color = textSecondary, fontSize = 11.sp)
                 }
                 Box(
                     modifier = Modifier
@@ -434,12 +415,12 @@ fun BillingCustomerItem(
                         .background(if (customer.status != "LUNAS CASH") Color(0xFFFF003C).copy(alpha = 0.2f) else neonCyan.copy(alpha = 0.2f))
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    Text(customer.status, color = if (customer.status != "LUNAS CASH") Color(0xFFFF003C) else neonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(customer.status, color = if (customer.status != "LUNAS CASH") Color(0xFFFF003C) else neonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(customer.price, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(customer.price, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (customer.status != "LUNAS CASH") {
                         IconButton(onClick = onIsolirClick, modifier = Modifier.size(36.dp)) {

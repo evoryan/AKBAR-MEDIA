@@ -1,0 +1,2 @@
+#!/bin/bash
+sed -i 's/Row(verticalAlignment = Alignment.CenterVertically) {/Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { selectedAdmin = admin; showDialog = true; coroutineScope.launch { try { isLoadingDialog = true; val allPayments = com.example.ui.data.remote.ApiClient.apiService.getPembayaranHistory(); dialogPayments = allPayments.filter { it.admin_name == admin.name } } catch(e: Exception) {} finally { isLoadingDialog = false } } }) {/g' app/src/main/java/com/example/ui/screens/UangDiAdminScreen.kt

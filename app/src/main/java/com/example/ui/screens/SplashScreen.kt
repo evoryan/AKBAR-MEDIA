@@ -75,7 +75,7 @@ fun SplashScreen(onNavigateToLogin: () -> Unit, onNavigateToDashboard: () -> Uni
                 text = com.example.ui.data.SettingsManager.companyName,
                 fontWeight = FontWeight.Bold,
                 fontSize = 32.sp,
-                color = Color.White
+                color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(

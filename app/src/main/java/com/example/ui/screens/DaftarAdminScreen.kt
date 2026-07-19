@@ -117,6 +117,13 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                                     Text("Username: ${item.username}", color = textSecondary, fontSize = 14.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text("Role: ${item.role.name}", color = primaryBg, fontSize = 14.sp)
+                                    if (item.area_id != null && item.area_id != "semua") {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("Area ID: ${item.area_id}", color = textSecondary, fontSize = 12.sp)
+                                    } else {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("Area: Semua", color = textSecondary, fontSize = 12.sp)
+                                    }
                                 }
                             }
                             if (currentUser?.role == UserRole.SUPER_ADMIN && item.id != "1") {
@@ -155,6 +162,14 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
         var password by remember { mutableStateOf("") }
         var selectedRole by remember { mutableStateOf(editItem?.role ?: UserRole.ADMIN) }
         var roleExpanded by remember { mutableStateOf(false) }
+        var areas by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
+        var selectedArea by remember { mutableStateOf(editItem?.area_id ?: "semua") }
+        var areaExpanded by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            try {
+                areas = com.example.ui.data.remote.ApiClient.apiService.getAreas()
+            } catch (e: Exception) {}
+        }
 
         AlertDialog(
             onDismissRequest = { showDialog = false },
@@ -227,6 +242,39 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                             }
                         }
                     }
+                    Box {
+                        OutlinedButton(
+                            onClick = { areaExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = textMain),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder)
+                        ) {
+                            Text(if (selectedArea == "semua") "Semua Area" else areas.find { it.id == selectedArea }?.name ?: selectedArea)
+                        }
+                        DropdownMenu(
+                            expanded = areaExpanded,
+                            onDismissRequest = { areaExpanded = false },
+                            modifier = Modifier.background(cardBg).border(1.dp, cardBorder)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Semua Area", color = textMain) },
+                                onClick = {
+                                    selectedArea = "semua"
+                                    areaExpanded = false
+                                }
+                            )
+                            areas.forEach { area ->
+                                DropdownMenuItem(
+                                    text = { Text(area.name, color = textMain) },
+                                    onClick = {
+                                        selectedArea = area.id
+                                        areaExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                 }
             },
             confirmButton = {
@@ -245,7 +293,8 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                                     "name" to name,
                                     "username" to username,
                                     "role" to selectedRole.name,
-                                    "password" to password
+                                    "password" to password,
+                                    "area_id" to selectedArea
                                 )
                                 ApiClient.apiService.addAdminMap(adminMap)
                                 val res = ApiClient.apiService.getAdmins()
@@ -262,12 +311,13 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                                     "name" to name,
                                     "username" to username,
                                     "role" to selectedRole.name,
-                                    "password" to password
+                                    "password" to password,
+                                    "area_id" to selectedArea
                                 )
                                 coroutineScope.launch {
                                     try {
                                         ApiClient.apiService.updateAdminMap(current.id, adminMap)
-                                        adminList[index] = current.copy(name = name, username = username, role = selectedRole)
+                                        adminList[index] = current.copy(name = name, username = username, role = selectedRole, area_id = selectedArea)
                                     } catch(e: Exception) {}
                                 }
                             }

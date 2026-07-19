@@ -33,9 +33,17 @@ fun RangkumanScreen(onBack: () -> Unit) {
     val neonRed = Color(0xFFFF003C)
     val neonYellow = Color(0xFFFFC107)
 
-    var selectedMonth by remember { mutableStateOf("Juli 2026") }
+    var selectedMonth by remember { mutableStateOf("Semua Waktu") }
+    var isLoading by remember { mutableStateOf(true) }
+    var pembukuanData by remember { mutableStateOf<com.example.ui.data.remote.PembukuanResponse?>(null) }
+    LaunchedEffect(Unit) {
+        try {
+            pembukuanData = com.example.ui.data.remote.ApiClient.apiService.getPembukuan()
+        } catch(e: Exception) {}
+        finally { isLoading = false }
+    }
     var monthDropdownExpanded by remember { mutableStateOf(false) }
-    val months = listOf("Mei 2026", "Juni 2026", "Juli 2026", "Agustus 2026")
+    val months = listOf("Semua Waktu")
 
     Scaffold(
         containerColor = bgMain,
@@ -119,22 +127,22 @@ fun RangkumanScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Pembayaran Tunai", color = textSecondary, fontSize = 14.sp)
-                        Text("Rp. 12.100.000", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.pemasukan?.toLong() ?: 0L)).replace(",", ".")}", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Pemasukkan Lain-lain", color = textSecondary, fontSize = 14.sp)
-                        Text("Rp. 0", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.categories?.get("Lain-lain")?.toLong() ?: 0L)).replace(",", ".")}", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Pengeluaran", color = neonRed, fontSize = 14.sp)
-                        Text("Rp. 0", color = neonRed, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.pengeluaran?.toLong() ?: 0L)).replace(",", ".")}", color = neonRed, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     
                     Divider(color = Color(0xFF333333), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
                     
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Total", color = textSecondary, fontSize = 14.sp)
-                        Text("Rp. 12.100.000", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", ((pembukuanData?.pemasukan ?: 0.0) - (pembukuanData?.pengeluaran ?: 0.0)).toLong()).replace(",", ".")}", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

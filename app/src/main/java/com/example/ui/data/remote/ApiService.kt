@@ -36,7 +36,8 @@ data class PembukuanItem(
     val category: String?,
     val amount: Double,
     val description: String?,
-    val created_at: String?
+    val created_at: String?,
+    val admin_name: String? = null
 )
 
 data class SetoranRequest(

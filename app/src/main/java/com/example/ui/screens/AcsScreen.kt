@@ -336,10 +336,12 @@ fun AcsDeviceItem(
     var showSsidDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showRestartDialog by remember { mutableStateOf(false) }
+    var showSummonDialog by remember { mutableStateOf(false) }
 
     var isUpdating by remember { mutableStateOf(false) }
     var updateResult by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val isErrorItem = device.id?.startsWith("error_") == true
     
     Card(
@@ -386,6 +388,7 @@ fun AcsDeviceItem(
                         AcsActionButton("Set SSID", warningYellow, Icons.Default.Build) { showSsidDialog = true }
                         AcsActionButton("Set Password", primaryCyan, Icons.Default.Build) { showPasswordDialog = true }
                         AcsActionButton("Restart", errorRed, Icons.Default.Refresh) { showRestartDialog = true }
+                        AcsActionButton("Summon", successGreen, Icons.Default.Router) { showSummonDialog = true }
                     }
                 } else {
                     Box(modifier = Modifier.weight(0.4f), contentAlignment = Alignment.CenterEnd) {
@@ -449,6 +452,11 @@ fun AcsDeviceItem(
             label = "Nama WiFi Baru",
             isUpdating = isUpdating,
             updateResult = updateResult,
+            bgMain = cardBg,
+            textMain = textMain,
+            textSecondary = textSecondary,
+            cardBg = cardBg,
+            primaryCyan = primaryCyan,
             onDismiss = { 
                 showSsidDialog = false 
                 updateResult = null 
@@ -460,6 +468,9 @@ fun AcsDeviceItem(
                     try {
                         val res = ApiClient.apiService.acsAction(device.id ?: "", mapOf("action" to "set_ssid", "value" to newSsid, "areaName" to (device.areaName ?: "")))
                         updateResult = res.message
+                        android.widget.Toast.makeText(context, "Nama WiFi (SSID) berhasil diubah!", android.widget.Toast.LENGTH_LONG).show()
+                        showSsidDialog = false
+                        updateResult = null
                     } catch(e: Exception) {
                         updateResult = "Gagal: ${e.message}"
                     } finally {
@@ -478,6 +489,11 @@ fun AcsDeviceItem(
             label = "Password WiFi Baru",
             isUpdating = isUpdating,
             updateResult = updateResult,
+            bgMain = cardBg,
+            textMain = textMain,
+            textSecondary = textSecondary,
+            cardBg = cardBg,
+            primaryCyan = primaryCyan,
             onDismiss = { 
                 showPasswordDialog = false 
                 updateResult = null 
@@ -492,6 +508,9 @@ fun AcsDeviceItem(
                         try {
                             val res = ApiClient.apiService.acsAction(device.id ?: "", mapOf("action" to "set_password", "value" to newPass, "areaName" to (device.areaName ?: "")))
                             updateResult = res.message
+                            android.widget.Toast.makeText(context, "Password WiFi berhasil diubah!", android.widget.Toast.LENGTH_LONG).show()
+                            showPasswordDialog = false
+                            updateResult = null
                         } catch(e: Exception) {
                             updateResult = "Gagal: ${e.message}"
                         } finally {
@@ -510,6 +529,11 @@ fun AcsDeviceItem(
             showInput = false,
             isUpdating = isUpdating,
             updateResult = updateResult,
+            bgMain = cardBg,
+            textMain = textMain,
+            textSecondary = textSecondary,
+            cardBg = cardBg,
+            primaryCyan = primaryCyan,
             onDismiss = { 
                 showRestartDialog = false 
                 updateResult = null 
@@ -521,6 +545,45 @@ fun AcsDeviceItem(
                     try {
                         val res = ApiClient.apiService.acsAction(device.id ?: "", mapOf("action" to "reboot", "areaName" to (device.areaName ?: "")))
                         updateResult = res.message
+                        android.widget.Toast.makeText(context, "Perangkat berhasil direstart!", android.widget.Toast.LENGTH_LONG).show()
+                        showRestartDialog = false
+                        updateResult = null
+                    } catch(e: Exception) {
+                        updateResult = "Gagal: ${e.message}"
+                    } finally {
+                        isUpdating = false
+                    }
+                }
+            }
+        )
+    }
+
+    if (showSummonDialog) {
+        AcsActionDialog(
+            title = "Summon Perangkat",
+            description = "Apakah anda yakin ingin mengirimkan perintah summon (wake up & refresh) ke perangkat ini?",
+            showInput = false,
+            isUpdating = isUpdating,
+            updateResult = updateResult,
+            bgMain = cardBg,
+            textMain = textMain,
+            textSecondary = textSecondary,
+            cardBg = cardBg,
+            primaryCyan = primaryCyan,
+            onDismiss = { 
+                showSummonDialog = false 
+                updateResult = null 
+            },
+            onConfirm = { 
+                isUpdating = true
+                updateResult = null
+                coroutineScope.launch {
+                    try {
+                        val res = ApiClient.apiService.acsAction(device.id ?: "", mapOf("action" to "summon", "areaName" to (device.areaName ?: "")))
+                        updateResult = res.message
+                        android.widget.Toast.makeText(context, "Perangkat berhasil disummon!", android.widget.Toast.LENGTH_LONG).show()
+                        showSummonDialog = false
+                        updateResult = null
                     } catch(e: Exception) {
                         updateResult = "Gagal: ${e.message}"
                     } finally {
@@ -579,7 +642,7 @@ fun AcsActionDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isUpdating) onDismiss() },
-        containerColor = Color(0xFF05050A),
+        containerColor = bgMain,
         title = { Text(title, color = textMain, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -618,7 +681,7 @@ fun AcsActionDialog(
             Button(
                 onClick = { onConfirm(inputValue) },
                 enabled = !isUpdating,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = Color.Black)
+                colors = ButtonDefaults.buttonColors(containerColor = primaryCyan, contentColor = Color.Black)
             ) {
                 Text("Konfirmasi", fontWeight = FontWeight.Bold)
             }

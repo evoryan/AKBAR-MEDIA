@@ -361,7 +361,7 @@ fun AddCustomerScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { showProfileDialog = false }) { Text("Tutup") } },
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF),
             titleContentColor = neonCyan,
             textContentColor = textMain
         )
@@ -454,7 +454,7 @@ fun AddCustomerScreen(
                     enabled = !isAddingSecret
                 ) { Text("Batal", color = textSecondary) } 
             },
-            containerColor = Color(0xFF1E1E1E),
+            containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF),
             titleContentColor = neonCyan,
             textContentColor = textMain
         )
@@ -760,7 +760,7 @@ fun AddCustomerScreen(
                             
                             Card(
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                                colors = CardDefaults.cardColors(containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text("Informasi ODP: ${selectedOdp!!.name}", color = neonCyan, fontWeight = FontWeight.Bold)

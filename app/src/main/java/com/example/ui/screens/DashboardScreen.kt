@@ -376,34 +376,27 @@ fun DashboardScreen(
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Menu Utama", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), modifier = Modifier.padding(bottom = 16.dp))
                 
-                // Grid 1
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    MenuItem(icon = Icons.Default.Group, title = "Pelanggan", tint = primaryBg, onClick = onNavigateToCustomers)
-                    MenuItem(icon = Icons.Default.Receipt, title = "Tagihan", tint = textErrorPrimary, onClick = onNavigateToBilling)
-                    MenuItem(icon = Icons.Default.Inventory, title = "Paket", tint = primaryBg, onClick = onNavigateToPackages)
-                    MenuItem(icon = Icons.Default.Map, title = "Area", tint = primaryBg, onClick = onNavigateToArea)
+                val menuItems = mutableListOf<@Composable RowScope.() -> Unit>()
+                menuItems.add { MenuItem(icon = Icons.Default.Group, title = "Pelanggan", tint = primaryBg, onClick = onNavigateToCustomers) }
+                menuItems.add { MenuItem(icon = Icons.Default.Receipt, title = "Tagihan", tint = textErrorPrimary, onClick = onNavigateToBilling) }
+                menuItems.add { MenuItem(icon = Icons.Default.Inventory, title = "Paket", tint = primaryBg, onClick = onNavigateToPackages) }
+                menuItems.add { MenuItem(icon = Icons.Default.Map, title = "Area", tint = primaryBg, onClick = onNavigateToArea) }
+                menuItems.add { MenuItem(icon = Icons.Default.Router, title = "Mikrotik", tint = primaryBg, onClick = onNavigateToMikrotik) }
+                menuItems.add { MenuItem(icon = Icons.Default.Dns, title = "ACS", tint = primaryBg, onClick = onNavigateToAcs) }
+                if (currentUser?.role == UserRole.SUPER_ADMIN) {
+                    menuItems.add { MenuItem(icon = Icons.Default.Chat, title = "Bot WA", tint = Color(0xFF00FF4D), onClick = onNavigateToBotWa) }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Grid 2
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    MenuItem(icon = Icons.Default.Router, title = "Mikrotik", tint = primaryBg, onClick = onNavigateToMikrotik)
-                    MenuItem(icon = Icons.Default.Dns, title = "ACS", tint = primaryBg, onClick = onNavigateToAcs)
-                    if (currentUser?.role == UserRole.SUPER_ADMIN) {
-                        MenuItem(icon = Icons.Default.Chat, title = "Bot WA", tint = Color(0xFF00FF4D), onClick = onNavigateToBotWa)
-                    } else {
-                        Box(modifier = Modifier.weight(1f))
+                menuItems.add { MenuItem(icon = Icons.Default.AccountTree, title = "Jaringan", tint = primaryBg, onClick = onNavigateToJaringan) }
+                menuItems.add { MenuItem(icon = Icons.Default.Book, title = "Pembukuan", tint = primaryBg, onClick = onNavigateToPembukuan) }
+                menuItems.add { MenuItem(icon = Icons.Default.Storage, title = "Stock Barang", tint = primaryBg, onClick = onNavigateToStockBarang) }
+                menuItems.add { MenuItem(icon = Icons.Default.Settings, title = "Setting", tint = primaryBg, onClick = onNavigateToSetting) }
+
+                menuItems.chunked(4).forEach { rowItems ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        rowItems.forEach { it() }
+                        repeat(4 - rowItems.size) { Box(modifier = Modifier.weight(1f)) }
                     }
-                    MenuItem(icon = Icons.Default.AccountTree, title = "Jaringan", tint = primaryBg, onClick = onNavigateToJaringan)
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Grid 3
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                    MenuItem(icon = Icons.Default.Book, title = "Pembukuan", tint = primaryBg, onClick = onNavigateToPembukuan)
-                    MenuItem(icon = Icons.Default.Storage, title = "Stock Barang", tint = primaryBg, onClick = onNavigateToStockBarang)
-                    MenuItem(icon = Icons.Default.Settings, title = "Setting", tint = primaryBg, onClick = onNavigateToSetting)
-                    Box(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
@@ -444,6 +437,10 @@ fun DashboardScreen(
 
 @Composable
 fun RowScope.MenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, tint: Color, onClick: () -> Unit) {
+    val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val iconBgColor = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF0F0F0)
+    val iconBorderColor = if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)
+    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.weight(1f).clickable(onClick = onClick)
@@ -452,14 +449,14 @@ fun RowScope.MenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, tit
             modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF1E1E1E))
-                .border(1.dp, Color(0xFF333333), RoundedCornerShape(16.dp)),
+                .background(iconBgColor)
+                .border(1.dp, iconBorderColor, RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(title, fontSize = 10.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Medium)
+        Text(title, fontSize = 10.sp, color = if (isDark) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Medium)
     }
 }
 
@@ -468,8 +465,8 @@ fun ShortcutItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: S
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF11111A))
-            .border(1.dp, Color(0xFF333333), RoundedCornerShape(16.dp))
+            .background(if(androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))
+            .border(1.dp, if(androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(12.dp),
         contentAlignment = Alignment.Center

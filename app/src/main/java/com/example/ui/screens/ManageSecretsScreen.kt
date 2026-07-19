@@ -394,7 +394,7 @@ fun SummaryCard(title: String, value: String, color: Color, isSelected: Boolean,
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             Text(title, color = color, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(value, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(value, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

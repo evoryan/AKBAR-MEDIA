@@ -125,6 +125,7 @@ const tenantContext = (req, res, next) => {
 async function updateSchema() {
     try {
         
+        await masterPool.query(`ALTER TABLE users ADD COLUMN area_id VARCHAR(100) DEFAULT 'semua'`).catch(e=>{});
         await masterPool.query(`CREATE TABLE IF NOT EXISTS pembukuan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             type VARCHAR(50),
@@ -607,10 +608,11 @@ app.get('/api/customers', async (req, res) => {
 app.get('/api/uang-di-admin', async (req, res) => {
     try {
         const [pemasukan] = await req.pool.query(`
-            SELECT admin_name as adminName, SUM(amount) as totalAmount, COUNT(*) as jmlPlggn 
-            FROM pembukuan 
-            WHERE type = 'pemasukan' AND admin_name IS NOT NULL
-            GROUP BY admin_name
+            SELECT p.admin_name as adminName, SUM(p.amount) as totalAmount, 
+            (SELECT COUNT(*) FROM tagihan_bulanan t WHERE t.admin_name = p.admin_name AND t.status = 'LUNAS CASH') as jmlPlggn
+            FROM pembukuan p
+            WHERE p.type = 'pemasukan' AND p.admin_name IS NOT NULL
+            GROUP BY p.admin_name
         `);
         const [setoran] = await req.pool.query(`
             SELECT admin_name as adminName, SUM(amount) as totalAmount
@@ -960,7 +962,7 @@ app.delete('/api/areas/:id', async (req, res) => {
 app.get('/api/admins', async (req, res) => {
     try {
         const db_name = req.user ? req.user.db_name : 'app_db';
-        const [rows] = await masterPool.query('SELECT id, name, username, role FROM users WHERE db_name = ?', [db_name]);
+        const [rows] = await masterPool.query('SELECT id, name, username, role, area_id FROM users WHERE db_name = ?', [db_name]);
         const admins = rows.map(r => ({ ...r, id: r.id.toString() }));
         res.json(admins);
     } catch (error) {
@@ -1488,30 +1490,95 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
         }
         if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
         
-        let taskData = {
-            device: deviceId
-        };
+        // Fetch specific device from GenieACS to see its supported parameters
+        let deviceData = null;
+        let axiosConfigForDev = { timeout: 10000 };
+        if (areaRow.acsUser && areaRow.acsUser.trim() !== '') {
+            axiosConfigForDev.auth = {
+                username: areaRow.acsUser,
+                password: areaRow.acsPassword || ''
+            };
+        }
+
+        try {
+            console.log(`[ACS] Fetching device ${deviceId} to resolve parameter paths...`);
+            const devRes = await axios.get(`${baseUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: deviceId }))}`, axiosConfigForDev);
+            if (devRes.data && devRes.data.length > 0) {
+                deviceData = devRes.data[0];
+                console.log(`[ACS] Successfully fetched device data for ${deviceId}`);
+            }
+        } catch (err) {
+            console.error("[ACS Error] Failed to fetch device data to inspect parameters:", err.message);
+        }
+
+        let taskData = {};
         
         if (action === 'set_ssid') {
+            let ssidPath = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID';
+            if (deviceData) {
+                const candidates = [
+                    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
+                    'Device.WiFi.SSID.1.SSID'
+                ];
+                const found = candidates.find(p => p in deviceData);
+                if (found) {
+                    ssidPath = found;
+                } else {
+                    const wildcard = Object.keys(deviceData).find(k => k.endsWith('.WLANConfiguration.1.SSID') || k.endsWith('.WiFi.SSID.1.SSID') || k.endsWith('.SSID'));
+                    if (wildcard) ssidPath = wildcard;
+                }
+            }
+            console.log(`[ACS] Selected SSID path: ${ssidPath}`);
+
             taskData.name = 'setParameterValues';
             taskData.parameterValues = [
-                ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', String(value), 'xsd:string'],
-                ['Device.WiFi.SSID.1.SSID', String(value), 'xsd:string']
+                [ssidPath, String(value), 'xsd:string']
             ];
         } else if (action === 'set_password') {
+            let passPath = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase';
+            if (deviceData) {
+                const candidates = [
+                    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase',
+                    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey',
+                    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase',
+                    'Device.WiFi.Radio.1.Security.KeyPassphrase'
+                ];
+                const found = candidates.find(p => p in deviceData);
+                if (found) {
+                    passPath = found;
+                } else {
+                    const wildcard = Object.keys(deviceData).find(k => 
+                        k.includes('WLANConfiguration') && (k.endsWith('.KeyPassphrase') || k.endsWith('.PreSharedKey') || k.endsWith('.PreSharedKey.1.KeyPassphrase')) ||
+                        k.includes('WiFi') && k.endsWith('.KeyPassphrase')
+                    );
+                    if (wildcard) passPath = wildcard;
+                }
+            }
+            console.log(`[ACS] Selected Password path: ${passPath}`);
+
             taskData.name = 'setParameterValues';
             taskData.parameterValues = [
-                ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', String(value), 'xsd:string'],
-                ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase', String(value), 'xsd:string'],
-                ['Device.WiFi.Radio.1.Security.KeyPassphrase', String(value), 'xsd:string']
+                [passPath, String(value), 'xsd:string']
             ];
         } else if (action === 'reboot') {
             taskData.name = 'reboot';
+        } else if (action === 'summon' || action === 'refresh') {
+            let paramPath = 'InternetGatewayDevice.DeviceInfo.HardwareVersion';
+            if (deviceData) {
+                if (!('InternetGatewayDevice.DeviceInfo.HardwareVersion' in deviceData) && ('Device.DeviceInfo.HardwareVersion' in deviceData)) {
+                    paramPath = 'Device.DeviceInfo.HardwareVersion';
+                } else {
+                    const wildcard = Object.keys(deviceData).find(k => k.endsWith('.HardwareVersion'));
+                    if (wildcard) paramPath = wildcard;
+                }
+            }
+            console.log(`[ACS] Selected summon parameter path: ${paramPath}`);
+            taskData.name = 'getParameterValues';
+            taskData.parameterNames = [paramPath];
         } else {
             return res.status(400).json({ error: "Aksi tidak dikenal" });
         }
         
-        // GenieACS v1.2 format: POST /tasks?connection_request
         let axiosConfig = { timeout: 10000 };
         if (areaRow.acsUser && areaRow.acsUser.trim() !== '') {
             axiosConfig.auth = {
@@ -1519,7 +1586,39 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
                 password: areaRow.acsPassword || ''
             };
         }
-        const response = await axios.post(`${baseUrl}/tasks?connection_request`, taskData, axiosConfig);
+
+        let response;
+        let lastError = null;
+
+        // Fallback Step 1: POST to /devices/<id>/tasks?connection_request (Forces immediate execution on device)
+        try {
+            console.log(`[ACS] Attempting Step 1 (standard modern connection_request): POST to /devices/${encodeURIComponent(deviceId)}/tasks?connection_request`);
+            response = await axios.post(`${baseUrl}/devices/${encodeURIComponent(deviceId)}/tasks?connection_request`, taskData, axiosConfig);
+            console.log(`[ACS] Step 1 successful`);
+        } catch (err1) {
+            console.warn(`[ACS Warning] Step 1 failed: ${err1.message}. Trying Step 2 (queue task without connection_request)...`);
+            lastError = err1;
+
+            // Fallback Step 2: POST to /devices/<id>/tasks (Queues task in GenieACS to execute at next inform, in case connection request is offline or unsupported)
+            try {
+                response = await axios.post(`${baseUrl}/devices/${encodeURIComponent(deviceId)}/tasks`, taskData, axiosConfig);
+                console.log(`[ACS] Step 2 successful`);
+            } catch (err2) {
+                console.warn(`[ACS Warning] Step 2 failed: ${err2.message}. Trying Step 3 (legacy global endpoint with device field in body)...`);
+                lastError = err2;
+
+                // Fallback Step 3: POST to global /tasks?connection_request (Legacy or alternative configuration)
+                try {
+                    const oldTaskData = { ...taskData, device: deviceId };
+                    response = await axios.post(`${baseUrl}/tasks?connection_request`, oldTaskData, axiosConfig);
+                    console.log(`[ACS] Step 3 successful`);
+                } catch (err3) {
+                    console.error(`[ACS Error] All task execution steps failed.`);
+                    lastError = err3;
+                    throw new Error(`Semua metode pengiriman ke ACS gagal. Kesalahan terakhir: ${err3.message}`);
+                }
+            }
+        }
         
         res.json({ message: `Aksi ${action} berhasil diproses` });
     } catch (error) {
@@ -1631,7 +1730,7 @@ app.post('/api/inventory', async (req, res) => {
 
 app.put('/api/admins/:id', async (req, res) => {
     try {
-        const { name, username, role, password } = req.body;
+        const { name, username, role, password, area_id } = req.body;
         const db_name = req.user ? req.user.db_name : 'app_db';
         // Check if username is already taken by someone else
         const [existing] = await masterPool.query('SELECT id FROM users WHERE username = ? AND id != ?', [username, req.params.id]);
@@ -1640,9 +1739,9 @@ app.put('/api/admins/:id', async (req, res) => {
         }
         
         if (password) {
-            await masterPool.query('UPDATE users SET name = ?, username = ?, role = ?, password = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', password, req.params.id, db_name]);
+            await masterPool.query('UPDATE users SET name = ?, username = ?, role = ?, password = ?, area_id = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', password, area_id || 'semua', req.params.id, db_name]);
         } else {
-            await masterPool.query('UPDATE users SET name = ?, username = ?, role = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', req.params.id, db_name]);
+            await masterPool.query('UPDATE users SET name = ?, username = ?, role = ?, area_id = ? WHERE id = ? AND db_name = ?', [name, username, role || 'ADMIN', area_id || 'semua', req.params.id, db_name]);
         }
         res.json({ message: "Admin diperbarui" });
     } catch (error) {
@@ -1651,11 +1750,11 @@ app.put('/api/admins/:id', async (req, res) => {
 });
 app.post('/api/admins', async (req, res) => {
     try {
-        const { name, username, role, password } = req.body;
+        const { name, username, role, password, area_id } = req.body;
         const db_name = req.user ? req.user.db_name : 'app_db';
         const [result] = await masterPool.query(
-            'INSERT INTO users (name, username, role, password, db_name) VALUES (?, ?, ?, ?, ?)',
-            [name, username, role || 'ADMIN', password || '', db_name]
+            'INSERT INTO users (name, username, role, password, db_name, area_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, username, role || 'ADMIN', password || '', db_name, area_id || 'semua']
         );
         res.json({ message: "Admin ditambahkan", id: result.insertId.toString() });
     } catch (error) {

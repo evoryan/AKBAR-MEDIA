@@ -9,7 +9,7 @@ enum class UserRole {
     SUPER_ADMIN, ADMIN, TEKNISI, COLLECTOR
 }
 
-data class AdminUser(val id: String, var name: String, var username: String, var role: UserRole, val token: String? = null, val db_name: String? = null)
+data class AdminUser(val id: String, var name: String, var username: String, var role: UserRole, val token: String? = null, val db_name: String? = null, var area_id: String? = null)
 
 object UserSession {
     val currentUser = MutableStateFlow<AdminUser?>(null)

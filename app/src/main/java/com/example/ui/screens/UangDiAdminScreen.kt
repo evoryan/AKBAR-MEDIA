@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,12 +58,17 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
     }
 
     var adminList by remember { mutableStateOf<List<AdminData>>(emptyList()) }
+    var showDialog by remember { mutableStateOf(false) }
+    var selectedAdmin by remember { mutableStateOf<AdminData?>(null) }
+    var dialogPayments by remember { mutableStateOf<List<com.example.ui.data.remote.PembayaranHistoryItem>>(emptyList()) }
+    var isLoadingDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         try {
             val admins = ApiClient.apiService.getAdmins()
             val uangAdmin = try { ApiClient.apiService.getUangDiAdmin() } catch (e: Exception) { emptyList<com.example.ui.data.remote.UangAdminResponse>() }
+            val allPayments = try { ApiClient.apiService.getPembayaranHistory() } catch (e: Exception) { emptyList() }
             
             val mapped = admins.map { admin ->
                 val record = uangAdmin.find { it.adminName == admin.name }
@@ -76,7 +82,7 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
                 val formattedPengeluaran = "Rp. ${String.format("%,d", pengeluaran.toLong()).replace(",", ".")}"
                 val formattedSisa = "Rp. ${String.format("%,d", sisa.toLong()).replace(",", ".")}"
                 
-                val jml = record?.jmlPlggn ?: 0
+                val jml = allPayments.count { it.admin_name == admin.name }
                 AdminData(
                     name = admin.name,
                     totalDiterima = formattedDiterima,
@@ -137,7 +143,7 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
             }
 
             items(adminList) { admin ->
-                AdminItemCard(
+                AdminItemCard(onPelangganClick = { selectedAdmin = admin; showDialog = true; coroutineScope.launch { try { isLoadingDialog = true; val allPayments = com.example.ui.data.remote.ApiClient.apiService.getPembayaranHistory(); dialogPayments = allPayments.filter { it.admin_name == admin.name } } catch(e: Exception) {} finally { isLoadingDialog = false } } }, 
                     admin = admin,
                     textMain = textMain,
                     textSecondary = textSecondary,
@@ -149,10 +155,48 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
             }
         }
     }
+if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            containerColor = cardBg,
+            titleContentColor = textMain,
+            textContentColor = textSecondary,
+            title = { Text("Pelanggan - ${selectedAdmin?.name}") },
+            text = {
+                if (isLoadingDialog) {
+                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = primaryCyan)
+                    }
+                } else if (dialogPayments.isEmpty()) {
+                    Text("Tidak ada data", color = textSecondary)
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                        items(dialogPayments) { payment ->
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                                Text("${payment.customer_name ?: "-"} (${payment.bulan} ${payment.tahun})", color = textMain, fontWeight = FontWeight.Bold)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(payment.created_at ?: "-", color = textSecondary, fontSize = 12.sp)
+                                    Text("Rp. ${String.format("%,d", payment.amount?.toLong() ?: 0).replace(",", ".")}", color = successGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            HorizontalDivider(color = cardBgLighter)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("Tutup", color = primaryCyan)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun AdminItemCard(
+    onPelangganClick: () -> Unit = {},
+    
     admin: AdminData,
     textMain: Color,
     textSecondary: Color,
@@ -195,7 +239,7 @@ fun AdminItemCard(
                     Text("Persentase (${admin.persentase})", color = textSecondary, fontSize = 12.sp)
                     Text(admin.persentase, color = primaryCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Text("Jml Plggn", color = textSecondary, fontSize = 12.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onPelangganClick() }) {
                         Text(admin.jmlPlggn, color = primaryCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = primaryCyan, modifier = Modifier.size(16.dp))
@@ -214,7 +258,7 @@ fun AdminItemCard(
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Sisa", color = textSecondary, fontSize = 12.sp)
                     Text(admin.sisa, color = admin.sisaColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onPelangganClick() }) {
                         Text("% Sisa (${admin.persentaseSisa})", color = textSecondary, fontSize = 12.sp)
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = textSecondary, modifier = Modifier.size(16.dp))
                     }
@@ -292,4 +336,5 @@ fun AdminItemCard(
             }
         )
     }
-}
+
+    }
