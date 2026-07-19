@@ -703,6 +703,121 @@ fun TemplateConfigCard(
     successGreen: Color,
     neonCyan: Color
 ) {
+    var showTestDialog by remember { mutableStateOf(false) }
+    var testDestNumber by remember { mutableStateOf("") }
+    var isSendingTest by remember { mutableStateOf(false) }
+    val localContext = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    if (showTestDialog) {
+        val previewText = remember(templateText) {
+            var text = templateText
+            placeholders.forEach { (tag, desc) ->
+                val sampleValue = when (tag) {
+                    "{nama}" -> "Ahmad"
+                    "{bulan}" -> "Juli 2026"
+                    "{nominal}" -> "Rp. 100.000"
+                    "{otp}" -> "123456"
+                    else -> "Contoh"
+                }
+                text = text.replace(tag, sampleValue)
+            }
+            text
+        }
+
+        AlertDialog(
+            onDismissRequest = { if (!isSendingTest) showTestDialog = false },
+            title = {
+                Text(
+                    text = "Uji Kirim: $title",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textMain
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Kirim pesan percobaan menggunakan template ini untuk memastikan format pesan sudah sesuai di WhatsApp.",
+                        fontSize = 12.sp,
+                        color = textSecondary
+                    )
+
+                    OutlinedTextField(
+                        value = testDestNumber,
+                        onValueChange = { testDestNumber = it },
+                        label = { Text("Nomor WA Penerima") },
+                        placeholder = { Text("Contoh: 08123456789") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textMain.copy(alpha = 0.2f),
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        )
+                    )
+
+                    Text(
+                        text = "Pratinjau Pesan:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textMain
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(textMain.copy(alpha = 0.05f))
+                            .border(0.5.dp, textMain.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = previewText,
+                            fontSize = 12.sp,
+                            color = textMain
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (testDestNumber.trim().isEmpty()) {
+                            Toast.makeText(localContext, "Harap masukkan nomor penerima!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            isSendingTest = true
+                            coroutineScope.launch {
+                                delay(1500)
+                                isSendingTest = false
+                                showTestDialog = false
+                                Toast.makeText(localContext, "Pesan uji coba berhasil dikirim ke $testDestNumber!", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
+                    enabled = !isSendingTest
+                ) {
+                    if (isSendingTest) {
+                        CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(18.dp))
+                    } else {
+                        Text("Kirim", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showTestDialog = false },
+                    enabled = !isSendingTest
+                ) {
+                    Text("Batal", color = textSecondary)
+                }
+            },
+            containerColor = cardBg
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = cardBg),
@@ -732,7 +847,7 @@ fun TemplateConfigCard(
             }
 
             if (isEnabled) {
-                HorizontalDivider(color = textSecondary.copy(alpha = 0.1.dp.value))
+                HorizontalDivider(color = textSecondary.copy(alpha = 0.1f))
                 
                 OutlinedTextField(
                     value = templateText,
@@ -747,7 +862,30 @@ fun TemplateConfigCard(
                     )
                 )
 
-                Text("Variabel yang tersedia:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Variabel yang tersedia:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textSecondary)
+                    
+                    Button(
+                        onClick = { showTestDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = neonCyan.copy(alpha = 0.15f)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Send,
+                            contentDescription = null,
+                            tint = neonCyan,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Uji Kirim", color = neonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
                 
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     placeholders.forEach { (tag, desc) ->

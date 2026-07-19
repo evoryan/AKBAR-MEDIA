@@ -63,8 +63,9 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
     var dialogPayments by remember { mutableStateOf<List<com.example.ui.data.remote.PembayaranHistoryItem>>(emptyList()) }
     var isLoadingDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    var refreshTrigger by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshTrigger) {
         try {
             val admins = ApiClient.apiService.getAdmins()
             val uangAdmin = try { ApiClient.apiService.getUangDiAdmin() } catch (e: Exception) { emptyList<com.example.ui.data.remote.UangAdminResponse>() }
@@ -75,14 +76,14 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
                 val diterima = record?.totalDiterima ?: 0.0
                 val setor = record?.setor ?: 0.0
                 val pengeluaran = record?.pengeluaran ?: 0.0
-                val sisa = diterima - setor - pengeluaran
+                val sisa = diterima - setor
                 
                 val formattedDiterima = "Rp. ${String.format("%,d", diterima.toLong()).replace(",", ".")}"
                 val formattedSetor = "Rp. ${String.format("%,d", setor.toLong()).replace(",", ".")}"
                 val formattedPengeluaran = "Rp. ${String.format("%,d", pengeluaran.toLong()).replace(",", ".")}"
                 val formattedSisa = "Rp. ${String.format("%,d", sisa.toLong()).replace(",", ".")}"
                 
-                val jml = allPayments.count { it.admin_name == admin.name }
+                val jml = record?.jmlPlggn ?: 0
                 AdminData(
                     name = admin.name,
                     totalDiterima = formattedDiterima,
@@ -143,14 +144,16 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
             }
 
             items(adminList) { admin ->
-                AdminItemCard(onPelangganClick = { selectedAdmin = admin; showDialog = true; coroutineScope.launch { try { isLoadingDialog = true; val allPayments = com.example.ui.data.remote.ApiClient.apiService.getPembayaranHistory(); dialogPayments = allPayments.filter { it.admin_name == admin.name } } catch(e: Exception) {} finally { isLoadingDialog = false } } }, 
+                AdminItemCard(
+                    onPelangganClick = { selectedAdmin = admin; showDialog = true; coroutineScope.launch { try { isLoadingDialog = true; val allPayments = com.example.ui.data.remote.ApiClient.apiService.getPembayaranHistory(); dialogPayments = allPayments.filter { it.admin_name == admin.name } } catch(e: Exception) {} finally { isLoadingDialog = false } } }, 
                     admin = admin,
                     textMain = textMain,
                     textSecondary = textSecondary,
                     successGreen = successGreen,
                     errorRed = errorRed,
                     primaryCyan = primaryCyan,
-                    cardBg = cardBg
+                    cardBg = cardBg,
+                    onSetorSuccess = { refreshTrigger++ }
                 )
             }
         }
@@ -196,14 +199,14 @@ if (showDialog) {
 @Composable
 fun AdminItemCard(
     onPelangganClick: () -> Unit = {},
-    
     admin: AdminData,
     textMain: Color,
     textSecondary: Color,
     successGreen: Color,
     errorRed: Color,
     primaryCyan: Color,
-    cardBg: Color
+    cardBg: Color,
+    onSetorSuccess: () -> Unit = {}
 ) {
     var showSetorDialog by remember { mutableStateOf(false) }
     var nominalSetoran by remember { mutableStateOf("") }
@@ -238,11 +241,20 @@ fun AdminItemCard(
                     Text(admin.totalDiterima, color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     Text("Persentase (${admin.persentase})", color = textSecondary, fontSize = 12.sp)
                     Text(admin.persentase, color = primaryCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Jml Plggn", color = textSecondary, fontSize = 12.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onPelangganClick() }) {
-                        Text(admin.jmlPlggn, color = primaryCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = primaryCyan, modifier = Modifier.size(16.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { onPelangganClick() }
+                            .padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Jml Plggn", color = textSecondary, fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(admin.jmlPlggn, color = primaryCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = primaryCyan, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
                 
@@ -317,6 +329,7 @@ fun AdminItemCard(
                                 isUpdating = false
                                 updateResult = "Setoran sebesar Rp. $nominalSetoran berhasil ditambahkan!"
                                 nominalSetoran = ""
+                                onSetorSuccess()
                             } catch (e: Exception) {
                                 isUpdating = false
                                 updateResult = "Gagal menyetor uang"

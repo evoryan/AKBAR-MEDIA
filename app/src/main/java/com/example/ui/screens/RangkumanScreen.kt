@@ -36,9 +36,24 @@ fun RangkumanScreen(onBack: () -> Unit) {
     var selectedMonth by remember { mutableStateOf("Semua Waktu") }
     var isLoading by remember { mutableStateOf(true) }
     var pembukuanData by remember { mutableStateOf<com.example.ui.data.remote.PembukuanResponse?>(null) }
+    var totalUangBelumDiSetor by remember { mutableStateOf(0.0) }
+    var totalSudahDiSetor by remember { mutableStateOf(0.0) }
+
     LaunchedEffect(Unit) {
         try {
             pembukuanData = com.example.ui.data.remote.ApiClient.apiService.getPembukuan()
+            val uangAdmin = try { com.example.ui.data.remote.ApiClient.apiService.getUangDiAdmin() } catch(e: Exception) { emptyList() }
+            
+            var sumSisa = 0.0
+            var sumSetor = 0.0
+            uangAdmin.forEach { item ->
+                val diterima = item.totalDiterima ?: 0.0
+                val setor = item.setor ?: 0.0
+                sumSisa += (diterima - setor)
+                sumSetor += setor
+            }
+            totalUangBelumDiSetor = sumSisa
+            totalSudahDiSetor = sumSetor
         } catch(e: Exception) {}
         finally { isLoading = false }
     }
@@ -159,11 +174,11 @@ fun RangkumanScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Uang Belum di Setor", color = textSecondary, fontSize = 14.sp)
-                        Text("Rp. 12.100.000", color = neonYellow, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (isLoading) "..." else "Rp. ${String.format("%,d", totalUangBelumDiSetor.toLong()).replace(",", ".")}", color = neonYellow, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Sudah di Setor", color = textSecondary, fontSize = 14.sp)
-                        Text("Rp. 0", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (isLoading) "..." else "Rp. ${String.format("%,d", totalSudahDiSetor.toLong()).replace(",", ".")}", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

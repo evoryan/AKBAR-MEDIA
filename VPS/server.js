@@ -444,6 +444,7 @@ app.post('/api/billing/delete', async (req, res) => {
         // Ensure table exists
         await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_id INT`).catch(e=>{});
         
         await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
@@ -459,43 +460,36 @@ app.post('/api/billing/delete', async (req, res) => {
         )`).catch(e=>{});
 
         // Find last paid bill
-        const [tagihan] = await req.pool.query('SELECT id, amount, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "LUNAS CASH" ORDER BY id DESC LIMIT 1', [customerId]);
+        const [tagihan] = await req.pool.query('SELECT id, amount, bulan, tahun, admin_name FROM tagihan_bulanan WHERE customer_id = ? AND status = "LUNAS CASH" ORDER BY id DESC LIMIT 1', [customerId]);
         let refundAmount = 0;
         let desc = `Pembatalan pembayaran pelanggan ${customerName}`;
+        let originalAdminName = null;
         
         if (tagihan.length > 0) {
-            await req.pool.query('UPDATE tagihan_bulanan SET status = "BELUM BAYAR" WHERE id = ?', [tagihan[0].id]);
+            await req.pool.query('UPDATE tagihan_bulanan SET status = "BELUM BAYAR", admin_name = NULL WHERE id = ?', [tagihan[0].id]);
             refundAmount = tagihan[0].amount;
             desc = `Pembatalan pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
+            originalAdminName = tagihan[0].admin_name;
         } else {
             // fallback amount if no tagihan_bulanan found
-            const [pembukuan] = await req.pool.query('SELECT amount FROM pembukuan WHERE type = "pemasukan" AND description LIKE ? ORDER BY id DESC LIMIT 1', [`%${customerName}%`]);
-            if (pembukuan.length > 0) refundAmount = pembukuan[0].amount;
+            const [pembukuanRows] = await req.pool.query('SELECT amount, admin_name FROM pembukuan WHERE type = "pemasukan" AND description LIKE ? ORDER BY id DESC LIMIT 1', [`%${customerName}%`]);
+            if (pembukuanRows.length > 0) {
+                refundAmount = pembukuanRows[0].amount;
+                originalAdminName = pembukuanRows[0].admin_name;
+            }
         }
 
         // Revert customer status
         await req.pool.query('UPDATE customers SET status = "BELUM BAYAR" WHERE id = ?', [customerId]);
 
-        // Add to pembukuan as pengeluaran (refund)
+        // Delete the original payment from pembukuan (remove from count and data in uang di admin)
         try {
-            await req.pool.query('INSERT INTO pembukuan (type, amount, description, category) VALUES (?, ?, ?, ?)', 
-                ['pengeluaran', refundAmount, desc, 'Pengembalian Dana']);
+            await req.pool.query('DELETE FROM pembukuan WHERE type = "pemasukan" AND description LIKE ? ORDER BY id DESC LIMIT 1', [`%${customerName}%`]);
         } catch (e) {
-            await req.pool.query('INSERT INTO pembukuan (type, amount, description) VALUES (?, ?, ?)', 
-                ['pengeluaran', refundAmount, desc]);
+            console.error("Warning: failed to delete from pembukuan", e.message);
         }
         
-        // Also add to pengeluaran summary table
-        try {
-            await req.pool.query(
-                'INSERT INTO pengeluaran (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)',
-                ['Pengembalian Dana', refundAmount, desc]
-            );
-        } catch (e) {
-            console.error("Warning: failed to insert to pengeluaran table", e.message);
-        }
-
-        res.json({ message: "Pembatalan berhasil dan dana dicatat di pembukuan" });
+        res.json({ message: "Pembatalan berhasil, data pembayaran telah dihapus dari pembukuan dan status tagihan direset" });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Terjadi kesalahan server" });
@@ -609,7 +603,7 @@ app.get('/api/uang-di-admin', async (req, res) => {
     try {
         const [pemasukan] = await req.pool.query(`
             SELECT p.admin_name as adminName, SUM(p.amount) as totalAmount, 
-            (SELECT COUNT(*) FROM tagihan_bulanan t WHERE t.admin_name = p.admin_name AND t.status = 'LUNAS CASH') as jmlPlggn
+            (SELECT COUNT(*) FROM pembukuan p2 WHERE p2.admin_name = p.admin_name AND p2.type = 'pemasukan') as jmlPlggn
             FROM pembukuan p
             WHERE p.type = 'pemasukan' AND p.admin_name IS NOT NULL
             GROUP BY p.admin_name
@@ -638,11 +632,15 @@ app.get('/api/uang-di-admin', async (req, res) => {
             };
         });
         setoran.forEach(row => {
-            if (!result[row.adminName]) result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
+            if (!result[row.adminName]) {
+                result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
+            }
             result[row.adminName].setor = Number(row.totalAmount);
         });
         pengeluaran.forEach(row => {
-            if (!result[row.adminName]) result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
+            if (!result[row.adminName]) {
+                result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
+            }
             result[row.adminName].pengeluaran = Number(row.totalAmount);
         });
         
@@ -661,21 +659,15 @@ app.get('/api/pembukuan', async (req, res) => {
             categories: {}
         };
         rows.forEach(row => {
-            if (row.type === 'pemasukan') summary.pemasukan += Number(row.total);
-            if (row.type === 'pengeluaran') summary.pengeluaran += Number(row.total);
-            summary.categories[row.category || 'Lain-lain'] = Number(row.total);
+            const cat = row.category || 'Lain-lain';
+            const totalVal = Number(row.total);
+            if (row.type === 'pemasukan') {
+                summary.pemasukan += totalVal;
+            } else if (row.type === 'pengeluaran') {
+                summary.pengeluaran += totalVal;
+            }
+            summary.categories[cat] = (summary.categories[cat] || 0) + totalVal;
         });
-        
-        // Also fetch from pengeluaran table
-        try {
-            const [pengeluaranRows] = await req.pool.query('SELECT category, amount FROM pengeluaran');
-            pengeluaranRows.forEach(row => {
-                summary.pengeluaran += Number(row.amount);
-                summary.categories[row.category] = (summary.categories[row.category] || 0) + Number(row.amount);
-            });
-        } catch(e) {
-            console.log("pengeluaran table might not exist yet");
-        }
 
         res.json(summary);
     } catch (error) {
