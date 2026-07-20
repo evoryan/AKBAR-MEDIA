@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS rasio (
     redaman_in VARCHAR(50),
     redaman_out_a VARCHAR(50),
     redaman_out_b VARCHAR(50),
-    area VARCHAR(100) DEFAULT ''
+    area VARCHAR(100) DEFAULT '',
+    port_input VARCHAR(100) DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS customers (

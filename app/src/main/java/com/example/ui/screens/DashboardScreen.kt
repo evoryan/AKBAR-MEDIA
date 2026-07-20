@@ -43,6 +43,7 @@ fun DashboardScreen(
     onNavigateToStockBarang: () -> Unit,
     onNavigateToSetting: () -> Unit,
     onNavigateToJaringan: () -> Unit,
+    onNavigateToProfile: () -> Unit,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -138,7 +139,8 @@ fun DashboardScreen(
                     .size(56.dp)
                     .clip(CircleShape)
                     .background(cardBg)
-                    .border(1.dp, cardBorder, CircleShape),
+                    .border(1.dp, cardBorder, CircleShape)
+                    .clickable { onNavigateToProfile() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Person, contentDescription = "Profile", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), modifier = Modifier.size(32.dp))

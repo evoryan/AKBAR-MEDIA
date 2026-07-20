@@ -859,18 +859,20 @@ app.get('/api/rasio', async (req, res) => {
 app.post('/api/rasio', async (req, res) => {
     try {
         const { name, location, size, redaman_in, redaman_out_a, redaman_out_b, area } = req.body;
+        const port_input = req.body.port_input || req.body.portInput || '';
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '']
+                'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b, area, port_input) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', port_input]
             );
         } catch(e) {
             if (e.message && e.message.includes("Unknown column")) {
                 await req.pool.query(`ALTER TABLE rasio ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE rasio ADD COLUMN port_input VARCHAR(100) DEFAULT ''`).catch(err=>{});
                 [result] = await req.pool.query(
-                    'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b, area) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '']
+                    'INSERT INTO rasio (name, location, size, redaman_in, redaman_out_a, redaman_out_b, area, port_input) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', port_input]
                 );
             } else {
                 throw e;
@@ -886,17 +888,19 @@ app.put('/api/rasio/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { name, location, size, redaman_in, redaman_out_a, redaman_out_b, area } = req.body;
+        const port_input = req.body.port_input || req.body.portInput || '';
         try {
             await req.pool.query(
-                'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ?, area = ? WHERE id = ?',
-                [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', id]
+                'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ?, area = ?, port_input = ? WHERE id = ?',
+                [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', port_input, id]
             );
         } catch(e) {
             if (e.message && e.message.includes("Unknown column")) {
                 await req.pool.query(`ALTER TABLE rasio ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE rasio ADD COLUMN port_input VARCHAR(100) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(
-                    'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ?, area = ? WHERE id = ?',
-                    [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', id]
+                    'UPDATE rasio SET name = ?, location = ?, size = ?, redaman_in = ?, redaman_out_a = ?, redaman_out_b = ?, area = ?, port_input = ? WHERE id = ?',
+                    [name, location || '', size || '', redaman_in || '', redaman_out_a || '', redaman_out_b || '', area || '', port_input, id]
                 );
             } else {
                 throw e;
@@ -1124,6 +1128,30 @@ app.delete('/api/customers/:id', async (req, res) => {
     }
 });
 
+app.put('/api/customers/:id', async (req, res) => {
+    try {
+        const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
+        const registerDate = req.body.registerDate || req.body.register_date;
+        const isolateDate = req.body.isolateDate || req.body.isolate_date;
+        const packageName = req.body.packageName || req.body.package_name;
+        const pppoeSecret = req.body.pppoeSecret || req.body.pppoe_secret;
+        const odpId = req.body.odpId || req.body.odp_id;
+        const odpPort = req.body.odpPort || req.body.odp_port;
+
+        const parsedOdpId = (odpId !== undefined && odpId !== null && odpId !== '') ? parseInt(odpId) : null;
+
+        await req.pool.query(
+            'UPDATE customers SET name = ?, phone = ?, area = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ? WHERE id = ?',
+            [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', req.params.id]
+        );
+
+        res.json({ message: "Pelanggan berhasil diupdate" });
+    } catch (error) {
+        console.error("Error updating customer:", error);
+        res.status(500).json({ error: "Terjadi kesalahan saat mengupdate pelanggan" });
+    }
+});
+
 app.post('/api/customers', async (req, res) => {
     try {
         const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
@@ -1172,6 +1200,58 @@ app.post('/api/customers', async (req, res) => {
                 'INSERT INTO pembukuan (type, category, amount, description) VALUES (?, ?, ?, ?)',
                 ['pemasukan', 'Pemasukan Lain-lain', totalCost, description]
             );
+        }
+
+        // Generate initial tagihan_bulanan based on inputted billingDate
+        try {
+            const today = new Date();
+            const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            let billMonth = monthNames[today.getMonth()];
+            let billYear = today.getFullYear();
+            
+            if (billingDate && billingDate.includes('/')) {
+                const parts = billingDate.split('/');
+                if (parts.length === 3) {
+                    const mIndex = parseInt(parts[1], 10) - 1;
+                    if (mIndex >= 0 && mIndex < 12) {
+                        billMonth = monthNames[mIndex];
+                    }
+                    const yr = parseInt(parts[2], 10);
+                    if (!isNaN(yr)) {
+                        billYear = yr;
+                    }
+                }
+            }
+            
+            let initialAmount = 0;
+            if (price) {
+                initialAmount = parseFloat(price.replace(/[^0-9]/g, '')) || 0;
+            }
+            
+            // Ensure table exists
+            await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                customer_id INT,
+                bulan VARCHAR(50),
+                tahun INT,
+                amount DECIMAL(15, 2),
+                status VARCHAR(50) DEFAULT 'BELUM BAYAR',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+            )`).catch(() => {});
+            
+            const [existingBill] = await req.pool.query(
+                'SELECT id FROM tagihan_bulanan WHERE customer_id = ? AND bulan = ? AND tahun = ?',
+                [result.insertId, billMonth, billYear]
+            );
+            if (existingBill.length === 0) {
+                await req.pool.query(
+                    'INSERT INTO tagihan_bulanan (customer_id, bulan, tahun, amount, status) VALUES (?, ?, ?, ?, "BELUM BAYAR")',
+                    [result.insertId, billMonth, billYear, initialAmount]
+                );
+            }
+        } catch (billingErr) {
+            console.error("Error creating initial bill:", billingErr);
         }
 
         res.json({ message: "Pelanggan berhasil ditambahkan", id: result.insertId.toString() });
@@ -1782,15 +1862,39 @@ app.get('/api/mikrotik/traffic/:id', async (req, res) => {
         const api = await client.connect();
         let traffic = [];
         try {
-            const interfaceMenu = api.menu('/interface');
-            traffic = await interfaceMenu.exec('monitor-traffic', { interface: interfaceName, once: '' });
+            await new Promise((resolve) => {
+                let resolved = false;
+                const stream = api.menu('/interface')
+                    .where({ interface: interfaceName })
+                    .stream('monitor-traffic', (err, data, s) => {
+                        if (resolved) return;
+                        if (err) {
+                            resolved = true;
+                            if (s) s.stop();
+                            resolve();
+                        } else if (data) {
+                            traffic = Array.isArray(data) ? data : [data];
+                            resolved = true;
+                            if (s) s.stop();
+                            resolve();
+                        }
+                    });
+
+                setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true;
+                        if (stream) stream.stop();
+                        resolve();
+                    }
+                }, 3500);
+            });
         } catch(err) {
             // Ignore no such interface errors, user is offline
             traffic = [{"rx-bits-per-second": 0, "tx-bits-per-second": 0}];
         }
         client.close();
         
-        res.json(traffic);
+        res.json(traffic.length ? traffic : [{"rx-bits-per-second": 0, "tx-bits-per-second": 0}]);
     } catch (error) {
         console.error("Mikrotik traffic error:", error.message);
         res.status(500).json({ error: "Failed to connect to Mikrotik: " + error.message });
@@ -2224,7 +2328,11 @@ cron.schedule('1 0 * * *', async () => {
                     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
                 )`);
                 
-                const [customers] = await pool.query('SELECT * FROM customers WHERE billingDate = ? AND status != "TERHAPUS"', [dateStr]);
+                const paddedDateStr = dateStr.padStart(2, '0');
+                const [customers] = await pool.query(
+                    'SELECT * FROM customers WHERE (billingDate = ? OR billingDate LIKE ? OR billingDate = ? OR billingDate LIKE ?) AND status != "TERHAPUS"', 
+                    [dateStr, dateStr + '/%', paddedDateStr, paddedDateStr + '/%']
+                );
                 for (const customer of customers) {
                     const [existing] = await pool.query(
                         'SELECT id FROM tagihan_bulanan WHERE customer_id = ? AND bulan = ? AND tahun = ?',
@@ -2274,6 +2382,150 @@ cron.schedule('1 0 * * *', async () => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+});
+
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ noServer: true });
+
+wss.on('connection', async (ws, request) => {
+    try {
+        const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+        const areaId = url.searchParams.get('areaId');
+        const interfaceName = url.searchParams.get('interface');
+        const token = url.searchParams.get('token');
+
+        if (!areaId || !interfaceName || !token) {
+            ws.send(JSON.stringify({ error: "Missing required parameters" }));
+            ws.close();
+            return;
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(token, JWT_SECRET);
+        } catch (err) {
+            ws.send(JSON.stringify({ error: "Unauthorized" }));
+            ws.close();
+            return;
+        }
+
+        let pool = masterPool;
+        if (decoded.db_name) {
+            pool = getTenantPool(decoded.db_name);
+        }
+
+        let area;
+        try {
+            const [rows] = await pool.query('SELECT * FROM areas WHERE id = ?', [areaId]);
+            if (rows.length === 0) {
+                ws.send(JSON.stringify({ error: "Area not found" }));
+                ws.close();
+                return;
+            }
+            area = rows[0];
+        } catch (err) {
+            ws.send(JSON.stringify({ error: "Database error" }));
+            ws.close();
+            return;
+        }
+
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            ws.send(JSON.stringify({ error: "Mikrotik credentials incomplete" }));
+            ws.close();
+            return;
+        }
+
+        const [host, port] = area.routerIp.split(':');
+        const client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 5000
+        });
+
+        let api;
+        let stream;
+        let isClosed = false;
+
+        ws.on('close', () => {
+            isClosed = true;
+            if (stream) {
+                try { stream.stop(); } catch(e) {}
+            }
+            if (client) {
+                try { client.close(); } catch(e) {}
+            }
+        });
+
+        api = await client.connect();
+        if (isClosed) {
+            client.close();
+            return;
+        }
+
+        stream = api.menu('/interface')
+            .where({ interface: interfaceName })
+            .stream('monitor-traffic', (err, data, s) => {
+                if (isClosed) {
+                    if (s) s.stop();
+                    return;
+                }
+                if (err) {
+                    ws.send(JSON.stringify({ error: err.message }));
+                    return;
+                }
+                if (data) {
+                    const pkts = Array.isArray(data) ? data : [data];
+                    if (pkts.length > 0) {
+                        const response = pkts[0];
+                        const rxBits = response['rx-bits-per-second'] !== undefined ? String(response['rx-bits-per-second']) : "0";
+                        const txBits = response['tx-bits-per-second'] !== undefined ? String(response['tx-bits-per-second']) : "0";
+                        
+                        const rxNum = parseFloat(rxBits) || 0;
+                        const txNum = parseFloat(txBits) || 0;
+                        const rxString = rxNum >= 1000000 
+                            ? (rxNum / 1000000).toFixed(1) + " Mbps" 
+                            : (rxNum / 1000).toFixed(1) + " Kbps";
+                        const txString = txNum >= 1000000 
+                            ? (txNum / 1000000).toFixed(1) + " Mbps" 
+                            : (txNum / 1000).toFixed(1) + " Kbps";
+
+                        try {
+                            ws.send(JSON.stringify({
+                                "rx-bits-per-second": rxBits,
+                                "tx-bits-per-second": txBits,
+                                "rx": parseInt(rxBits) || 0,
+                                "tx": parseInt(txBits) || 0,
+                                "rx_string": rxString,
+                                "tx_string": txString
+                            }));
+                        } catch (sendErr) {
+                            console.error("WS Send error:", sendErr.message);
+                        }
+                    }
+                }
+            });
+    } catch (wsErr) {
+        console.error("WS general error:", wsErr.message);
+        try { ws.send(JSON.stringify({ error: wsErr.message })); } catch (err) {}
+        try { ws.close(); } catch (err) {}
+    }
+});
+
+server.on('upgrade', (request, socket, head) => {
+    try {
+        const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+        if (url.pathname === '/ws/traffic') {
+            wss.handleUpgrade(request, socket, head, (ws) => {
+                wss.emit('connection', ws, request);
+            });
+        } else {
+            socket.destroy();
+        }
+    } catch (e) {
+        socket.destroy();
+    }
 });

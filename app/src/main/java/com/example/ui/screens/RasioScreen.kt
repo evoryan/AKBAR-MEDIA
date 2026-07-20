@@ -46,6 +46,16 @@ fun RasioScreen(onBack: () -> Unit) {
     var showDialog by remember { mutableStateOf(false) }
     var editItem by remember { mutableStateOf<RasioItem?>(null) }
     
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedAreaFilter by remember { mutableStateOf<com.example.ui.screens.Area?>(null) }
+    var areaFilterExpanded by remember { mutableStateOf(false) }
+    
+    val filteredRasioList = rasioList.filter { item ->
+        val matchesArea = selectedAreaFilter == null || item.area.equals(selectedAreaFilter?.name ?: "", ignoreCase = true)
+        val matchesSearch = searchQuery.isEmpty() || item.name.contains(searchQuery, ignoreCase = true) || item.location.contains(searchQuery, ignoreCase = true)
+        matchesArea && matchesSearch
+    }
+    
     LaunchedEffect(Unit) {
         try {
             rasioList = ApiClient.apiService.getRasioList()
@@ -87,15 +97,106 @@ fun RasioScreen(onBack: () -> Unit) {
                 CircularProgressIndicator(color = primaryBg)
             }
         } else {
-            LazyColumn(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 16.dp)
             ) {
-                item { Spacer(modifier = Modifier.height(8.dp)) }
-                items(rasioList) { item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Cari Rasio...", fontSize = 14.sp) },
+                        modifier = Modifier.weight(1.2f),
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain,
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder
+                        ),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    )
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = selectedAreaFilter?.name ?: "Semua Area",
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth().clickable { areaFilterExpanded = true },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Default.ArrowDropDown,
+                                    contentDescription = "Area Dropdown",
+                                    tint = textSecondary
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain,
+                                focusedBorderColor = primaryBg,
+                                unfocusedBorderColor = cardBorder,
+                                disabledTextColor = textMain,
+                                disabledBorderColor = cardBorder
+                            ),
+                            enabled = false
+                        )
+                        
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { areaFilterExpanded = true }
+                        )
+
+                        DropdownMenu(
+                            expanded = areaFilterExpanded,
+                            onDismissRequest = { areaFilterExpanded = false },
+                            modifier = Modifier
+                                .background(cardBg)
+                                .fillMaxWidth(0.45f)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Semua Area", color = textMain, fontSize = 14.sp) },
+                                onClick = {
+                                    selectedAreaFilter = null
+                                    areaFilterExpanded = false
+                                }
+                            )
+                            areaList.forEach { areaItem ->
+                                DropdownMenuItem(
+                                    text = { Text(areaItem.name, color = textMain, fontSize = 14.sp) },
+                                    onClick = {
+                                        selectedAreaFilter = areaItem
+                                        areaFilterExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item { Spacer(modifier = Modifier.height(8.dp)) }
+                    items(filteredRasioList) { item ->
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -114,6 +215,9 @@ fun RasioScreen(onBack: () -> Unit) {
                                 Text("Lokasi: ${item.location} | Area: ${item.area}", color = textSecondary, fontSize = 12.sp)
                                 Text("Ukuran: ${item.size}", color = textSecondary, fontSize = 12.sp)
                                 Text("In: ${item.redamanIn} | Out A: ${item.redamanOutA} | Out B: ${item.redamanOutB}", color = textSecondary, fontSize = 12.sp)
+                                if (item.portInput.isNotEmpty()) {
+                                    Text("Sumber Port Input: ${item.portInput}", color = textSecondary, fontSize = 12.sp)
+                                }
                             }
                             Row {
                                 IconButton(onClick = { editItem = item; showDialog = true }) {
@@ -139,6 +243,7 @@ fun RasioScreen(onBack: () -> Unit) {
             }
         }
     }
+}
     
     if (showDialog) {
         var name by remember { mutableStateOf(editItem?.name ?: "") }
@@ -148,6 +253,9 @@ fun RasioScreen(onBack: () -> Unit) {
         var redamanIn by remember { mutableStateOf(editItem?.redamanIn ?: "") }
         var redamanOutA by remember { mutableStateOf(editItem?.redamanOutA ?: "") }
         var redamanOutB by remember { mutableStateOf(editItem?.redamanOutB ?: "") }
+        var sumberPort by remember { mutableStateOf(editItem?.portInput ?: "") }
+        var sumberPortExpanded by remember { mutableStateOf(false) }
+        var searchPortQuery by remember { mutableStateOf("") }
         
         val sizeOptions = listOf(
             "01:99" to Pair(20.0f, 0.05f),
@@ -281,9 +389,16 @@ fun RasioScreen(onBack: () -> Unit) {
                         }
                     }
                     
-                    var sumberPort by remember { mutableStateOf("") }
-                    var sumberPortExpanded by remember { mutableStateOf(false) }
-                    val sumberOptions = odcList.map { it.name to it.redamanOut } + odpList.map { it.name to it.redamanOut } + rasioList.flatMap { listOf(it.name + " (Out A)" to it.redamanOutA, it.name + " (Out B)" to it.redamanOutB) }
+                    val filteredOdcForSumber = odcList.filter { it.area.equals(area, ignoreCase = true) }
+                    val filteredOdpForSumber = odpList.filter { it.area.equals(area, ignoreCase = true) }
+                    val filteredRasioForSumber = rasioList.filter { it.area.equals(area, ignoreCase = true) && it.id != (editItem?.id ?: "") }
+
+                    val sumberOptions = filteredOdcForSumber.map { Triple(it.name, it.redamanOut, "ODC") } +
+                                        filteredOdpForSumber.map { Triple(it.name, it.redamanOut, "ODP") } +
+                                        filteredRasioForSumber.flatMap { listOf(
+                                            Triple(it.name + " (Out A)", it.redamanOutA, "RASIO"),
+                                            Triple(it.name + " (Out B)", it.redamanOutB, "RASIO")
+                                        ) }
                     
                     Box {
                         OutlinedTextField(
@@ -305,18 +420,45 @@ fun RasioScreen(onBack: () -> Unit) {
                         DropdownMenu(
                             expanded = sumberPortExpanded,
                             onDismissRequest = { sumberPortExpanded = false },
-                            modifier = Modifier.background(cardBg).heightIn(max = 250.dp)
+                            modifier = Modifier.background(cardBg).width(250.dp).heightIn(max = 300.dp)
                         ) {
-                            sumberOptions.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.first, color = textMain) },
-                                    onClick = {
-                                        sumberPort = option.first
-                                        redamanIn = option.second
-                                        sumberPortExpanded = false
-                                        calculateOutputs(option.second, size)
-                                    }
+                            OutlinedTextField(
+                                value = searchPortQuery,
+                                onValueChange = { searchPortQuery = it },
+                                placeholder = { Text("Cari...", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                singleLine = true,
+                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBg,
+                                    unfocusedBorderColor = cardBorder,
+                                    focusedTextColor = textMain,
+                                    unfocusedTextColor = textMain
                                 )
+                            )
+                            val finalSumberOptions = sumberOptions.filter {
+                                it.first.contains(searchPortQuery, ignoreCase = true)
+                            }
+                            if (finalSumberOptions.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Tidak ada hasil", color = textSecondary, fontSize = 12.sp) },
+                                    onClick = {}
+                                )
+                            } else {
+                                finalSumberOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text("${option.first} (${option.third})", color = textMain, fontSize = 13.sp) },
+                                        onClick = {
+                                            sumberPort = option.first
+                                            redamanIn = option.second
+                                            sumberPortExpanded = false
+                                            calculateOutputs(option.second, size)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -363,8 +505,9 @@ fun RasioScreen(onBack: () -> Unit) {
                         redamanIn = redamanIn,
                         redamanOutA = redamanOutA,
                         redamanOutB = redamanOutB,
-                                    area = area
-                                )
+                        area = area,
+                        portInput = sumberPort
+                    )
                     coroutineScope.launch {
                         try {
                             if (editItem == null) {

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Chat
 
 
 import android.widget.Toast
@@ -94,7 +95,30 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     val filteredByArea = if (selectedArea == "Semua") customers else customers.filter { it.area == selectedArea }
     val filteredBySearch = if (searchQuery.isBlank()) filteredByArea else filteredByArea.filter { it.name.contains(searchQuery, ignoreCase = true) }
     
-    val unpaidCustomers = filteredBySearch.filter { it.status != "LUNAS CASH" }
+    val unpaidCustomers = filteredBySearch.filter { customer ->
+        if (customer.status == "LUNAS CASH") return@filter false
+        val isNewCustomer = try {
+            if (!customer.registerDate.isNullOrEmpty() && !customer.billingDate.isNullOrEmpty()) {
+                val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                val regDate = sdf.parse(customer.registerDate)
+                val billDate = sdf.parse(customer.billingDate)
+                val today = java.util.Date()
+                if (regDate != null && billDate != null) {
+                    val belumMemasukiMasaTagihan = today.before(billDate)
+                    val diffInMillis = kotlin.math.abs(billDate.time - regDate.time)
+                    val diffInDays = diffInMillis / (1000 * 60 * 60 * 24)
+                    belumMemasukiMasaTagihan && diffInDays < 10
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+        !isNewCustomer
+    }
     val paidCustomers = filteredBySearch.filter { it.status == "LUNAS CASH" }
     
     val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
@@ -321,6 +345,31 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                             android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                         }
                                     }
+                                },
+                                onWaClick = {
+                                    val formattedPhone = formatPhoneForWhatsapp(customer.phone)
+                                    val message = """
+                                        Halo *${customer.name}*,
+
+                                        Berikut adalah rincian tagihan internet Anda:
+                                        - Nama: ${customer.name}
+                                        - No HP: ${customer.phone}
+                                        - Area: ${customer.area}
+                                        - Paket: ${customer.packageName ?: "-"}
+                                        - Total Tagihan: ${customer.price}
+                                        - Status: *BELUM BAYAR*
+
+                                        Mohon segera melakukan pembayaran. Terima kasih.
+                                    """.trimIndent()
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                        val url = "https://api.whatsapp.com/send?phone=$formattedPhone&text=${android.net.Uri.encode(message)}"
+                                        data = android.net.Uri.parse(url)
+                                    }
+                                    try {
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(context, "Gagal membuka WhatsApp: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             )
                         }
@@ -391,7 +440,8 @@ fun BillingCustomerItem(
     onDetailClick: () -> Unit,
     onDeleteClick: () -> Unit = {},
     onLongPress: () -> Unit = {},
-    onIsolirClick: () -> Unit = {}
+    onIsolirClick: () -> Unit = {},
+    onWaClick: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -399,46 +449,90 @@ fun BillingCustomerItem(
             .clip(RoundedCornerShape(16.dp))
             .background(cardBg)
             .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
-
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        Column {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text(customer.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text(customer.phone, color = textSecondary, fontSize = 11.sp)
-                    Text("Area: ${customer.area}", color = textSecondary, fontSize = 11.sp)
-                }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Left content: Info and Price
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(customer.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(customer.phone, color = textSecondary, fontSize = 11.sp)
+                Text("Area: ${customer.area}", color = textSecondary, fontSize = 11.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(customer.price, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+            
+            // Right content: Status, WA (if unpaid), and Actions
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Status Badge
                 Box(
                     modifier = Modifier
-                        .clip(CircleShape)
-                        .background(if (customer.status != "LUNAS CASH") Color(0xFFFF003C).copy(alpha = 0.2f) else neonCyan.copy(alpha = 0.2f))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .width(110.dp)
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (customer.status != "LUNAS CASH") Color(0xFFFF003C).copy(alpha = 0.2f) else neonCyan.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(customer.status, color = if (customer.status != "LUNAS CASH") Color(0xFFFF003C) else neonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        customer.status,
+                        color = if (customer.status != "LUNAS CASH") Color(0xFFFF003C) else neonCyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(customer.price, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+
+                // WhatsApp Button (Only for unpaid bills)
+                if (customer.status != "LUNAS CASH") {
+                    Button(
+                        onClick = onWaClick,
+                        modifier = Modifier.width(110.dp).height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF25D366),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Chat,
+                            contentDescription = "Kirim WA",
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("KIRIM WA", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Bottom actions row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     if (customer.status != "LUNAS CASH") {
-                        IconButton(onClick = onIsolirClick, modifier = Modifier.size(36.dp)) {
+                        IconButton(onClick = onIsolirClick, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = Color(0xFFD4AF37))
                         }
-                        IconButton(onClick = onDeleteClick, modifier = Modifier.size(36.dp)) {
+                        IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color(0xFFFF003C))
                         }
                     } else {
                         Button(
                             onClick = onLongPress,
-                            modifier = Modifier.height(36.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color(0xFFFF003C)),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF003C)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("BATAL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("BATAL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     Button(
@@ -449,16 +543,30 @@ fun BillingCustomerItem(
                                 onDetailClick()
                             }
                         },
-                        modifier = Modifier.height(36.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (customer.status != "LUNAS CASH") neonCyan else Color.Transparent, contentColor = if (customer.status != "LUNAS CASH") Color.Black else neonCyan),
+                        modifier = Modifier.width(110.dp).height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (customer.status != "LUNAS CASH") neonCyan else Color.Transparent,
+                            contentColor = if (customer.status != "LUNAS CASH") Color.Black else neonCyan
+                        ),
                         border = if (customer.status == "LUNAS CASH") androidx.compose.foundation.BorderStroke(1.dp, neonCyan) else null,
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(if (customer.status != "LUNAS CASH") "BAYAR" else "DETAIL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(if (customer.status != "LUNAS CASH") "BAYAR" else "DETAIL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
+    }
+}
+
+private fun formatPhoneForWhatsapp(phone: String): String {
+    val clean = phone.replace(Regex("[^0-9]"), "")
+    return if (clean.startsWith("0")) {
+        "62" + clean.substring(1)
+    } else if (clean.startsWith("62")) {
+        clean
+    } else {
+        if (clean.length >= 9 && !clean.startsWith("62")) "62$clean" else clean
     }
 }

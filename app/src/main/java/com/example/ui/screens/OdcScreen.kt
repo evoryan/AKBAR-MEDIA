@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.DeviceHub
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
@@ -69,6 +70,16 @@ fun OdcScreen(onBack: () -> Unit) {
     var editItem by remember { mutableStateOf<OdcItem?>(null) }
     var itemToDelete by remember { mutableStateOf<OdcItem?>(null) }
 
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedAreaFilter by remember { mutableStateOf<com.example.ui.screens.Area?>(null) }
+    var areaFilterExpanded by remember { mutableStateOf(false) }
+    
+    val filteredOdcList = odcList.filter { item ->
+        val matchesArea = selectedAreaFilter == null || item.area.equals(selectedAreaFilter?.name ?: "", ignoreCase = true)
+        val matchesSearch = searchQuery.isEmpty() || item.name.contains(searchQuery, ignoreCase = true) || item.location.contains(searchQuery, ignoreCase = true)
+        matchesArea && matchesSearch
+    }
+
     Scaffold(
         containerColor = bgMain,
         topBar = {
@@ -101,12 +112,100 @@ fun OdcScreen(onBack: () -> Unit) {
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Cari ODC...", fontSize = 14.sp) },
+                    modifier = Modifier.weight(1.2f),
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textMain,
+                        unfocusedTextColor = textMain,
+                        focusedBorderColor = primaryBg,
+                        unfocusedBorderColor = cardBorder
+                    ),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = selectedAreaFilter?.name ?: "Semua Area",
+                        onValueChange = {},
+                        readOnly = true,
+                        modifier = Modifier.fillMaxWidth().clickable { areaFilterExpanded = true },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                        trailingIcon = {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.ArrowDropDown,
+                                contentDescription = "Area Dropdown",
+                                tint = textSecondary
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain,
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder,
+                            disabledTextColor = textMain,
+                            disabledBorderColor = cardBorder
+                        ),
+                        enabled = false
+                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { areaFilterExpanded = true }
+                    )
+
+                    DropdownMenu(
+                        expanded = areaFilterExpanded,
+                        onDismissRequest = { areaFilterExpanded = false },
+                        modifier = Modifier
+                            .background(cardBg)
+                            .fillMaxWidth(0.45f)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Semua Area", color = textMain, fontSize = 14.sp) },
+                            onClick = {
+                                selectedAreaFilter = null
+                                areaFilterExpanded = false
+                            }
+                        )
+                        areaList.forEach { areaItem ->
+                            DropdownMenuItem(
+                                text = { Text(areaItem.name, color = textMain, fontSize = 14.sp) },
+                                onClick = {
+                                    selectedAreaFilter = areaItem
+                                    areaFilterExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
+                contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp)
             ) {
-                items(odcList) { item ->
+                items(filteredOdcList) { item ->
                     var isExpanded by remember { mutableStateOf(false) }
                     Column(
                         modifier = Modifier
@@ -295,7 +394,10 @@ fun OdcScreen(onBack: () -> Unit) {
                     }
                     
                     var portInputExpanded by remember { mutableStateOf(false) }
-                    val sumberOptions = odcList.map { it.name to it.redamanOut } + odpList.map { it.name to it.redamanOut } + rasioList.flatMap { listOf(it.name + " (Out A)" to it.redamanOutA, it.name + " (Out B)" to it.redamanOutB) }
+                    var sumberSearchQuery by remember { mutableStateOf("") }
+                    val filteredOdcForSumber = odcList.filter { it.area.equals(area, ignoreCase = true) }
+                    val filteredRasioForSumber = rasioList.filter { it.area.equals(area, ignoreCase = true) }
+                    val sumberOptions = filteredOdcForSumber.map { it.name to it.redamanOut } + filteredRasioForSumber.flatMap { listOf(it.name + " (Out A)" to it.redamanOutA, it.name + " (Out B)" to it.redamanOutB) }
                     
                     Box {
                         OutlinedTextField(
@@ -317,30 +419,57 @@ fun OdcScreen(onBack: () -> Unit) {
                         DropdownMenu(
                             expanded = portInputExpanded,
                             onDismissRequest = { portInputExpanded = false },
-                            modifier = Modifier.background(cardBg).heightIn(max = 250.dp)
+                            modifier = Modifier.background(cardBg).width(250.dp).heightIn(max = 300.dp)
                         ) {
-                            sumberOptions.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(option.first, color = textMain) },
-                                    onClick = {
-                                        portInput = option.first
-                                        redamanIn = option.second
-                                        portInputExpanded = false
-                                        
-                                        // Auto-calculate redamanOut based on new redamanIn and portCount
-                                        val rIn = option.second.toFloatOrNull()
-                                        val rSplitter = when (portCount) {
-                                            "2" -> 4.0f
-                                            "4" -> 7.2f
-                                            "8" -> 10.5f
-                                            "16" -> 13.8f
-                                            else -> 0.0f
-                                        }
-                                        if (rIn != null && rSplitter > 0.0f) {
-                                            redamanOut = String.format(java.util.Locale.US, "%.2f", rIn - rSplitter)
-                                        }
-                                    }
+                            OutlinedTextField(
+                                value = sumberSearchQuery,
+                                onValueChange = { sumberSearchQuery = it },
+                                placeholder = { Text("Cari...", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                singleLine = true,
+                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBg,
+                                    unfocusedBorderColor = cardBorder,
+                                    focusedTextColor = textMain,
+                                    unfocusedTextColor = textMain
                                 )
+                            )
+                            val finalSumberOptions = sumberOptions.filter {
+                                it.first.contains(sumberSearchQuery, ignoreCase = true)
+                            }
+                            if (finalSumberOptions.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Tidak ada hasil", color = textSecondary, fontSize = 12.sp) },
+                                    onClick = {}
+                                )
+                            } else {
+                                finalSumberOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option.first, color = textMain, fontSize = 13.sp) },
+                                        onClick = {
+                                            portInput = option.first
+                                            redamanIn = option.second
+                                            portInputExpanded = false
+                                            
+                                            // Auto-calculate redamanOut based on new redamanIn and portCount
+                                            val rIn = option.second.toFloatOrNull()
+                                            val rSplitter = when (portCount) {
+                                                "2" -> 4.0f
+                                                "4" -> 7.2f
+                                                "8" -> 10.5f
+                                                "16" -> 13.8f
+                                                else -> 0.0f
+                                            }
+                                            if (rIn != null && rSplitter > 0.0f) {
+                                                redamanOut = String.format(java.util.Locale.US, "%.2f", rIn - rSplitter)
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

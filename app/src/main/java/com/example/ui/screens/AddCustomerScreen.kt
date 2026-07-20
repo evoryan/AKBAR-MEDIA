@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -144,6 +145,8 @@ fun AddCustomerScreen(
     var isAddingSecret by remember { mutableStateOf(false) }
     var showOdpDialog by remember { mutableStateOf(false) }
     var showPortDialog by remember { mutableStateOf(false) }
+    var odcList by remember { mutableStateOf<List<com.example.ui.data.OdcItem>>(emptyList()) }
+    var rasioList by remember { mutableStateOf<List<com.example.ui.data.RasioItem>>(emptyList()) }
     
     var showRegisterDatePicker by remember { mutableStateOf(false) }
     var showBillingDatePicker by remember { mutableStateOf(false) }
@@ -157,6 +160,8 @@ fun AddCustomerScreen(
             packages = ApiClient.apiService.getPackages()
             odps = ApiClient.apiService.getOdpList()
             customers = ApiClient.apiService.getCustomers()
+            odcList = ApiClient.apiService.getOdcList()
+            rasioList = ApiClient.apiService.getRasioList()
         } catch (e: Exception) {
             // handle error
         }
@@ -206,7 +211,7 @@ fun AddCustomerScreen(
         }
     }
 
-    val isPhoneValid = phone.length >= 10 && phone.all { it.isDigit() }
+    val isPhoneValid = phone.length >= 10 && (if (phone.startsWith("+")) phone.substring(1).all { it.isDigit() } else phone.all { it.isDigit() })
     val isFormValid = name.isNotBlank() && isPhoneValid
 
     fun getDatePickerLabel(millis: Long?): String {
@@ -461,25 +466,177 @@ fun AddCustomerScreen(
     }
 
     if (showOdpDialog) {
+        var odpSearchQuery by remember { mutableStateOf("") }
+        val selectableItems = remember(odps, odcList, rasioList, selectedArea, odpSearchQuery) {
+            val list = mutableListOf<AddSelectableConnectionItem>()
+            
+            // 1. Add ODPs
+            odps.forEach { odp ->
+                val matchingOdc = odcList.find { it.id == odp.odcId || it.name == odp.portInput || odp.portInput.contains(it.name) }
+                val matchingRasio = rasioList.find { it.name == odp.portInput || odp.portInput.contains(it.name) }
+                val odpArea = odp.area.ifEmpty { matchingOdc?.area ?: matchingRasio?.area ?: "" }
+                val matchesArea = selectedArea == null || odpArea.equals(selectedArea?.name ?: "", ignoreCase = true)
+                
+                val matchesSearch = odpSearchQuery.isEmpty() ||
+                        odp.name.contains(odpSearchQuery, ignoreCase = true) ||
+                        (matchingOdc?.name?.contains(odpSearchQuery, ignoreCase = true) == true) ||
+                        (matchingRasio?.name?.contains(odpSearchQuery, ignoreCase = true) == true)
+                        
+                if (matchesArea && matchesSearch) {
+                    list.add(
+                        AddSelectableConnectionItem(
+                            id = "odp_${odp.id}",
+                            name = odp.name,
+                            type = "ODP",
+                            originalId = odp.id,
+                            portCount = odp.portCount,
+                            area = odpArea,
+                            details = "ODC: ${matchingOdc?.name ?: odp.portInput.takeIf { it.isNotEmpty() } ?: "-"} | Rasio: ${matchingRasio?.name ?: matchingRasio?.size ?: "-"}"
+                        )
+                    )
+                }
+            }
+            
+            // 2. Add ODCs
+            odcList.forEach { odc ->
+                val matchesArea = selectedArea == null || odc.area.equals(selectedArea?.name ?: "", ignoreCase = true)
+                val matchesSearch = odpSearchQuery.isEmpty() || odc.name.contains(odpSearchQuery, ignoreCase = true)
+                
+                if (matchesArea && matchesSearch) {
+                    list.add(
+                        AddSelectableConnectionItem(
+                            id = "odc_${odc.id}",
+                            name = odc.name,
+                            type = "ODC",
+                            originalId = odc.id,
+                            portCount = odc.portCount,
+                            area = odc.area,
+                            details = "Lokasi: ${odc.location} | Port: ${odc.portCount}"
+                        )
+                    )
+                }
+            }
+            
+            // 3. Add Rasios
+            rasioList.forEach { rasio ->
+                val matchesArea = selectedArea == null || rasio.area.equals(selectedArea?.name ?: "", ignoreCase = true)
+                val matchesSearch = odpSearchQuery.isEmpty() || rasio.name.contains(odpSearchQuery, ignoreCase = true)
+                
+                if (matchesArea && matchesSearch) {
+                    val pCount = rasio.size.split(":").lastOrNull()?.toIntOrNull() ?: 8
+                    list.add(
+                        AddSelectableConnectionItem(
+                            id = "rasio_${rasio.id}",
+                            name = rasio.name,
+                            type = "Rasio",
+                            originalId = rasio.id,
+                            portCount = pCount,
+                            area = rasio.area,
+                            details = "Lokasi: ${rasio.location} | Ukuran: ${rasio.size}"
+                        )
+                    )
+                }
+            }
+            
+            list
+        }
+
         AlertDialog(
             onDismissRequest = { showOdpDialog = false },
-            title = { Text("Pilih ODP") },
+            title = { Text("Pilih Koneksi (${selectedArea?.name ?: "Semua Area"})") },
             text = {
-                LazyColumn {
-                    items(odps.size) { index ->
-                        val odp = odps[index]
-                        Text(
-                            text = odp.name,
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                selectedOdp = odp
-                                selectedPort = ""
-                                showOdpDialog = false
-                            }.padding(16.dp)
-                        )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = odpSearchQuery,
+                        onValueChange = { odpSearchQuery = it },
+                        placeholder = { Text("Cari ODP/ODC/Rasio...", color = textSecondary) },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain,
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textSecondary
+                        ),
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = textSecondary) }
+                    )
+                    
+                    if (selectableItems.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(150.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Tidak ada ODP/ODC/Rasio ditemukan di area ini", color = textSecondary)
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                            items(selectableItems.size) { index ->
+                                val item = selectableItems[index]
+                                
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            coroutineScope.launch {
+                                                try {
+                                                    if (item.type == "ODP") {
+                                                        selectedOdp = odps.find { it.id == item.originalId }
+                                                    } else {
+                                                        val existingOdp = odps.find { it.name.equals(item.name, ignoreCase = true) }
+                                                        if (existingOdp != null) {
+                                                            selectedOdp = existingOdp
+                                                        } else {
+                                                            val newOdp = com.example.ui.data.OdpItem(
+                                                                id = "",
+                                                                name = item.name,
+                                                                odcId = if (item.type == "ODC") item.originalId else "0",
+                                                                portCount = item.portCount,
+                                                                portInput = if (item.type == "Rasio") item.name else "",
+                                                                area = item.area
+                                                            )
+                                                            ApiClient.apiService.addOdp(newOdp)
+                                                            odps = ApiClient.apiService.getOdpList()
+                                                            selectedOdp = odps.find { it.name.equals(item.name, ignoreCase = true) }
+                                                        }
+                                                    }
+                                                    selectedPort = ""
+                                                    showOdpDialog = false
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "Gagal memilih koneksi: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1E1E2A) else androidx.compose.ui.graphics.Color(0xFFF0F2F5))
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(item.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                            Text(
+                                                item.type,
+                                                color = if (item.type == "ODP") neonCyan else if (item.type == "ODC") Color(0xFFFF00FF) else successGreen,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(item.details, color = textSecondary, fontSize = 12.sp)
+                                        Text("Area: ${item.area}", color = neonCyan, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showOdpDialog = false }) { Text("Tutup") } }
+            confirmButton = { TextButton(onClick = { showOdpDialog = false }) { Text("Tutup", color = neonCyan) } },
+            containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
         )
     }
 
@@ -564,7 +721,7 @@ fun AddCustomerScreen(
                         
                         OutlinedTextField(
                             value = phone,
-                            onValueChange = { phone = it; isPhoneError = it.length < 10 || !it.all { char -> char.isDigit() } },
+                            onValueChange = { phone = it; isPhoneError = it.length < 10 || !(if (it.startsWith("+")) it.substring(1).all { char -> char.isDigit() } else it.all { char -> char.isDigit() }) },
                             label = { Text("Phone", color = if (isPhoneError) errorRed else textSecondary) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             modifier = Modifier.fillMaxWidth(),
@@ -849,3 +1006,13 @@ fun ClickableField(title: String, subtitle: String? = null, actionText: String, 
         Text(actionText, color = neonCyan, fontSize = 14.sp)
     }
 }
+
+private data class AddSelectableConnectionItem(
+    val id: String,
+    val name: String,
+    val type: String,
+    val originalId: String,
+    val portCount: Int,
+    val area: String,
+    val details: String
+)

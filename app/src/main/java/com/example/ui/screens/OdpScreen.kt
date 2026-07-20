@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
@@ -33,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import com.example.ui.data.UserSession
 import com.example.ui.data.UserRole
 import com.example.ui.data.OdpItem
+import com.example.ui.data.OdcItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +82,28 @@ fun OdpScreen(onBack: () -> Unit) {
     var showDialog by remember { mutableStateOf(false) }
     var editItem by remember { mutableStateOf<OdpItem?>(null) }
     var itemToDelete by remember { mutableStateOf<OdpItem?>(null) }
+    
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedAreaFilter by remember { mutableStateOf<com.example.ui.screens.Area?>(null) }
+    var areaFilterExpanded by remember { mutableStateOf(false) }
+    
+    val filteredOdpList = odpList.filter { item ->
+        val odc = if (item.odcId.startsWith("-")) {
+            val absoluteId = item.odcId.removePrefix("-")
+            if (absoluteId.startsWith("100000")) {
+                val realOdpId = absoluteId.removePrefix("100000")
+                odpList.find { it.id == realOdpId }?.let { OdcItem(id = item.odcId, name = it.name, location = "", area = it.area) }
+            } else {
+                rasioList.find { it.id == absoluteId }?.let { OdcItem(id = item.odcId, name = it.name, location = it.location, area = it.area) }
+            }
+        } else {
+            odcList.find { it.id == item.odcId }
+        } ?: odcList.find { it.name == item.portInput } ?: odcList.find { item.portInput.contains(it.name) }
+        val displayArea = item.area.takeIf { it.isNotEmpty() } ?: odc?.area.orEmpty()
+        val matchesArea = selectedAreaFilter == null || displayArea.equals(selectedAreaFilter?.name ?: "", ignoreCase = true)
+        val matchesSearch = searchQuery.isEmpty() || item.name.contains(searchQuery, ignoreCase = true) || item.portInput.contains(searchQuery, ignoreCase = true)
+        matchesArea && matchesSearch
+    }
 
     Scaffold(
         containerColor = bgMain,
@@ -113,13 +137,111 @@ fun OdpScreen(onBack: () -> Unit) {
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Cari ODP...", fontSize = 14.sp) },
+                    modifier = Modifier.weight(1.2f),
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textMain,
+                        unfocusedTextColor = textMain,
+                        focusedBorderColor = primaryBg,
+                        unfocusedBorderColor = cardBorder
+                    ),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = selectedAreaFilter?.name ?: "Semua Area",
+                        onValueChange = {},
+                        readOnly = true,
+                        modifier = Modifier.fillMaxWidth().clickable { areaFilterExpanded = true },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                        trailingIcon = {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.ArrowDropDown,
+                                contentDescription = "Area Dropdown",
+                                tint = textSecondary
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain,
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder,
+                            disabledTextColor = textMain,
+                            disabledBorderColor = cardBorder
+                        ),
+                        enabled = false
+                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { areaFilterExpanded = true }
+                    )
+
+                    DropdownMenu(
+                        expanded = areaFilterExpanded,
+                        onDismissRequest = { areaFilterExpanded = false },
+                        modifier = Modifier
+                            .background(cardBg)
+                            .fillMaxWidth(0.45f)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Semua Area", color = textMain, fontSize = 14.sp) },
+                            onClick = {
+                                selectedAreaFilter = null
+                                areaFilterExpanded = false
+                            }
+                        )
+                        areaList.forEach { areaItem ->
+                            DropdownMenuItem(
+                                text = { Text(areaItem.name, color = textMain, fontSize = 14.sp) },
+                                onClick = {
+                                    selectedAreaFilter = areaItem
+                                    areaFilterExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
+                contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp)
             ) {
-                items(odpList) { item ->
-                    val odc = odcList.find { it.id == item.odcId } ?: odcList.find { it.name == item.portInput } ?: odcList.find { item.portInput.contains(it.name) }
+                items(filteredOdpList) { item ->
+                    val odc = if (item.odcId.startsWith("-")) {
+                        val absoluteId = item.odcId.removePrefix("-")
+                        if (absoluteId.startsWith("100000")) {
+                            val realOdpId = absoluteId.removePrefix("100000")
+                            odpList.find { it.id == realOdpId }?.let { OdcItem(id = item.odcId, name = it.name, location = "", area = it.area) }
+                        } else {
+                            rasioList.find { it.id == absoluteId }?.let { OdcItem(id = item.odcId, name = it.name, location = it.location, area = it.area) }
+                        }
+                    } else {
+                        odcList.find { it.id == item.odcId }
+                    } ?: odcList.find { it.name == item.portInput } ?: odcList.find { item.portInput.contains(it.name) }
                     val displayArea = item.area.takeIf { it.isNotEmpty() } ?: odc?.area.orEmpty()
                     var isExpanded by remember { mutableStateOf(false) }
                     Column(
@@ -142,7 +264,8 @@ fun OdpScreen(onBack: () -> Unit) {
                                 Column {
                                     Text(item.name, color = textMain, fontWeight = FontWeight.Medium, fontSize = 16.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text("ODC: ${odc?.name ?: "Unknown"} | Area: ${displayArea.takeIf { it.isNotEmpty() } ?: "-"}", color = textSecondary, fontSize = 14.sp)
+                                    val parentLabel = if (item.odcId.startsWith("-") && !item.odcId.removePrefix("-").startsWith("100000")) "RASIO" else if (item.odcId.startsWith("-")) "ODP" else "ODC"
+                                    Text("$parentLabel: ${odc?.name ?: "Unknown"} | Area: ${displayArea.takeIf { it.isNotEmpty() } ?: "-"}", color = textSecondary, fontSize = 14.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text("Port: ${item.portCount} | Input: ${item.portInput}", color = primaryBg, fontSize = 14.sp)
                                 }
@@ -211,10 +334,70 @@ fun OdpScreen(onBack: () -> Unit) {
                         )
                     )
 
+                    var areaExpanded by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = area.takeIf { it.isNotEmpty() } ?: "Pilih Area",
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("Area") },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryBg,
+                                unfocusedBorderColor = cardBorder,
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { areaExpanded = !areaExpanded }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Area")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().clickable { areaExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = areaExpanded,
+                            onDismissRequest = { areaExpanded = false },
+                            modifier = Modifier.background(cardBg).fillMaxWidth(0.9f)
+                        ) {
+                            areaList.forEach { a ->
+                                DropdownMenuItem(
+                                    text = { Text(a.name, color = textMain) },
+                                    onClick = {
+                                        area = a.name
+                                        areaExpanded = false
+                                        // Reset selected koneksi and port input if area changes
+                                        selectedOdc = "0"
+                                        portInput = ""
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    val filteredOdcForKoneksi = odcList.filter { it.area.equals(area, ignoreCase = true) }
+                    val filteredOdpForKoneksi = odpList.filter { it.area.equals(area, ignoreCase = true) }
+                    val filteredRasioForKoneksi = rasioList.filter { it.area.equals(area, ignoreCase = true) }
+
+                    val koneksiOptions = filteredOdcForKoneksi.map { Triple(it.name, it.id, "ODC") } +
+                                         filteredOdpForKoneksi.map { Triple(it.name, "-100000${it.id}", "ODP") } +
+                                         filteredRasioForKoneksi.map { Triple(it.name, "-${it.id}", "RASIO") }
+
+                    val selectedKoneksiName = if (selectedOdc.startsWith("-")) {
+                        val absoluteId = selectedOdc.removePrefix("-")
+                        if (absoluteId.startsWith("100000")) {
+                            val realOdpId = absoluteId.removePrefix("100000")
+                            odpList.find { it.id == realOdpId }?.let { "${it.name} (ODP)" }
+                        } else {
+                            rasioList.find { it.id == absoluteId }?.let { "${it.name} (RASIO)" }
+                        }
+                    } else {
+                        odcList.find { it.id == selectedOdc }?.let { "${it.name} (ODC)" }
+                    } ?: "Pilih Koneksi"
+
                     var odcExpanded by remember { mutableStateOf(false) }
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
-                            value = odcList.find { it.id == selectedOdc }?.name ?: "Pilih ODC",
+                            value = selectedKoneksiName,
                             onValueChange = { },
                             readOnly = true,
                             label = { Text("Koneksi ODC") },
@@ -234,16 +417,28 @@ fun OdpScreen(onBack: () -> Unit) {
                         DropdownMenu(
                             expanded = odcExpanded,
                             onDismissRequest = { odcExpanded = false },
-                            modifier = Modifier.background(cardBg).fillMaxWidth(0.9f)
+                            modifier = Modifier.background(cardBg).heightIn(max = 250.dp).fillMaxWidth(0.9f)
                         ) {
-                            odcList.forEach { o ->
+                            if (area.isEmpty()) {
                                 DropdownMenuItem(
-                                    text = { Text(o.name, color = textMain) },
-                                    onClick = {
-                                        selectedOdc = o.id
-                                        odcExpanded = false
-                                    }
+                                    text = { Text("Pilih Area terlebih dahulu", color = textSecondary, fontSize = 12.sp) },
+                                    onClick = {}
                                 )
+                            } else if (koneksiOptions.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Tidak ada perangkat di area ini", color = textSecondary, fontSize = 12.sp) },
+                                    onClick = {}
+                                )
+                            } else {
+                                koneksiOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text("${option.first} (${option.third})", color = textMain) },
+                                        onClick = {
+                                            selectedOdc = option.second
+                                            odcExpanded = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -298,7 +493,13 @@ fun OdpScreen(onBack: () -> Unit) {
                     }
                     
                     var portInputExpanded by remember { mutableStateOf(false) }
-                    val sumberOptions = odcList.map { it.name to it.redamanOut } + odpList.map { it.name to it.redamanOut } + rasioList.flatMap { listOf(it.name + " (Out A)" to it.redamanOutA, it.name + " (Out B)" to it.redamanOutB) }
+                    val filteredOdcForSumber = odcList.filter { it.area.equals(area, ignoreCase = true) }
+                    val filteredOdpForSumber = odpList.filter { it.area.equals(area, ignoreCase = true) }
+                    val filteredRasioForSumber = rasioList.filter { it.area.equals(area, ignoreCase = true) }
+
+                    val sumberOptions = filteredOdcForSumber.map { it.name to it.redamanOut } +
+                                        filteredOdpForSumber.map { it.name to it.redamanOut } +
+                                        filteredRasioForSumber.flatMap { listOf(it.name + " (Out A)" to it.redamanOutA, it.name + " (Out B)" to it.redamanOutB) }
                     
                     Box {
                         OutlinedTextField(
@@ -322,64 +523,40 @@ fun OdpScreen(onBack: () -> Unit) {
                             onDismissRequest = { portInputExpanded = false },
                             modifier = Modifier.background(cardBg).heightIn(max = 250.dp)
                         ) {
-                            sumberOptions.forEach { option ->
+                            if (area.isEmpty()) {
                                 DropdownMenuItem(
-                                    text = { Text(option.first, color = textMain) },
-                                    onClick = {
-                                        portInput = option.first
-                                        redamanIn = option.second
-                                        portInputExpanded = false
-                                        
-                                        // Auto-calculate redamanOut based on new redamanIn and portCount
-                                        val rIn = option.second.toFloatOrNull()
-                                        val rSplitter = when (portCount) {
-                                            "2" -> 4.0f
-                                            "4" -> 7.2f
-                                            "8" -> 10.5f
-                                            "16" -> 13.8f
-                                            else -> 0.0f
-                                        }
-                                        if (rIn != null && rSplitter > 0.0f) {
-                                            redamanOut = String.format(java.util.Locale.US, "%.2f", rIn - rSplitter)
-                                        }
-                                    }
+                                    text = { Text("Pilih Area terlebih dahulu", color = textSecondary, fontSize = 12.sp) },
+                                    onClick = {}
                                 )
-                            }
-                        }
-                    }
-                    var areaExpanded by remember { mutableStateOf(false) }
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = area.takeIf { it.isNotEmpty() } ?: "Pilih Area",
-                            onValueChange = { },
-                            readOnly = true,
-                            label = { Text("Area") },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = primaryBg,
-                                unfocusedBorderColor = cardBorder,
-                                focusedTextColor = textMain,
-                                unfocusedTextColor = textMain
-                            ),
-                            trailingIcon = {
-                                IconButton(onClick = { areaExpanded = !areaExpanded }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Area")
+                            } else if (sumberOptions.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Tidak ada perangkat di area ini", color = textSecondary, fontSize = 12.sp) },
+                                    onClick = {}
+                                )
+                            } else {
+                                sumberOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option.first, color = textMain) },
+                                        onClick = {
+                                            portInput = option.first
+                                            redamanIn = option.second
+                                            portInputExpanded = false
+                                            
+                                            // Auto-calculate redamanOut based on new redamanIn and portCount
+                                            val rIn = option.second.toFloatOrNull()
+                                            val rSplitter = when (portCount) {
+                                                "2" -> 4.0f
+                                                "4" -> 7.2f
+                                                "8" -> 10.5f
+                                                "16" -> 13.8f
+                                                else -> 0.0f
+                                            }
+                                            if (rIn != null && rSplitter > 0.0f) {
+                                                redamanOut = String.format(java.util.Locale.US, "%.2f", rIn - rSplitter)
+                                            }
+                                        }
+                                    )
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth().clickable { areaExpanded = true }
-                        )
-                        DropdownMenu(
-                            expanded = areaExpanded,
-                            onDismissRequest = { areaExpanded = false },
-                            modifier = Modifier.background(cardBg).fillMaxWidth(0.9f)
-                        ) {
-                            areaList.forEach { a ->
-                                DropdownMenuItem(
-                                    text = { Text(a.name, color = textMain) },
-                                    onClick = {
-                                        area = a.name
-                                        areaExpanded = false
-                                    }
-                                )
                             }
                         }
                     }

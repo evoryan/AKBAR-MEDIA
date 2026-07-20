@@ -2,6 +2,9 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,11 +43,13 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
 
     
     val adminList = remember { mutableStateListOf<AdminUser>() }
+    var globalAreas by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
     LaunchedEffect(Unit) {
         try {
             val res = ApiClient.apiService.getAdmins()
             adminList.clear()
             adminList.addAll(res)
+            globalAreas = ApiClient.apiService.getAreas()
         } catch (e: Exception) {
             // handle error
         }
@@ -119,7 +124,10 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                                     Text("Role: ${item.role.name}", color = primaryBg, fontSize = 14.sp)
                                     if (item.area_id != null && item.area_id != "semua") {
                                         Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Area ID: ${item.area_id}", color = textSecondary, fontSize = 12.sp)
+                                        val areaNames = item.area_id?.split(",")?.map { id ->
+                                            globalAreas.find { it.id == id }?.name ?: id
+                                        }?.joinToString(", ") ?: item.area_id
+                                        Text("Area: $areaNames", color = textSecondary, fontSize = 12.sp)
                                     } else {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text("Area: Semua", color = textSecondary, fontSize = 12.sp)
@@ -242,35 +250,107 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                             }
                         }
                     }
-                    Box {
-                        OutlinedButton(
-                            onClick = { areaExpanded = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = textMain),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder)
+                    Text("Akses Area", color = textMain, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 140.dp)
+                            .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        val scrollState = rememberScrollState()
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(scrollState)
                         ) {
-                            Text(if (selectedArea == "semua") "Semua Area" else areas.find { it.id == selectedArea }?.name ?: selectedArea)
-                        }
-                        DropdownMenu(
-                            expanded = areaExpanded,
-                            onDismissRequest = { areaExpanded = false },
-                            modifier = Modifier.background(cardBg).border(1.dp, cardBorder)
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Semua Area", color = textMain) },
-                                onClick = {
-                                    selectedArea = "semua"
-                                    areaExpanded = false
-                                }
-                            )
-                            areas.forEach { area ->
-                                DropdownMenuItem(
-                                    text = { Text(area.name, color = textMain) },
-                                    onClick = {
-                                        selectedArea = area.id
-                                        areaExpanded = false
+                            // "Semua Area" Option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedArea = "semua"
                                     }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selectedArea == "semua",
+                                    onCheckedChange = { checked ->
+                                        if (checked) {
+                                            selectedArea = "semua"
+                                        }
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = primaryBg,
+                                        uncheckedColor = textSecondary
+                                    )
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Semua Area", color = textMain, fontSize = 13.sp)
+                            }
+
+                            // Specific Area Options
+                            areas.forEach { area ->
+                                val isChecked = remember(selectedArea) {
+                                    if (selectedArea == "semua") {
+                                        false
+                                    } else {
+                                        selectedArea.split(",").contains(area.id)
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (selectedArea == "semua") {
+                                                selectedArea = area.id
+                                            } else {
+                                                val currentList = selectedArea.split(",").filter { it.isNotBlank() }.toMutableList()
+                                                if (currentList.contains(area.id)) {
+                                                    currentList.remove(area.id)
+                                                } else {
+                                                    currentList.add(area.id)
+                                                }
+                                                if (currentList.isEmpty()) {
+                                                    selectedArea = "semua"
+                                                } else {
+                                                    selectedArea = currentList.joinToString(",")
+                                                }
+                                            }
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { checked ->
+                                            if (selectedArea == "semua") {
+                                                selectedArea = area.id
+                                            } else {
+                                                val currentList = selectedArea.split(",").filter { it.isNotBlank() }.toMutableList()
+                                                if (checked) {
+                                                    if (!currentList.contains(area.id)) {
+                                                        currentList.add(area.id)
+                                                    }
+                                                } else {
+                                                    currentList.remove(area.id)
+                                                }
+                                                if (currentList.isEmpty()) {
+                                                    selectedArea = "semua"
+                                                } else {
+                                                    selectedArea = currentList.joinToString(",")
+                                                }
+                                            }
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = primaryBg,
+                                            uncheckedColor = textSecondary
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(area.name, color = textMain, fontSize = 13.sp)
+                                }
                             }
                         }
                     }

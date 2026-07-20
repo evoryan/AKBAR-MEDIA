@@ -117,3 +117,5 @@ object InvoiceSettingsRoute
 object JaringanRoute
 @Serializable
 object RasioRoute
+@Serializable
+object ProfileRoute

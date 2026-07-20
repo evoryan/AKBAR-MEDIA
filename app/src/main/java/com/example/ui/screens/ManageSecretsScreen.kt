@@ -555,32 +555,120 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
     val colorTx = Color(0xFF51A351) // Upload
     val colorRx = Color(0xFF2F70B8) // Download
     
+    val localContext = androidx.compose.ui.platform.LocalContext.current
+    val token = remember {
+        var tok = com.example.ui.data.UserSession.currentUser.value?.token
+        if (tok.isNullOrEmpty()) {
+            val sharedPrefs = localContext.getSharedPreferences("user_prefs", android.content.Context.MODE_PRIVATE)
+            tok = sharedPrefs.getString("user_token", "")
+        }
+        tok ?: ""
+    }
+    
+    var lastWsMessageTime by remember { mutableStateOf(0L) }
+    
     androidx.compose.runtime.LaunchedEffect(secretName) {
         val iface = "<pppoe-$secretName>"
-        while (true) {
-            try {
-                val responseList = com.example.ui.data.remote.ApiClient.apiService.getMikrotikTraffic(areaId, iface)
-                if (responseList.isNotEmpty()) {
-                    val response = responseList[0]
-                    val rxBits = response.rxBits?.toLongOrNull() ?: response.rx ?: ((response.rxByte ?: 0) * 8)
-                    val txBits = response.txBits?.toLongOrNull() ?: response.tx ?: ((response.txByte ?: 0) * 8)
+        val baseUrl = "http://103.253.245.25:4500/"
+        val wsBaseUrl = baseUrl.replace("http://", "ws://").replace("https://", "wss://")
+        val wsUrl = "${wsBaseUrl}ws/traffic?areaId=${areaId}&interface=${java.net.URLEncoder.encode(iface, "UTF-8")}&token=${token}"
+        
+        val client = okhttp3.OkHttpClient.Builder()
+            .readTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+            
+        kotlinx.coroutines.coroutineScope {
+            // Coroutine 1: Maintain WebSocket connection
+            launch {
+                while (true) {
+                    val request = okhttp3.Request.Builder().url(wsUrl).build()
+                    var wsSession: okhttp3.WebSocket? = null
                     
-                    rxMbps = rxBits.toFloat() / 1_000_000f
-                    txMbps = txBits.toFloat() / 1_000_000f
+                    val listener = object : okhttp3.WebSocketListener() {
+                        override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
+                            lastWsMessageTime = System.currentTimeMillis()
+                        }
+                        
+                        override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
+                            try {
+                                val jsonObject = org.json.JSONObject(text)
+                                if (jsonObject.has("error")) {
+                                    return
+                                }
+                                currentRxString = jsonObject.optString("rx_string", "0.0 Mbps")
+                                currentTxString = jsonObject.optString("tx_string", "0.0 Mbps")
+                                
+                                val rxVal = jsonObject.optDouble("rx", 0.0)
+                                val txVal = jsonObject.optDouble("tx", 0.0)
+                                rxMbps = (rxVal / 1_000_000.0).toFloat()
+                                txMbps = (txVal / 1_000_000.0).toFloat()
+                                
+                                lastWsMessageTime = System.currentTimeMillis()
+                            } catch(e: Exception) {
+                                // ignore
+                            }
+                        }
+                        
+                        override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
+                            // Let polling handle it on failure
+                        }
+                        
+                        override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, reason: String) {
+                            // Let polling handle it on close
+                        }
+                    }
                     
-                    currentRxString = response.rxString ?: String.format(java.util.Locale.US, "%.1f Mbps", rxMbps)
-                    currentTxString = response.txString ?: String.format(java.util.Locale.US, "%.1f Mbps", txMbps)
-                } else {
-                    currentRxString = "0.0 Mbps"
-                    currentTxString = "0.0 Mbps"
-                    rxMbps = 0f
-                    txMbps = 0f
+                    wsSession = client.newWebSocket(request, listener)
+                    
+                    try {
+                        while (true) {
+                            kotlinx.coroutines.delay(2000)
+                            if (System.currentTimeMillis() - lastWsMessageTime > 10000) {
+                                break
+                            }
+                        }
+                    } catch(e: Exception) {
+                        // ignore
+                    } finally {
+                        try { wsSession?.close(1000, "Reconnecting") } catch(e: Exception) {}
+                    }
+                    
+                    kotlinx.coroutines.delay(5000)
                 }
-            } catch(e: Exception) {
-                currentRxString = "Err: ${e.message?.take(15)}"
-                currentTxString = "Err"
             }
-            kotlinx.coroutines.delay(2000)
+            
+            // Coroutine 2: Polling fallback
+            launch {
+                while (true) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastWsMessageTime > 5000) {
+                        try {
+                            val responseList = com.example.ui.data.remote.ApiClient.apiService.getMikrotikTraffic(areaId, iface)
+                            if (responseList.isNotEmpty()) {
+                                val response = responseList[0]
+                                val rxBits = response.rxBits?.toLongOrNull() ?: response.rx ?: ((response.rxByte ?: 0) * 8)
+                                val txBits = response.txBits?.toLongOrNull() ?: response.tx ?: ((response.txByte ?: 0) * 8)
+                                
+                                rxMbps = rxBits.toFloat() / 1_000_000f
+                                txMbps = txBits.toFloat() / 1_000_000f
+                                
+                                currentRxString = response.rxString ?: String.format(java.util.Locale.US, "%.1f Mbps", rxMbps)
+                                currentTxString = response.txString ?: String.format(java.util.Locale.US, "%.1f Mbps", txMbps)
+                            } else {
+                                currentRxString = "0.0 Mbps"
+                                currentTxString = "0.0 Mbps"
+                                rxMbps = 0f
+                                txMbps = 0f
+                            }
+                        } catch(e: Exception) {
+                            currentRxString = "0.0 Mbps"
+                            currentTxString = "0.0 Mbps"
+                        }
+                    }
+                    kotlinx.coroutines.delay(2000)
+                }
+            }
         }
     }
     

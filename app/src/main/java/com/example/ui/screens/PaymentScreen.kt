@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -391,12 +392,40 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     Text("DETAIL PELANGGAN", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Button(
-                    onClick = { /*TODO*/ },
+                    onClick = {
+                        customer?.let { cust ->
+                            val formattedPhone = formatPhoneForWhatsapp(cust.phone)
+                            val message = """
+                                Halo *${cust.name}*,
+
+                                Berikut adalah rincian tagihan internet Anda:
+                                - Nama: ${cust.name}
+                                - No HP: ${cust.phone}
+                                - Area: ${cust.area}
+                                - Paket: ${cust.packageName ?: "-"}
+                                - Total Tagihan: Rp. ${formatter.format(finalAmount)}
+                                - Status: *BELUM BAYAR*
+
+                                Mohon segera melakukan pembayaran. Terima kasih.
+                            """.trimIndent()
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                val url = "https://api.whatsapp.com/send?phone=$formattedPhone&text=${android.net.Uri.encode(message)}"
+                                data = android.net.Uri.parse(url)
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Gagal membuka WhatsApp: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
                     modifier = Modifier.weight(1f).height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = Color.Black),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366), contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("KIRIM WA TAGIHAN", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Default.Chat, contentDescription = "Kirim WA")
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("KIRIM WA TAGIHAN", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -513,4 +542,15 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
     }
 }
 
+}
+
+private fun formatPhoneForWhatsapp(phone: String): String {
+    val clean = phone.replace(Regex("[^0-9]"), "")
+    return if (clean.startsWith("0")) {
+        "62" + clean.substring(1)
+    } else if (clean.startsWith("62")) {
+        clean
+    } else {
+        if (clean.length >= 9 && !clean.startsWith("62")) "62$clean" else clean
+    }
 }

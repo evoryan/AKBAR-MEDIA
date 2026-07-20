@@ -346,7 +346,29 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
     val errorRed = Color(0xFFFF003C)
     val redText = Color(0xFFFF4C4C)
     
-    val statusColor = if (customer.status.contains("LUNAS")) neonCyan else redText
+    val isNewCustomer = try {
+        if (!customer.registerDate.isNullOrEmpty() && !customer.billingDate.isNullOrEmpty()) {
+            val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+            val regDate = sdf.parse(customer.registerDate)
+            val billDate = sdf.parse(customer.billingDate)
+            val today = java.util.Date()
+            if (regDate != null && billDate != null) {
+                val belumMemasukiMasaTagihan = today.before(billDate)
+                val diffInMillis = kotlin.math.abs(billDate.time - regDate.time)
+                val diffInDays = diffInMillis / (1000 * 60 * 60 * 24)
+                belumMemasukiMasaTagihan && diffInDays < 10
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } catch (e: Exception) {
+        false
+    }
+
+    val displayStatus = if (isNewCustomer) "PELANGGAN BARU" else customer.status
+    val statusColor = if (isNewCustomer) Color(0xFF00FFD2) else if (displayStatus.contains("LUNAS")) neonCyan else redText
 
     Box(
         modifier = Modifier
@@ -388,7 +410,7 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = customer.status,
+                        text = displayStatus,
                         fontSize = 11.sp,
                         color = statusColor,
                         fontWeight = FontWeight.Bold

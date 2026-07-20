@@ -280,7 +280,17 @@ fun ExpandableOdpItem(odp: OdpItem, odpList: List<OdpItem>, odcList: List<OdcIte
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.HorizontalDivider(color = cardBorder)
                 Spacer(modifier = Modifier.height(8.dp))
-                val parentOdc = odcList.find { it.id == odp.odcId } ?: odcList.find { it.name == odp.portInput } ?: odcList.find { odp.portInput.contains(it.name) }
+                val parentOdc = if (odp.odcId.startsWith("-")) {
+                    val absoluteId = odp.odcId.removePrefix("-")
+                    if (absoluteId.startsWith("100000")) {
+                        val realOdpId = absoluteId.removePrefix("100000")
+                        odpList.find { it.id == realOdpId }?.let { OdcItem(id = odp.odcId, name = it.name, location = "", area = it.area) }
+                    } else {
+                        rasioList.find { it.id == absoluteId }?.let { OdcItem(id = odp.odcId, name = it.name, location = it.location, area = it.area) }
+                    }
+                } else {
+                    odcList.find { it.id == odp.odcId }
+                } ?: odcList.find { it.name == odp.portInput } ?: odcList.find { odp.portInput.contains(it.name) }
                 val displayArea = odp.area.takeIf { it.isNotEmpty() } ?: parentOdc?.area.orEmpty()
                 Text("Area: ${displayArea.takeIf { it.isNotEmpty() } ?: "-"}", color = textSecondary, fontSize = 14.sp)
                 Text("Sumber Input: ${odp.portInput}", color = textSecondary, fontSize = 14.sp)
@@ -339,6 +349,9 @@ fun ExpandableRasioItem(rasio: RasioItem, cardBg: Color, textMain: Color, textSe
                 Text("Ukuran Rasio: ${rasio.size}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman A: ${rasio.redamanOutA}", color = textSecondary, fontSize = 14.sp)
                 Text("Redaman B: ${rasio.redamanOutB}", color = textSecondary, fontSize = 14.sp)
+                if (rasio.portInput.isNotEmpty()) {
+                    Text("Sumber Port Input: ${rasio.portInput}", color = textSecondary, fontSize = 14.sp)
+                }
             }
         }
     }

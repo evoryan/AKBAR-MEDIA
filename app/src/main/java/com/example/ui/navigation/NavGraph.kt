@@ -94,7 +94,8 @@ fun AkbarMediaNavGraph() {
                     onNavigateToPembukuan = { navController.navigate(PembukuanRoute) },
                     onNavigateToStockBarang = { navController.navigate(StockBarangRoute) },
                     onNavigateToSetting = { navController.navigate(SettingRoute) },
-                    onNavigateToJaringan = { navController.navigate(JaringanRoute) }
+                    onNavigateToJaringan = { navController.navigate(JaringanRoute) },
+                    onNavigateToProfile = { navController.navigate(ProfileRoute) }
                 )
             }
 
@@ -305,6 +306,19 @@ fun AkbarMediaNavGraph() {
             composable<CompanySettingsRoute> { com.example.ui.screens.CompanySettingsScreen(onBack = { navController.popBackStack() }) }
             composable<BackupRestoreRoute> { com.example.ui.screens.BackupRestoreScreen(onBack = { navController.popBackStack() }) }
             composable<InvoiceSettingsRoute> { com.example.ui.screens.InvoiceSettingsScreen(onBack = { navController.popBackStack() }) }
+            composable<ProfileRoute> {
+                ProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToEditProfile = { navController.navigate(UpdateProfilRoute) },
+                    onLogout = {
+                        val context = navController.context
+                        com.example.ui.data.UserSession.clearSession(context)
+                        navController.navigate(LoginRoute) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable<ManageSecretsRoute> {
                 val route = it.toRoute<ManageSecretsRoute>()
                 ManageSecretsScreen(areaId = route.areaId, onBack = { navController.popBackStack() })
