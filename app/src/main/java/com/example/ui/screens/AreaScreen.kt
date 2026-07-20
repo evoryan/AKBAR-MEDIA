@@ -119,7 +119,7 @@ fun AreaScreen(onBack: () -> Unit) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(areas) { area ->
+                items(areas.filter { UserSession.isAreaIdAllowed(it.id) }) { area ->
                     AreaItem(
                         area = area, 
                         cardBg = cardBg, 

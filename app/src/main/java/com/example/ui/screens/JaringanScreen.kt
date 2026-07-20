@@ -26,6 +26,7 @@ import com.example.ui.data.OdcItem
 import com.example.ui.data.OdpItem
 import com.example.ui.data.RasioItem
 import com.example.ui.screens.Customer
+import com.example.ui.data.UserSession
 import com.example.ui.data.remote.ApiClient
 import kotlinx.coroutines.launch
 
@@ -52,17 +53,38 @@ fun JaringanScreen(onBack: () -> Unit) {
     
     LaunchedEffect(Unit) {
         try {
-            odcList = ApiClient.apiService.getOdcList()
-            odpList = ApiClient.apiService.getOdpList()
-            customerList = ApiClient.apiService.getCustomers()
-            areaList = ApiClient.apiService.getAreas()
+            UserSession.getOrFetchAreas()
+            val rawAreas = ApiClient.apiService.getAreas()
+            val rawOdc = ApiClient.apiService.getOdcList()
+            val rawOdp = ApiClient.apiService.getOdpList()
+            val rawCustomers = ApiClient.apiService.getCustomers()
+            var rawRasio = emptyList<RasioItem>()
+            try {
+                rawRasio = ApiClient.apiService.getRasioList()
+            } catch (e: Exception) {}
+
+            areaList = rawAreas.filter { UserSession.isAreaIdAllowed(it.id) }
+            odcList = rawOdc.filter { UserSession.isAreaNameAllowed(it.area) }
+            customerList = rawCustomers.filter { UserSession.isAreaNameAllowed(it.area) }
+            rasioList = rawRasio.filter { UserSession.isAreaNameAllowed(it.area) }
+
+            odpList = rawOdp.filter { item ->
+                val parentOdc = if (item.odcId.startsWith("-")) {
+                    val absoluteId = item.odcId.removePrefix("-")
+                    if (absoluteId.startsWith("100000")) {
+                        val realOdpId = absoluteId.removePrefix("100000")
+                        rawOdp.find { it.id == realOdpId }?.let { OdcItem(id = item.odcId, name = it.name, location = "", area = it.area) }
+                    } else {
+                        rawRasio.find { it.id == absoluteId }?.let { OdcItem(id = item.odcId, name = it.name, location = it.location, area = it.area) }
+                    }
+                } else {
+                    rawOdc.find { it.id == item.odcId }
+                } ?: rawOdc.find { it.name == item.portInput } ?: rawOdc.find { item.portInput.contains(it.name) }
+                val displayArea = item.area.takeIf { it.isNotEmpty() } ?: parentOdc?.area.orEmpty()
+                UserSession.isAreaNameAllowed(displayArea)
+            }
         } catch (e: Exception) {
             Toast.makeText(context, "Gagal memuat data jaringan", Toast.LENGTH_SHORT).show()
-        }
-        try {
-            rasioList = ApiClient.apiService.getRasioList()
-        } catch (e: Exception) {
-            rasioList = emptyList()
         }
         isLoading = false
     }

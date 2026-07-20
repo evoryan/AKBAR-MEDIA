@@ -54,9 +54,10 @@ fun OdcScreen(onBack: () -> Unit) {
     var rasioList by remember { mutableStateOf<List<com.example.ui.data.RasioItem>>(emptyList()) }
     LaunchedEffect(Unit) {
         try {
+            com.example.ui.data.UserSession.getOrFetchAreas()
             val res = ApiClient.apiService.getOdcList()
             odcList = res
-            areaList = ApiClient.apiService.getAreas()
+            areaList = ApiClient.apiService.getAreas().filter { com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }
             odpList = ApiClient.apiService.getOdpList()
             rasioList = ApiClient.apiService.getRasioList()
         } catch(e: retrofit2.HttpException) {
@@ -77,7 +78,7 @@ fun OdcScreen(onBack: () -> Unit) {
     val filteredOdcList = odcList.filter { item ->
         val matchesArea = selectedAreaFilter == null || item.area.equals(selectedAreaFilter?.name ?: "", ignoreCase = true)
         val matchesSearch = searchQuery.isEmpty() || item.name.contains(searchQuery, ignoreCase = true) || item.location.contains(searchQuery, ignoreCase = true)
-        matchesArea && matchesSearch
+        matchesArea && matchesSearch && com.example.ui.data.UserSession.isAreaNameAllowed(item.area)
     }
 
     Scaffold(

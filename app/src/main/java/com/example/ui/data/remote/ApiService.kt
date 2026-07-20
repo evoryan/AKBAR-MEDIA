@@ -101,8 +101,47 @@ data class WaHistoryItem(
     val created_at: String?
 )
 
+data class WaStatusResponse(
+    val connected: Boolean,
+    val status: String,
+    val botNumber: String? = null
+)
+
+data class WaQrResponse(
+    val connected: Boolean,
+    val status: String,
+    val qr: String? = null,
+    val qrImage: String? = null
+)
+
+data class SendWaMessageRequest(
+    val phone: String,
+    val message: String
+)
+
+data class SendWaMessageResponse(
+    val status: String,
+    val info: String? = null,
+    val error: String? = null
+)
+
 interface ApiService {
     
+    @GET("api/tenant/whatsapp/status/{tenantId}")
+    suspend fun getWaStatus(@Path("tenantId") tenantId: String): WaStatusResponse
+
+    @GET("api/tenant/whatsapp/qr/{tenantId}")
+    suspend fun getWaQr(@Path("tenantId") tenantId: String): WaQrResponse
+
+    @POST("api/tenant/whatsapp/disconnect/{tenantId}")
+    suspend fun disconnectWa(@Path("tenantId") tenantId: String): ApiResponse
+
+    @POST("api/tenant/whatsapp/send/{tenantId}")
+    suspend fun sendWaMessage(
+        @Path("tenantId") tenantId: String,
+        @Body request: SendWaMessageRequest
+    ): SendWaMessageResponse
+
     @GET("api/wa/history")
     suspend fun getWaHistory(): List<WaHistoryItem>
 

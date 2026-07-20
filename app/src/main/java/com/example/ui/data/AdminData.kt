@@ -29,6 +29,7 @@ object UserSession {
             putString("user_role", user.role.name)
             putString("user_token", user.token)
             putString("user_db_name", user.db_name)
+            putString("user_area_id", user.area_id)
             apply()
         }
         
@@ -57,6 +58,7 @@ object UserSession {
         val roleString = sharedPrefs.getString("user_role", null)
         val token = sharedPrefs.getString("user_token", null)
         val dbName = sharedPrefs.getString("user_db_name", null)
+        val areaId = sharedPrefs.getString("user_area_id", "semua")
         
         if (id != null && name != null && username != null && roleString != null) {
             val role = try {
@@ -64,7 +66,7 @@ object UserSession {
             } catch (e: Exception) {
                 UserRole.ADMIN
             }
-            currentUser.value = AdminUser(id, name, username, role, token, dbName)
+            currentUser.value = AdminUser(id, name, username, role, token, dbName, areaId)
             dbName?.let {
                 val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
                 val topicName = "tenant_$safeTopic"
@@ -76,6 +78,60 @@ object UserSession {
             return true
         }
         return false
+    }
+
+    var cachedAreas: List<com.example.ui.screens.Area> = emptyList()
+
+    suspend fun getOrFetchAreas(): List<com.example.ui.screens.Area> {
+        if (cachedAreas.isEmpty()) {
+            try {
+                cachedAreas = com.example.ui.data.remote.ApiClient.apiService.getAreas()
+            } catch (e: Exception) {
+                Log.e("UserSession", "Error fetching areas", e)
+            }
+        }
+        return cachedAreas
+    }
+
+    fun isAreaIdAllowed(areaId: String): Boolean {
+        val user = currentUser.value ?: return false
+        if (user.role == UserRole.SUPER_ADMIN) return true
+        val allowedAreaIds = user.area_id?.split(",")?.filter { it.isNotBlank() } ?: return true
+        if (allowedAreaIds.contains("semua")) return true
+        return allowedAreaIds.contains(areaId)
+    }
+
+    fun isAreaNameAllowed(areaName: String): Boolean {
+        val user = currentUser.value ?: return false
+        if (user.role == UserRole.SUPER_ADMIN) return true
+        val allowedAreaIds = user.area_id?.split(",")?.filter { it.isNotBlank() } ?: return true
+        if (allowedAreaIds.contains("semua")) return true
+        // Map ID to Name
+        val allowedNames = allowedAreaIds.mapNotNull { id ->
+            cachedAreas.find { it.id == id }?.name
+        }
+        if (allowedNames.isEmpty() && cachedAreas.isNotEmpty()) {
+            // fallback: check if we should fetch/cache. If cachedAreas is empty, we might not have it yet.
+            return true
+        }
+        return allowedNames.any { it.equals(areaName, ignoreCase = true) }
+    }
+
+    fun canManageAdmin(otherAdmin: AdminUser): Boolean {
+        val user = currentUser.value ?: return false
+        if (user.role == UserRole.SUPER_ADMIN) return true
+        if (user.role != UserRole.ADMIN) return false // teknisi/collector can't manage anyone
+        // Super admins (id="1" or SUPER_ADMIN role) cannot be managed by other admins
+        if (otherAdmin.role == UserRole.SUPER_ADMIN || otherAdmin.id == "1") return false
+        
+        // Check if their areas overlap
+        val myAllowed = user.area_id?.split(",")?.filter { it.isNotBlank() } ?: return true
+        if (myAllowed.contains("semua")) return true
+        
+        val otherAllowed = otherAdmin.area_id?.split(",")?.filter { it.isNotBlank() } ?: return false
+        if (otherAllowed.contains("semua")) return false // standard admin cannot manage an admin who has access to all areas
+        
+        return otherAllowed.any { myAllowed.contains(it) }
     }
     
     fun clearSession(context: Context) {

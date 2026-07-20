@@ -67,9 +67,10 @@ fun OdpScreen(onBack: () -> Unit) {
     var odcList by remember { mutableStateOf<List<com.example.ui.data.OdcItem>>(emptyList()) }
     LaunchedEffect(Unit) {
         try {
+            com.example.ui.data.UserSession.getOrFetchAreas()
             val res = ApiClient.apiService.getOdcList()
             odcList = res
-            areaList = ApiClient.apiService.getAreas()
+            areaList = ApiClient.apiService.getAreas().filter { com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }
             rasioList = ApiClient.apiService.getRasioList()
         } catch(e: retrofit2.HttpException) {
                                 val errBody = e.response()?.errorBody()?.string()
@@ -102,7 +103,7 @@ fun OdpScreen(onBack: () -> Unit) {
         val displayArea = item.area.takeIf { it.isNotEmpty() } ?: odc?.area.orEmpty()
         val matchesArea = selectedAreaFilter == null || displayArea.equals(selectedAreaFilter?.name ?: "", ignoreCase = true)
         val matchesSearch = searchQuery.isEmpty() || item.name.contains(searchQuery, ignoreCase = true) || item.portInput.contains(searchQuery, ignoreCase = true)
-        matchesArea && matchesSearch
+        matchesArea && matchesSearch && com.example.ui.data.UserSession.isAreaNameAllowed(displayArea)
     }
 
     Scaffold(

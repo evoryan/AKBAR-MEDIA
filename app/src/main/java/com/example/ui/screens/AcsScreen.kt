@@ -73,7 +73,9 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
     LaunchedEffect(Unit) {
         try {
             isLoading = true
-            allDevices = ApiClient.apiService.getAcsDevices()
+            com.example.ui.data.UserSession.getOrFetchAreas()
+            val raw = ApiClient.apiService.getAcsDevices()
+            allDevices = raw.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.areaName ?: "") }
         } catch(e: Exception) {
             errorMsg = "Gagal memuat data ACS: ${e.message}"
         } finally {
@@ -212,7 +214,7 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
                                     expandedArea = false
                                 }
                             )
-                            areas.forEach { area ->
+                            areas.filter { com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }.forEach { area ->
                                 DropdownMenuItem(
                                     text = { Text(area.name, color = textMain) },
                                     onClick = {

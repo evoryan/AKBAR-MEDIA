@@ -52,6 +52,7 @@ const masterPool = mysql.createPool({
 
 // Pass master pool to WhatsApp Gateway
 whatsappGateway.setMasterPool(masterPool);
+whatsappGateway.setGetTenantPool(getTenantPool);
 whatsappGateway.loadAllTenantSessions();
 
 // Mount WhatsApp gateway routes for multi-tenant

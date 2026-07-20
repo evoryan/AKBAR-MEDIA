@@ -28,9 +28,11 @@ class DashboardViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = DashboardState.Loading
             try {
+                com.example.ui.data.UserSession.getOrFetchAreas()
                 var result = ApiClient.apiService.getDashboardSummary()
                 try {
-                    val customers = ApiClient.apiService.getCustomers().filter { it.status != "TERHAPUS" }
+                    val rawCustomers = ApiClient.apiService.getCustomers().filter { it.status != "TERHAPUS" }
+                    val customers = rawCustomers.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
                     val paidCount = customers.count { it.status == "LUNAS CASH" }
                     val unpaidCount = customers.size - paidCount
                     
@@ -50,7 +52,7 @@ class DashboardViewModel : ViewModel() {
                 var offlineCount: List<OfflinePppoeUser> = emptyList()
                 try {
                     val offlineRes = ApiClient.apiService.getPppoeOffline()
-                    offlineCount = offlineRes
+                    offlineCount = offlineRes.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
                 } catch (e: Exception) {
                     // Ignore offline PPPoE errors
                 }

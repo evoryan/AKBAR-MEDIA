@@ -38,6 +38,27 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.widget.Toast
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.foundation.Image
+
+fun decodeBase64ToImageBitmap(base64Str: String): ImageBitmap? {
+    return try {
+        val cleanStr = if (base64Str.startsWith("data:")) {
+            base64Str.substringAfter("base64,")
+        } else {
+            base64Str
+        }
+        val decodedBytes = Base64.decode(cleanStr, Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+        bitmap?.asImageBitmap()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,24 +94,83 @@ fun BotWaScreen(onBack: () -> Unit) {
     var testMessage by remember { mutableStateOf("") }
     var isTestSending by remember { mutableStateOf(false) }
 
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("Pengaturan", "QR Paket", "Riwayat")
+
     var isWaLinked by remember { mutableStateOf(false) }
+    var botNumber by remember { mutableStateOf("") }
+    var connectionStatus by remember { mutableStateOf("DISCONNECTED") }
+    var qrBase64 by remember { mutableStateOf<String?>(null) }
+    var qrText by remember { mutableStateOf<String?>(null) }
+    var isLoadingQr by remember { mutableStateOf(false) }
     var qrSecondsLeft by remember { mutableStateOf(45) }
 
-    // Auto countdown for QR code refresh
+    // Initial check status on load
+    LaunchedEffect(currentUser) {
+        val tId = currentUser?.id ?: return@LaunchedEffect
+        try {
+            val statusResponse = com.example.ui.data.remote.ApiClient.apiService.getWaStatus(tId)
+            isWaLinked = statusResponse.connected
+            botNumber = statusResponse.botNumber.orEmpty()
+            connectionStatus = statusResponse.status
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // Auto-polling when connected
     LaunchedEffect(isWaLinked) {
-        if (!isWaLinked) {
-            while (qrSecondsLeft > 0) {
-                delay(1000)
-                qrSecondsLeft--
-                if (qrSecondsLeft == 0) {
-                    qrSecondsLeft = 45
+        if (isWaLinked) {
+            val tId = currentUser?.id ?: return@LaunchedEffect
+            while (isWaLinked) {
+                delay(10000)
+                try {
+                    val statusResponse = com.example.ui.data.remote.ApiClient.apiService.getWaStatus(tId)
+                    isWaLinked = statusResponse.connected
+                    botNumber = statusResponse.botNumber.orEmpty()
+                    connectionStatus = statusResponse.status
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
         }
     }
 
-    var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Pengaturan", "QR Paket", "Riwayat")
+    // Auto countdown and polling for QR code refresh
+    LaunchedEffect(isWaLinked, selectedTab) {
+        if (!isWaLinked && selectedTab == 0) {
+            val tId = currentUser?.id ?: return@LaunchedEffect
+            while (true) {
+                try {
+                    isLoadingQr = true
+                    val qrResponse = com.example.ui.data.remote.ApiClient.apiService.getWaQr(tId)
+                    isWaLinked = qrResponse.connected
+                    if (qrResponse.connected) {
+                        val statusResponse = com.example.ui.data.remote.ApiClient.apiService.getWaStatus(tId)
+                        botNumber = statusResponse.botNumber.orEmpty()
+                        connectionStatus = statusResponse.status
+                        break
+                    } else {
+                        qrBase64 = qrResponse.qrImage
+                        qrText = qrResponse.qr
+                        connectionStatus = qrResponse.status
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    isLoadingQr = false
+                }
+
+                qrSecondsLeft = 45
+                while (qrSecondsLeft > 0) {
+                    delay(1000)
+                    qrSecondsLeft--
+                    if (isWaLinked || selectedTab != 0) break
+                }
+                if (isWaLinked || selectedTab != 0) break
+            }
+        }
+    }
 
     Scaffold(containerColor = bgMain,
         topBar = {
@@ -169,7 +249,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Nomor Bot WhatsApp", color = textSecondary, fontSize = 13.sp)
-                                Text("+62 881-0371-60075", color = textMain, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(if (botNumber.isNotEmpty()) "+$botNumber" else "-", color = textMain, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
 
                             Row(
@@ -177,15 +257,15 @@ fun BotWaScreen(onBack: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Sesi Tersimpan", color = textSecondary, fontSize = 13.sp)
-                                Text("active_session_master", color = textMain, fontSize = 13.sp)
+                                Text("tenant_${currentUser?.id ?: "0"}", color = textMain, fontSize = 13.sp)
                             }
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Terhubung Sejak", color = textSecondary, fontSize = 13.sp)
-                                Text("18 Juli 2026, 10.45", color = textMain, fontSize = 13.sp)
+                                Text("Status Sesi", color = textSecondary, fontSize = 13.sp)
+                                Text(connectionStatus, color = successGreen, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
 
                             Row(
@@ -193,7 +273,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Browser Sesi", color = textSecondary, fontSize = 13.sp)
-                                Text("Chrome (Linux OS)", color = textMain, fontSize = 13.sp)
+                                Text("Baileys Multi-Device", color = textMain, fontSize = 13.sp)
                             }
 
                             Spacer(modifier = Modifier.height(4.dp))
@@ -204,8 +284,20 @@ fun BotWaScreen(onBack: () -> Unit) {
                             ) {
                                 OutlinedButton(
                                     onClick = { 
-                                        isWaLinked = false 
-                                        Toast.makeText(context, "Sesi WhatsApp diputus.", Toast.LENGTH_SHORT).show()
+                                        coroutineScope.launch {
+                                            val tId = currentUser?.id ?: return@launch
+                                            try {
+                                                com.example.ui.data.remote.ApiClient.apiService.disconnectWa(tId)
+                                                isWaLinked = false
+                                                botNumber = ""
+                                                connectionStatus = "DISCONNECTED"
+                                                qrBase64 = null
+                                                qrText = null
+                                                Toast.makeText(context, "Sesi WhatsApp diputus.", Toast.LENGTH_SHORT).show()
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Gagal memutus sesi: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC3545)),
                                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDC3545)),
@@ -286,57 +378,77 @@ fun BotWaScreen(onBack: () -> Unit) {
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Canvas(modifier = Modifier.size(160.dp).background(Color.White)) {
-                                        val qrColor = Color(0xFF1E1E1E)
-                                        // Top-Left Finder
-                                        drawRect(color = qrColor, topLeft = Offset(0f, 0f), size = Size(40f, 40f))
-                                        drawRect(color = Color.White, topLeft = Offset(8f, 8f), size = Size(24f, 24f))
-                                        drawRect(color = qrColor, topLeft = Offset(12f, 12f), size = Size(16f, 16f))
+                                    val qrImageBitmap = remember(qrBase64) {
+                                        qrBase64?.let { decodeBase64ToImageBitmap(it) }
+                                    }
 
-                                        // Top-Right Finder
-                                        drawRect(color = qrColor, topLeft = Offset(size.width - 40f, 0f), size = Size(40f, 40f))
-                                        drawRect(color = Color.White, topLeft = Offset(size.width - 32f, 8f), size = Size(24f, 24f))
-                                        drawRect(color = qrColor, topLeft = Offset(size.width - 28f, 12f), size = Size(16f, 16f))
+                                    if (qrImageBitmap != null) {
+                                        Image(
+                                            bitmap = qrImageBitmap,
+                                            contentDescription = "WhatsApp QR Code",
+                                            modifier = Modifier.size(160.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Pindai QR ini menggunakan WhatsApp Anda", color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    } else {
+                                        if (isLoadingQr) {
+                                            Box(modifier = Modifier.size(160.dp), contentAlignment = Alignment.Center) {
+                                                androidx.compose.material3.CircularProgressIndicator(color = neonCyan)
+                                            }
+                                        } else {
+                                            Canvas(modifier = Modifier.size(160.dp).background(Color.White)) {
+                                                val qrColor = Color(0xFF1E1E1E)
+                                                // Top-Left Finder
+                                                drawRect(color = qrColor, topLeft = Offset(0f, 0f), size = Size(40f, 40f))
+                                                drawRect(color = Color.White, topLeft = Offset(8f, 8f), size = Size(24f, 24f))
+                                                drawRect(color = qrColor, topLeft = Offset(12f, 12f), size = Size(16f, 16f))
 
-                                        // Bottom-Left Finder
-                                        drawRect(color = qrColor, topLeft = Offset(0f, size.height - 40f), size = Size(40f, 40f))
-                                        drawRect(color = Color.White, topLeft = Offset(8f, size.height - 32f), size = Size(24f, 24f))
-                                        drawRect(color = qrColor, topLeft = Offset(12f, size.height - 28f), size = Size(16f, 16f))
+                                                // Top-Right Finder
+                                                drawRect(color = qrColor, topLeft = Offset(size.width - 40f, 0f), size = Size(40f, 40f))
+                                                drawRect(color = Color.White, topLeft = Offset(size.width - 32f, 8f), size = Size(24f, 24f))
+                                                drawRect(color = qrColor, topLeft = Offset(size.width - 28f, 12f), size = Size(16f, 16f))
 
-                                        // Generate structured pseudo QR noise
-                                        val random = java.util.Random(424242)
-                                        val cellSize = 8f
-                                        val cols = (size.width / cellSize).toInt()
-                                        val rows = (size.height / cellSize).toInt()
-                                        for (r in 0 until rows) {
-                                            for (c in 0 until cols) {
-                                                // Skip finder zones
-                                                if ((r < 6 && c < 6) || (r < 6 && c >= cols - 6) || (r >= rows - 6 && c < 6)) {
-                                                    continue
+                                                // Bottom-Left Finder
+                                                drawRect(color = qrColor, topLeft = Offset(0f, size.height - 40f), size = Size(40f, 40f))
+                                                drawRect(color = Color.White, topLeft = Offset(8f, size.height - 32f), size = Size(24f, 24f))
+                                                drawRect(color = qrColor, topLeft = Offset(12f, size.height - 28f), size = Size(16f, 16f))
+
+                                                // Generate structured pseudo QR noise
+                                                val random = java.util.Random(424242)
+                                                val cellSize = 8f
+                                                val cols = (size.width / cellSize).toInt()
+                                                val rows = (size.height / cellSize).toInt()
+                                                for (r in 0 until rows) {
+                                                    for (c in 0 until cols) {
+                                                        // Skip finder zones
+                                                        if ((r < 6 && c < 6) || (r < 6 && c >= cols - 6) || (r >= rows - 6 && c < 6)) {
+                                                            continue
+                                                        }
+                                                        // Center WhatsApp-like green indicator badge space
+                                                        if (r in (rows/2 - 2)..(rows/2 + 2) && c in (cols/2 - 2)..(cols/2 + 2)) {
+                                                            continue
+                                                        }
+                                                        if (random.nextBoolean()) {
+                                                            drawRect(
+                                                                color = qrColor,
+                                                                topLeft = Offset(c * cellSize, r * cellSize),
+                                                                size = Size(cellSize, cellSize)
+                                                            )
+                                                        }
+                                                    }
                                                 }
-                                                // Center WhatsApp-like green indicator badge space
-                                                if (r in (rows/2 - 2)..(rows/2 + 2) && c in (cols/2 - 2)..(cols/2 + 2)) {
-                                                    continue
-                                                }
-                                                if (random.nextBoolean()) {
-                                                    drawRect(
-                                                        color = qrColor,
-                                                        topLeft = Offset(c * cellSize, r * cellSize),
-                                                        size = Size(cellSize, cellSize)
-                                                    )
-                                                }
+
+                                                // Draw a centered subtle green indicator
+                                                drawCircle(
+                                                    color = Color(0xFF25D366),
+                                                    radius = 16f,
+                                                    center = Offset(size.width / 2, size.height / 2)
+                                                )
                                             }
                                         }
-
-                                        // Draw a centered subtle green indicator
-                                        drawCircle(
-                                            color = Color(0xFF25D366),
-                                            radius = 16f,
-                                            center = Offset(size.width / 2, size.height / 2)
-                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Klik QR Code untuk Simulasikan Scan", color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text("Klik QR Code untuk Simulasikan Scan", color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -647,15 +759,37 @@ fun BotWaScreen(onBack: () -> Unit) {
 
                             Button(
                                 onClick = {
+                                    val tId = currentUser?.id
+                                    if (tId == null) {
+                                        Toast.makeText(context, "Error: Sesi login kadaluarsa atau ID tidak ditemukan.", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
                                     if (testDestination.isEmpty() || testMessage.isEmpty()) {
                                         Toast.makeText(context, "Nomor penerima dan isi pesan tidak boleh kosong!", Toast.LENGTH_SHORT).show()
                                     } else {
                                         isTestSending = true
-                                        // Simulate api call
                                         coroutineScope.launch {
-                                            delay(1500)
-                                            isTestSending = false
-                                            Toast.makeText(context, "Pesan Berhasil Terkirim via Baileys WhatsApp Gateway!", Toast.LENGTH_LONG).show()
+                                            try {
+                                                val response = com.example.ui.data.remote.ApiClient.apiService.sendWaMessage(
+                                                    tenantId = tId,
+                                                    request = com.example.ui.data.remote.SendWaMessageRequest(
+                                                        phone = testDestination,
+                                                        message = testMessage
+                                                    )
+                                                )
+                                                if (response.status == "success") {
+                                                    Toast.makeText(context, "Pesan Berhasil Terkirim via Baileys WhatsApp Gateway!", Toast.LENGTH_LONG).show()
+                                                    // Refresh history tab or clear input
+                                                    testDestination = ""
+                                                    testMessage = ""
+                                                } else {
+                                                    Toast.makeText(context, "Gagal mengirim: ${response.error ?: response.info ?: "Error tidak diketahui"}", Toast.LENGTH_LONG).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Gagal mengirim: ${e.message}", Toast.LENGTH_LONG).show()
+                                            } finally {
+                                                isTestSending = false
+                                            }
                                         }
                                     }
                                 },

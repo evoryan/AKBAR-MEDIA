@@ -74,7 +74,7 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
             )
         },
         floatingActionButton = {
-            if (currentUser?.role == UserRole.SUPER_ADMIN) {
+            if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.ADMIN) {
                 FloatingActionButton(
                     onClick = { 
                         editItem = null
@@ -94,12 +94,22 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
         ) {
+            val filteredAdmins = adminList.filter { item ->
+                val curr = currentUser ?: return@filter false
+                if (curr.role == UserRole.SUPER_ADMIN) true
+                else if (curr.role == UserRole.ADMIN) {
+                    item.id == curr.id || com.example.ui.data.UserSession.canManageAdmin(item)
+                } else {
+                    false
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
             ) {
-                items(adminList) { item ->
+                items(filteredAdmins) { item ->
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -134,7 +144,8 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                                     }
                                 }
                             }
-                            if (currentUser?.role == UserRole.SUPER_ADMIN && item.id != "1") {
+                            val canEdit = currentUser?.role == UserRole.SUPER_ADMIN || (currentUser?.role == UserRole.ADMIN && (item.id == currentUser?.id || com.example.ui.data.UserSession.canManageAdmin(item)))
+                            if (canEdit && item.id != "1") {
                                 Row {
                                     IconButton(onClick = {
                                         editItem = item
@@ -264,34 +275,37 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
                                 .fillMaxWidth()
                                 .verticalScroll(scrollState)
                         ) {
-                            // "Semua Area" Option
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedArea = "semua"
-                                    }
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = selectedArea == "semua",
-                                    onCheckedChange = { checked ->
-                                        if (checked) {
+                            // "Semua Area" Option (Super Admin only)
+                            if (currentUser?.role == UserRole.SUPER_ADMIN) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
                                             selectedArea = "semua"
                                         }
-                                    },
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = primaryBg,
-                                        uncheckedColor = textSecondary
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = selectedArea == "semua",
+                                        onCheckedChange = { checked ->
+                                            if (checked) {
+                                                selectedArea = "semua"
+                                            }
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = primaryBg,
+                                            uncheckedColor = textSecondary
+                                        )
                                     )
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Semua Area", color = textMain, fontSize = 13.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Semua Area", color = textMain, fontSize = 13.sp)
+                                }
                             }
 
                             // Specific Area Options
-                            areas.forEach { area ->
+                            val filteredAreas = areas.filter { com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }
+                            filteredAreas.forEach { area ->
                                 val isChecked = remember(selectedArea) {
                                     if (selectedArea == "semua") {
                                         false

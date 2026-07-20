@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import com.example.ui.data.UserSession
 import com.example.ui.data.remote.ApiClient
 import kotlinx.coroutines.launch
 
@@ -63,7 +64,9 @@ fun CustomersScreen(
 
     LaunchedEffect(Unit) {
         try {
-            customers = ApiClient.apiService.getCustomers()
+            UserSession.getOrFetchAreas()
+            val raw = ApiClient.apiService.getCustomers()
+            customers = raw.filter { UserSession.isAreaNameAllowed(it.area) }
         } catch (e: Exception) {
         }
     }

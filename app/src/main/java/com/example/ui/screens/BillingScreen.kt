@@ -74,7 +74,9 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     fun fetchCustomers() {
         coroutineScope.launch {
             try {
-                customers = ApiClient.apiService.getCustomers().filter { it.status != "TERHAPUS" }
+                com.example.ui.data.UserSession.getOrFetchAreas()
+                val raw = ApiClient.apiService.getCustomers().filter { it.status != "TERHAPUS" }
+                customers = raw.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
             } catch (e: Exception) {}
         }
     }

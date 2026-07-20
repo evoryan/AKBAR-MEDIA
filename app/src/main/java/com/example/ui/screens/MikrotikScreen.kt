@@ -35,7 +35,7 @@ fun MikrotikScreen(
     LaunchedEffect(Unit) {
         try {
             val res = com.example.ui.data.remote.ApiClient.apiService.getAreas()
-            areas = res.filter { it.routerIp != null && it.routerIp.isNotEmpty() }
+            areas = res.filter { it.routerIp != null && it.routerIp.isNotEmpty() && com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }
         } catch(e: Exception) {
         }
     }

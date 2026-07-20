@@ -69,7 +69,8 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                 categories = res.categories
 
                 try {
-                    val customersRes = ApiClient.apiService.getCustomers()
+                    com.example.ui.data.UserSession.getOrFetchAreas()
+                    val customersRes = ApiClient.apiService.getCustomers().filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
                     var cashTotal = 0.0
                     var onlineTotal = 0.0
                     customersRes.forEach { c ->
