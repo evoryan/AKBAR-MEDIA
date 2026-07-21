@@ -32,10 +32,36 @@ fun MikrotikScreen(
 ) {
     
     var areas by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
+    val statuses = remember { mutableStateMapOf<String, com.example.ui.data.remote.MikrotikStatus?>() }
+    val isStatusesLoading = remember { mutableStateMapOf<String, Boolean>() }
+    val statusErrors = remember { mutableStateMapOf<String, String?>() }
+
     LaunchedEffect(Unit) {
         try {
             val res = com.example.ui.data.remote.ApiClient.apiService.getAreas()
-            areas = res.filter { it.routerIp != null && it.routerIp.isNotEmpty() && com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }
+            val filteredAreas = res.filter { it.routerIp != null && it.routerIp.isNotEmpty() && com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }
+            areas = filteredAreas
+            
+            // Mark as loading
+            filteredAreas.forEach { area ->
+                isStatusesLoading[area.id] = true
+                statusErrors[area.id] = null
+            }
+            
+            // Fetch statuses in parallel using MikrotikRepository
+            val parallelResults = com.example.ui.data.remote.MikrotikRepository.getMikrotikStatusesInParallel(filteredAreas)
+            
+            parallelResults.forEach { (areaId, result) ->
+                isStatusesLoading[areaId] = false
+                result.fold(
+                    onSuccess = { status ->
+                        statuses[areaId] = status
+                    },
+                    onFailure = { error ->
+                        statusErrors[areaId] = "Gagal mengambil data: ${error.message}"
+                    }
+                )
+            }
         } catch(e: Exception) {
         }
     }
@@ -84,7 +110,13 @@ fun MikrotikScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(areas) { area ->
-                    MikrotikCard(area = area, onNavigateToManageSecrets = { onNavigateToManageSecrets(area.id) })
+                    MikrotikCard(
+                        area = area,
+                        preloadedStatus = statuses[area.id],
+                        preloadedIsLoading = isStatusesLoading[area.id],
+                        preloadedErrorMsg = statusErrors[area.id],
+                        onNavigateToManageSecrets = { onNavigateToManageSecrets(area.id) }
+                    )
                 }
             }
         }
@@ -98,7 +130,27 @@ fun MikrotikScreen(
                         try {
                             com.example.ui.data.remote.ApiClient.apiService.addArea(newArea)
                             val res = com.example.ui.data.remote.ApiClient.apiService.getAreas()
-                            areas = res.filter { it.routerIp != null && it.routerIp.isNotEmpty() }
+                            val filteredAreas = res.filter { it.routerIp != null && it.routerIp.isNotEmpty() }
+                            areas = filteredAreas
+                            
+                            // Load all in parallel
+                            filteredAreas.forEach { area ->
+                                isStatusesLoading[area.id] = true
+                                statusErrors[area.id] = null
+                            }
+                            
+                            val parallelResults = com.example.ui.data.remote.MikrotikRepository.getMikrotikStatusesInParallel(filteredAreas)
+                            parallelResults.forEach { (areaId, result) ->
+                                isStatusesLoading[areaId] = false
+                                result.fold(
+                                    onSuccess = { status ->
+                                        statuses[areaId] = status
+                                    },
+                                    onFailure = { error ->
+                                        statusErrors[areaId] = "Gagal mengambil data: ${error.message}"
+                                    }
+                                )
+                            }
                         } catch(e: Exception) {}
                     }
                     showAddDialog = false
@@ -115,7 +167,13 @@ fun MikrotikScreen(
 }
 
 @Composable
-fun MikrotikCard(area: Area, onNavigateToManageSecrets: () -> Unit) {
+fun MikrotikCard(
+    area: Area,
+    preloadedStatus: com.example.ui.data.remote.MikrotikStatus? = null,
+    preloadedIsLoading: Boolean? = null,
+    preloadedErrorMsg: String? = null,
+    onNavigateToManageSecrets: () -> Unit
+) {
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
     val cardBorder = neonCyan.copy(alpha = 0.3f)
@@ -126,15 +184,21 @@ fun MikrotikCard(area: Area, onNavigateToManageSecrets: () -> Unit) {
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     
-    LaunchedEffect(area.id) {
-        try {
-            isLoading = true
-            errorMsg = null
-            mikrotikStatus = com.example.ui.data.remote.ApiClient.apiService.getMikrotikStatus(area.id)
-        } catch(e: Exception) {
-            errorMsg = "Gagal mengambil data: ${e.message}"
-        } finally {
-            isLoading = false
+    LaunchedEffect(area.id, preloadedStatus, preloadedIsLoading, preloadedErrorMsg) {
+        if (preloadedIsLoading != null) {
+            isLoading = preloadedIsLoading
+            mikrotikStatus = preloadedStatus
+            errorMsg = preloadedErrorMsg
+        } else {
+            try {
+                isLoading = true
+                errorMsg = null
+                mikrotikStatus = com.example.ui.data.remote.ApiClient.apiService.getMikrotikStatus(area.id)
+            } catch(e: Exception) {
+                errorMsg = "Gagal mengambil data: ${e.message}"
+            } finally {
+                isLoading = false
+            }
         }
     }
 

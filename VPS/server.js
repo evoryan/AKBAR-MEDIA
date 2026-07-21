@@ -60,6 +60,101 @@ app.use('/api/tenant/whatsapp', whatsappGateway.router);
 
 app.get('/api/ping', (req, res) => res.json({ status: 'ok' }));
 
+async function connectMikrotik(client, timeoutMs = 3000) {
+    let timeoutId;
+    let isFinished = false;
+
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+            isFinished = true;
+            reject(new Error('Connection timed out'));
+        }, timeoutMs);
+    });
+
+    const connectPromise = client.connect();
+    connectPromise.catch(() => {}); // Prevent unhandled rejections in the background
+
+    try {
+        const api = await Promise.race([
+            connectPromise.then(api => {
+                if (isFinished) {
+                    try { client.close(); } catch (_) {}
+                    throw new Error('Connection timed out');
+                }
+                clearTimeout(timeoutId);
+                return api;
+            }),
+            timeoutPromise
+        ]);
+        return api;
+    } catch (err) {
+        clearTimeout(timeoutId);
+        try { client.close(); } catch (_) {}
+        throw err;
+    }
+}
+
+function handleMikrotikError(error, res, actionName = "Mikrotik error") {
+    console.error(`${actionName}:`, error);
+    
+    const isOffline = (
+        error.code === 'ECONNRESET' ||
+        error.errno === -104 ||
+        error.errno === 'ECONNRESET' ||
+        (error.message && (
+            error.message.includes('ECONNRESET') ||
+            error.message.includes('-104') ||
+            error.message.includes('timed out') ||
+            error.message.includes('Timeout') ||
+            error.message.includes('ETIMEDOUT') ||
+            error.message.includes('EHOSTUNREACH') ||
+            error.message.includes('ENETUNREACH') ||
+            error.message.includes('ECONNREFUSED')
+        ))
+    );
+
+    if (isOffline) {
+        return res.status(504).json({
+            status: "MIKROTIK_OFFLINE",
+            error: `Failed to connect to Mikrotik: Router is offline or connection timed out (${error.message || 'Timeout'})`
+        });
+    }
+
+    return res.status(500).json({
+        error: `Failed to connect to Mikrotik: ${error.message || error}`
+    });
+}
+
+async function runWithMikrotik(area, action, res, actionName = "Mikrotik operation") {
+    if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+        if (res) return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        throw new Error("Mikrotik credentials incomplete");
+    }
+
+    const [host, port] = area.routerIp.split(':');
+    const client = new RouterOSClient({
+        host: host,
+        user: area.mikrotikUser,
+        password: area.mikrotikPassword,
+        port: parseInt(port) || 8728,
+        timeout: 3000
+    });
+
+    try {
+        const api = await connectMikrotik(client, 3000);
+        const result = await action(api);
+        return result;
+    } catch (error) {
+        if (res) {
+            handleMikrotikError(error, res, actionName);
+            return null;
+        }
+        throw error;
+    } finally {
+        try { client.close(); } catch (_) {}
+    }
+}
+
 // Dynamic Tenant Pools Map
 const tenantPools = {};
 
@@ -306,17 +401,18 @@ app.use(tenantContext);
 app.get('/api/dashboard/pppoe-offline', async (req, res) => {
     try {
         const [areas] = await req.pool.query('SELECT * FROM areas');
-        let offlineList = [];
         
-        for (const area of areas) {
-            if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) continue;
+        const promises = areas.map(async (area) => {
+            if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) return [];
+            
+            const [host, portStr] = area.routerIp.split(':');
+            const port = parseInt(portStr) || 8728;
+            const client = new RouterOSClient({
+                host, user: area.mikrotikUser, password: area.mikrotikPassword, port, timeout: 3000
+            });
+            
             try {
-                const [host, portStr] = area.routerIp.split(':');
-                const port = parseInt(portStr) || 8728;
-                const client = new RouterOSClient({
-                    host, user: area.mikrotikUser, password: area.mikrotikPassword, port, timeout: 3000
-                });
-                const api = await client.connect();
+                const api = await connectMikrotik(client, 3000);
                 
                 const activeMenu = api.menu('/ppp/active');
                 const actives = await activeMenu.get();
@@ -325,17 +421,23 @@ app.get('/api/dashboard/pppoe-offline', async (req, res) => {
                 const secrets = await secretMenu.get();
                 
                 const activeNames = new Set(actives.map(a => a.name));
-                const offline = secrets.filter(s => !activeNames.has(s.name) && s.disabled !== 'true');
+                const offline = secrets.filter(s => !activeNames.has(s.name) && s.disabled !== 'true' && s.disabled !== true);
                 
-                offline.forEach(o => {
-                    offlineList.push({ name: o.name, lastLogoff: o['last-logged-out'] || 'Unknown', area: area.name });
-                });
-                
-                client.close();
+                return offline.map(o => ({
+                    name: o.name || '',
+                    lastLogoff: o['last-logged-out'] || 'Unknown',
+                    area: area.name || ''
+                }));
             } catch (err) {
                 console.error(`Error connecting to mikrotik for area ${area.name}:`, err.message);
+                return [];
+            } finally {
+                try { client.close(); } catch (_) {}
             }
-        }
+        });
+        
+        const results = await Promise.all(promises);
+        const offlineList = results.flat();
         
         res.json(offlineList);
     } catch (error) {
@@ -1838,6 +1940,7 @@ app.post('/api/admins', async (req, res) => {
 
 
 app.get('/api/mikrotik/traffic/:id', async (req, res) => {
+    let client;
     try {
         const { id } = req.params;
         const interfaceName = req.query.interface;
@@ -1852,15 +1955,15 @@ app.get('/api/mikrotik/traffic/:id', async (req, res) => {
         }
 
         const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
+        client = new RouterOSClient({
             host: host,
             user: area.mikrotikUser,
             password: area.mikrotikPassword,
             port: parseInt(port) || 8728,
-            timeout: 5000
+            timeout: 3000
         });
 
-        const api = await client.connect();
+        const api = await connectMikrotik(client, 3000);
         let traffic = [];
         try {
             await new Promise((resolve) => {
@@ -1893,12 +1996,14 @@ app.get('/api/mikrotik/traffic/:id', async (req, res) => {
             // Ignore no such interface errors, user is offline
             traffic = [{"rx-bits-per-second": 0, "tx-bits-per-second": 0}];
         }
-        client.close();
         
         res.json(traffic.length ? traffic : [{"rx-bits-per-second": 0, "tx-bits-per-second": 0}]);
     } catch (error) {
-        console.error("Mikrotik traffic error:", error.message);
-        res.status(500).json({ error: "Failed to connect to Mikrotik: " + error.message });
+        handleMikrotikError(error, res, "Mikrotik traffic error");
+    } finally {
+        if (client) {
+            try { client.close(); } catch (_) {}
+        }
     }
 });
 
@@ -1909,43 +2014,29 @@ app.get('/api/mikrotik/status/:id', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
 
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
-        }
+        const result = await runWithMikrotik(area, async (api) => {
+            const resourceMenu = api.menu('/system/resource');
+            const resources = await resourceMenu.get();
+            const resource = resources[0];
 
-        const [host, port] = area.routerIp.split(':');
+            const pppoeActiveMenu = api.menu('/ppp/active');
+            const activePppoe = await pppoeActiveMenu.get();
+            
+            const pppSecretMenu = api.menu('/ppp/secret');
+            const allSecrets = await pppSecretMenu.get();
 
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
+            return {
+                cpuLoad: (resource && resource['cpu-load'] !== undefined) ? resource['cpu-load'] + '%' : '0%',
+                uptime: (resource && resource['uptime']) || 'Unknown',
+                activePppoe: activePppoe.length.toString(),
+                offlinePppoe: (allSecrets.length - activePppoe.length).toString()
+            };
+        }, res, "Mikrotik status error");
 
-        const api = await client.connect();
-
-        const resourceMenu = api.menu('/system/resource');
-        const resources = await resourceMenu.get();
-        const resource = resources[0];
-
-        const pppoeActiveMenu = api.menu('/ppp/active');
-        const activePppoe = await pppoeActiveMenu.get();
-        
-        const pppSecretMenu = api.menu('/ppp/secret');
-        const allSecrets = await pppSecretMenu.get();
-
-        client.close();
-
-        res.json({
-            cpuLoad: resource['cpu-load'] + '%',
-            uptime: resource['uptime'],
-            activePppoe: activePppoe.length.toString(),
-            offlinePppoe: (allSecrets.length - activePppoe.length).toString()
-        });
+        if (result) res.json(result);
     } catch (error) {
-        console.error("Mikrotik error:", error.message);
-        res.status(500).json({ error: "Failed to connect to Mikrotik: " + error.message });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -1958,33 +2049,23 @@ app.post('/api/mikrotik/secrets/:id', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
         
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        const success = await runWithMikrotik(area, async (api) => {
+            const secretMenu = api.menu('/ppp/secret');
+            await secretMenu.add({
+                name: name,
+                password: password,
+                profile: profile || 'default',
+                service: 'pppoe'
+            });
+            return true;
+        }, res, "Error adding Mikrotik secret");
+        
+        if (success) {
+            res.json({ message: "Secret berhasil ditambahkan" });
         }
-        
-        const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-
-        const api = await client.connect();
-        const secretMenu = api.menu('/ppp/secret');
-        await secretMenu.add({
-            name: name,
-            password: password,
-            profile: profile || 'default',
-            service: 'pppoe'
-        });
-        
-        client.close();
-        res.json({ message: "Secret berhasil ditambahkan" });
     } catch (error) {
-        console.error("Error adding Mikrotik secret:", error);
-        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -1996,34 +2077,28 @@ app.delete('/api/mikrotik/secrets/:id/:secretName', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
         
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        const result = await runWithMikrotik(area, async (api) => {
+            const secretMenu = api.menu('/ppp/secret');
+            const secrets = await secretMenu.where('name', secretName).get();
+            if (secrets.length === 0) {
+                return { status: 404, error: "Secret not found" };
+            }
+            
+            const secretId = secrets[0]['.id'] || secrets[0]['id'];
+            await secretMenu.remove(secretId);
+            return { success: true };
+        }, res, "Error deleting Mikrotik secret");
+        
+        if (result) {
+            if (result.error) {
+                res.status(result.status).json({ error: result.error });
+            } else {
+                res.json({ message: "Secret deleted successfully" });
+            }
         }
-        
-        const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        const api = await client.connect();
-        
-        const secretMenu = api.menu('/ppp/secret');
-        const secrets = await secretMenu.where('name', secretName).get();
-        if (secrets.length === 0) {
-            client.close();
-            return res.status(404).json({ error: "Secret not found" });
-        }
-        
-        const secretId = secrets[0]['.id'] || secrets[0]['id'];
-        await secretMenu.remove(secretId);
-        client.close();
-        res.json({ message: "Secret deleted successfully" });
     } catch (error) {
-        console.error("Error deleting Mikrotik secret:", error);
-        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -2037,39 +2112,32 @@ app.post('/api/mikrotik/secrets/:id/delete', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
         
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        const result = await runWithMikrotik(area, async (api) => {
+            const secretMenu = api.menu('/ppp/secret');
+            const secrets = await secretMenu.where('name', name).get();
+            if (secrets.length === 0) {
+                return { status: 404, error: "Secret not found" };
+            }
+            
+            const secretId = secrets[0]['.id'] || secrets[0]['id'];
+            if (!secretId) {
+                return { status: 400, error: "Gagal menemukan ID untuk secret ini di RouterOS" };
+            }
+            
+            await secretMenu.remove(secretId);
+            return { success: true };
+        }, res, "Error deleting Mikrotik secret via POST");
+        
+        if (result) {
+            if (result.error) {
+                res.status(result.status).json({ error: result.error });
+            } else {
+                res.json({ message: "Secret deleted successfully" });
+            }
         }
-        
-        const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        const api = await client.connect();
-        
-        const secretMenu = api.menu('/ppp/secret');
-        const secrets = await secretMenu.where('name', name).get();
-        if (secrets.length === 0) {
-            client.close();
-            return res.status(404).json({ error: "Secret not found" });
-        }
-        
-        const secretId = secrets[0]['.id'] || secrets[0]['id'];
-        if (!secretId) {
-            client.close();
-            return res.status(400).json({ error: "Gagal menemukan ID untuk secret ini di RouterOS" });
-        }
-        
-        await secretMenu.remove(secretId);
-        client.close();
-        res.json({ message: "Secret deleted successfully" });
     } catch (error) {
-        console.error("Error deleting Mikrotik secret via POST:", error);
-        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -2083,46 +2151,40 @@ app.post('/api/mikrotik/secrets/:id/disable', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
         
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
-        }
-        
-        const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        const api = await client.connect();
-        
-        const secretMenu = api.menu('/ppp/secret');
-        const secrets = await secretMenu.where('name', name).get();
-        if (secrets.length === 0) {
-            client.close();
-            return res.status(404).json({ error: "Secret not found" });
-        }
-        
-        const secretId = secrets[0]['.id'] || secrets[0]['id'];
-        await secretMenu.set({ disabled: 'yes' }, secretId);
-        
-        // Also remove active connection
-        try {
-            const activeMenu = api.menu('/ppp/active');
-            const actives = await activeMenu.where('name', name).get();
-            if (actives.length > 0) {
-                await activeMenu.remove(actives[0]['.id']);
+        const result = await runWithMikrotik(area, async (api) => {
+            const secretMenu = api.menu('/ppp/secret');
+            const secrets = await secretMenu.where('name', name).get();
+            if (secrets.length === 0) {
+                return { status: 404, error: "Secret not found" };
             }
-        } catch (activeErr) {
-            console.error("Error kicking active connection on disable:", activeErr.message);
-        }
+            
+            const secretId = secrets[0]['.id'] || secrets[0]['id'];
+            await secretMenu.set({ disabled: 'yes' }, secretId);
+            
+            // Also remove active connection
+            try {
+                const activeMenu = api.menu('/ppp/active');
+                const actives = await activeMenu.where('name', name).get();
+                if (actives.length > 0) {
+                    await activeMenu.remove(actives[0]['.id']);
+                }
+            } catch (activeErr) {
+                console.error("Error kicking active connection on disable:", activeErr.message);
+            }
+            
+            return { success: true };
+        }, res, "Error disabling Mikrotik secret");
         
-        client.close();
-        res.json({ message: "Secret disabled successfully" });
+        if (result) {
+            if (result.error) {
+                res.status(result.status).json({ error: result.error });
+            } else {
+                res.json({ message: "Secret disabled successfully" });
+            }
+        }
     } catch (error) {
-        console.error("Error disabling Mikrotik secret:", error);
-        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -2136,35 +2198,29 @@ app.post('/api/mikrotik/secrets/:id/enable', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
         
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        const result = await runWithMikrotik(area, async (api) => {
+            const secretMenu = api.menu('/ppp/secret');
+            const secrets = await secretMenu.where('name', name).get();
+            if (secrets.length === 0) {
+                return { status: 404, error: "Secret not found" };
+            }
+            
+            const secretId = secrets[0]['.id'] || secrets[0]['id'];
+            await secretMenu.set({ disabled: 'no' }, secretId);
+            
+            return { success: true };
+        }, res, "Error enabling Mikrotik secret");
+        
+        if (result) {
+            if (result.error) {
+                res.status(result.status).json({ error: result.error });
+            } else {
+                res.json({ message: "Secret enabled successfully" });
+            }
         }
-        
-        const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        const api = await client.connect();
-        
-        const secretMenu = api.menu('/ppp/secret');
-        const secrets = await secretMenu.where('name', name).get();
-        if (secrets.length === 0) {
-            client.close();
-            return res.status(404).json({ error: "Secret not found" });
-        }
-        
-        const secretId = secrets[0]['.id'] || secrets[0]['id'];
-        await secretMenu.set({ disabled: 'no' }, secretId);
-        
-        client.close();
-        res.json({ message: "Secret enabled successfully" });
     } catch (error) {
-        console.error("Error enabling Mikrotik secret:", error);
-        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -2178,33 +2234,27 @@ app.post('/api/mikrotik/secrets/:id/remove-active', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
         
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        const result = await runWithMikrotik(area, async (api) => {
+            const activeMenu = api.menu('/ppp/active');
+            const actives = await activeMenu.where('name', name).get();
+            if (actives.length === 0) {
+                return { status: 404, error: "Active connection not found" };
+            }
+            
+            await activeMenu.remove(actives[0]['.id']);
+            return { success: true };
+        }, res, "Error kicking active connection");
+        
+        if (result) {
+            if (result.error) {
+                res.status(result.status).json({ error: result.error });
+            } else {
+                res.json({ message: "Active connection kicked successfully" });
+            }
         }
-        
-        const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-        const api = await client.connect();
-        
-        const activeMenu = api.menu('/ppp/active');
-        const actives = await activeMenu.where('name', name).get();
-        if (actives.length === 0) {
-            client.close();
-            return res.status(404).json({ error: "Active connection not found" });
-        }
-        
-        await activeMenu.remove(actives[0]['.id']);
-        client.close();
-        res.json({ message: "Active connection kicked successfully" });
     } catch (error) {
-        console.error("Error kicking active connection:", error);
-        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -2215,35 +2265,21 @@ app.get('/api/mikrotik/profiles/:id', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
         
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        const result = await runWithMikrotik(area, async (api) => {
+            const pppProfileMenu = api.menu('/ppp/profile');
+            const allProfiles = await pppProfileMenu.get();
+            return allProfiles.map(p => ({
+                id: p['.id'] || p.name || Math.random().toString(36).substring(7),
+                name: p.name
+            }));
+        }, res, "Error fetching Mikrotik profiles");
+        
+        if (result) {
+            res.json(result);
         }
-        
-        const [host, port] = area.routerIp.split(':');
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-
-        const api = await client.connect();
-        
-        const pppProfileMenu = api.menu('/ppp/profile');
-        const allProfiles = await pppProfileMenu.get();
-        
-        client.close();
-        
-        const profiles = allProfiles.map(p => ({
-            id: p['.id'] || p.name || Math.random().toString(36).substring(7),
-            name: p.name
-        }));
-        
-        res.json(profiles);
     } catch (error) {
-        console.error("Error fetching Mikrotik profiles:", error);
-        res.status(500).json({ error: "Terjadi kesalahan: " + (error.message || error) });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -2254,49 +2290,35 @@ app.get('/api/mikrotik/secrets/:id', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
 
-        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
-            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        const result = await runWithMikrotik(area, async (api) => {
+            const pppSecretMenu = api.menu('/ppp/secret');
+            const allSecrets = await pppSecretMenu.get();
+            
+            const pppoeActiveMenu = api.menu('/ppp/active');
+            const activePppoe = await pppoeActiveMenu.get();
+            
+            const activeNames = activePppoe.map(p => p.name);
+            
+            return allSecrets.map(s => {
+                const isActive = activeNames.includes(s.name);
+                const activeDetail = isActive ? activePppoe.find(p => p.name === s.name) : null;
+                return {
+                    id: s['.id'] || s.name || Math.random().toString(36).substring(7),
+                    name: s.name,
+                    profile: s.profile,
+                    status: isActive ? "Online" : ((s.disabled === 'true' || s.disabled === true) ? "Disabled" : "Offline"),
+                    ipAddress: activeDetail ? activeDetail.address : "",
+                    uptime: activeDetail ? activeDetail.uptime : ""
+                };
+            });
+        }, res, "Mikrotik error");
+
+        if (result) {
+            res.json(result);
         }
-
-        const [host, port] = area.routerIp.split(':');
-
-        const client = new RouterOSClient({
-            host: host,
-            user: area.mikrotikUser,
-            password: area.mikrotikPassword,
-            port: parseInt(port) || 8728,
-            timeout: 5000
-        });
-
-        const api = await client.connect();
-        
-        const pppSecretMenu = api.menu('/ppp/secret');
-        const allSecrets = await pppSecretMenu.get();
-        
-        const pppoeActiveMenu = api.menu('/ppp/active');
-        const activePppoe = await pppoeActiveMenu.get();
-        
-        client.close();
-        
-        const activeNames = activePppoe.map(p => p.name);
-        
-        const secrets = allSecrets.map(s => {
-            const isActive = activeNames.includes(s.name);
-            const activeDetail = isActive ? activePppoe.find(p => p.name === s.name) : null;
-            return {
-                id: s['.id'] || s.name || Math.random().toString(36).substring(7),
-                name: s.name,
-                profile: s.profile,
-                status: isActive ? "Online" : ((s.disabled === 'true' || s.disabled === true) ? "Disabled" : "Offline"),
-                ipAddress: activeDetail ? activeDetail.address : "",
-                uptime: activeDetail ? activeDetail.uptime : ""
-            };
-        });
-
-        res.json(secrets);
     } catch (error) {
-        console.error("Mikrotik error:", error.message);
-        res.status(500).json({ error: "Failed to connect to Mikrotik: " + error.message });
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
 
@@ -2444,7 +2466,7 @@ wss.on('connection', async (ws, request) => {
             user: area.mikrotikUser,
             password: area.mikrotikPassword,
             port: parseInt(port) || 8728,
-            timeout: 5000
+            timeout: 3000
         });
 
         let api;
@@ -2461,9 +2483,32 @@ wss.on('connection', async (ws, request) => {
             }
         });
 
-        api = await client.connect();
+        try {
+            api = await connectMikrotik(client, 3000);
+        } catch (err) {
+            console.error("WS Mikrotik connection error:", err.message);
+            const isOffline = (
+                err.code === 'ECONNRESET' ||
+                err.errno === -104 ||
+                err.errno === 'ECONNRESET' ||
+                (err.message && (
+                    err.message.includes('ECONNRESET') ||
+                    err.message.includes('-104') ||
+                    err.message.includes('timed out') ||
+                    err.message.includes('Timeout') ||
+                    err.message.includes('ETIMEDOUT')
+                ))
+            );
+            ws.send(JSON.stringify({ 
+                error: isOffline ? "MIKROTIK_OFFLINE" : "Failed to connect to Mikrotik: " + err.message 
+            }));
+            try { client.close(); } catch(_) {}
+            ws.close();
+            return;
+        }
+
         if (isClosed) {
-            client.close();
+            try { client.close(); } catch (_) {}
             return;
         }
 

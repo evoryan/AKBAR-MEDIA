@@ -60,7 +60,17 @@ fun DashboardScreen(
     var expandedMonth by remember { mutableStateOf(false) }
     var expandedYear by remember { mutableStateOf(false) }
     
+    var allowedAreas by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
+    
     LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            try {
+                val fetchedAreas = com.example.ui.data.UserSession.getOrFetchAreas()
+                allowedAreas = fetchedAreas.filter { it.routerIp.isNotEmpty() && com.example.ui.data.UserSession.isAreaIdAllowed(it.id) }
+            } catch (e: Exception) {
+                // Ignore silent fail
+            }
+        }
         coroutineScope.launch {
             if (!UserSession.hasCheckedForUpdate) {
                 UserSession.hasCheckedForUpdate = true
@@ -403,7 +413,8 @@ fun DashboardScreen(
             }
         }
         
-        // PPPoE Offline Users
+        // PPPoE Offline Users (Swipeable)
+        val pppoePagerState = rememberPagerState(pageCount = { 1 + allowedAreas.size })
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -413,20 +424,60 @@ fun DashboardScreen(
                 .padding(20.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                    Text("PPPoE Offline", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
-                    Text("Lihat Semua", fontSize = 12.sp, color = primaryBg, modifier = Modifier.clickable { onNavigateToMikrotik() })
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                if (uiState is DashboardState.Success) {
-                    val offlineUsers = (uiState as DashboardState.Success).offlinePppoe
-                    if (offlineUsers.isEmpty()) {
-                        Text("Tidak ada PPPoE offline", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 14.sp)
+                HorizontalPager(state = pppoePagerState) { page ->
+                    if (page == 0) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("PPPoE Offline (Semua)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                                Text("Lihat Semua", fontSize = 12.sp, color = primaryBg, modifier = Modifier.clickable { onNavigateToMikrotik() })
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            if (uiState is DashboardState.Success) {
+                                val offlineUsers = (uiState as DashboardState.Success).offlinePppoe
+                                if (offlineUsers.isEmpty()) {
+                                    Text("Tidak ada PPPoE offline", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 14.sp)
+                                } else {
+                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        offlineUsers.take(5).forEach { user ->
+                                            OfflineUserItem(user.name, user.lastLogoff)
+                                        }
+                                    }
+                                }
+                            } else if (uiState is DashboardState.Loading) {
+                                Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(color = primaryBg, modifier = Modifier.size(24.dp))
+                                }
+                            } else {
+                                Text("Gagal memuat data", color = textSecondary, fontSize = 14.sp)
+                            }
+                        }
                     } else {
-                        offlineUsers.take(5).forEach { user ->
-                            OfflineUserItem(user.name, user.lastLogoff)
-                            Spacer(modifier = Modifier.height(12.dp))
+                        val area = allowedAreas[page - 1]
+                        DashboardAreaSecretsPage(
+                            area = area,
+                            primaryBg = primaryBg,
+                            textSecondary = textSecondary,
+                            onNavigateToMikrotik = onNavigateToMikrotik
+                        )
+                    }
+                }
+                
+                if (1 + allowedAreas.size > 1) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        repeat(1 + allowedAreas.size) { iteration ->
+                            val color = if (pppoePagerState.currentPage == iteration) primaryBg else cardBorder
+                            Box(
+                                modifier = Modifier
+                                    .padding(2.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .size(6.dp)
+                            )
                         }
                     }
                 }
@@ -502,5 +553,196 @@ fun OfflineUserItem(username: String, time: String) {
             Text(username, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
         Text(time, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+    }
+}
+
+@Composable
+fun DashboardAreaSecretsPage(
+    area: com.example.ui.screens.Area,
+    primaryBg: Color,
+    textSecondary: Color,
+    onNavigateToMikrotik: () -> Unit
+) {
+    var secrets by remember { mutableStateOf<List<com.example.ui.screens.PPPoESecret>?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var isOffline by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var retryTrigger by remember { mutableStateOf(0) }
+
+    LaunchedEffect(area.id, retryTrigger) {
+        isLoading = true
+        isOffline = false
+        errorMsg = null
+        try {
+            val res = com.example.ui.data.remote.ApiClient.apiService.getMikrotikSecrets(area.id)
+            secrets = res
+        } catch (e: Exception) {
+            isOffline = true
+            errorMsg = e.message
+        } finally {
+            isLoading = false
+        }
+    }
+
+    val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isOffline) Color(0xFFFF003C).copy(alpha = 0.1f)
+                            else if (isLoading) Color.Yellow.copy(alpha = 0.1f)
+                            else Color(0xFF00FF4D).copy(alpha = 0.1f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Router,
+                        contentDescription = null,
+                        tint = if (isOffline) Color(0xFFFF003C) else if (isLoading) Color.Yellow else Color(0xFF00FF4D),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        area.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = if (isDark) Color.White else Color(0xFF1A1A1A)
+                    )
+                    Text(
+                        "PPPoE Offline",
+                        fontSize = 11.sp,
+                        color = textSecondary
+                    )
+                }
+            }
+            IconButton(onClick = { retryTrigger++ }, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Refresh Area",
+                    tint = textSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = primaryBg, modifier = Modifier.size(24.dp))
+            }
+        } else if (isOffline) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .clickable { retryTrigger++ },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFFF003C),
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Mikrotik Offline",
+                        color = Color(0xFFFF003C),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Ketuk untuk mencoba lagi",
+                        color = textSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        } else {
+            val list = (secrets ?: emptyList()).filter { it.status.equals("offline", ignoreCase = true) }
+            if (list.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Tidak ada PPPoE offline", color = textSecondary, fontSize = 14.sp)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    list.take(5).forEach { secret ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    secret.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = if (isDark) Color.White else Color(0xFF1A1A1A)
+                                )
+                                Text(
+                                    "Profile: ${secret.profile}",
+                                    fontSize = 11.sp,
+                                    color = textSecondary
+                                )
+                            }
+                            
+                            val statusColor = when (secret.status) {
+                                "Online" -> Color(0xFF00FF4D)
+                                "Offline" -> Color(0xFFFF003C)
+                                else -> Color.Gray
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(statusColor.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    .clickable { onNavigateToMikrotik() }
+                            ) {
+                                Text(
+                                    secret.status,
+                                    color = statusColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    if (list.size > 5) {
+                        Text(
+                            "dan ${list.size - 5} secret lainnya...",
+                            fontSize = 12.sp,
+                            color = primaryBg,
+                            modifier = Modifier
+                                .clickable { onNavigateToMikrotik() }
+                                .padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }

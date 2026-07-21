@@ -11,7 +11,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    const val BASE_URL = "http://103.253.245.25:4500/"
+    private const val BASE_URL = "http://103.253.245.25:4500/"
     
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())

@@ -52,9 +52,14 @@ class DashboardViewModel : ViewModel() {
                 var offlineCount: List<OfflinePppoeUser> = emptyList()
                 try {
                     val offlineRes = ApiClient.apiService.getPppoeOffline()
+                    android.util.Log.d("DashboardViewModel", "Fetched offline PPPoE size: ${offlineRes.size}")
+                    offlineRes.forEach { 
+                        android.util.Log.d("DashboardViewModel", "Offline user: ${it.name}, Area: ${it.area}, LastLogoff: ${it.lastLogoff}")
+                    }
                     offlineCount = offlineRes.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
+                    android.util.Log.d("DashboardViewModel", "Filtered offline PPPoE size: ${offlineCount.size}")
                 } catch (e: Exception) {
-                    // Ignore offline PPPoE errors
+                    android.util.Log.e("DashboardViewModel", "Error getting offline PPPoE", e)
                 }
                 _uiState.value = DashboardState.Success(result, offlineCount)
             } catch (e: Exception) {

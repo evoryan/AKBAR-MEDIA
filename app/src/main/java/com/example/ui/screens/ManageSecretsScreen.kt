@@ -545,134 +545,15 @@ fun SecretCard(
 }
 
 @Composable
-fun WinboxTrafficGraph(
-    history: List<Pair<Float, Float>>,
-    colorRx: Color,
-    colorTx: Color,
-    modifier: Modifier = Modifier
-) {
-    androidx.compose.foundation.Canvas(modifier = modifier) {
-        val width = size.width
-        val height = size.height
-        
-        // Draw dark background
-        drawRect(color = Color(0xFF151515))
-        
-        // Draw horizontal grid lines
-        val gridLinesCount = 4
-        val gridColor = Color(0xFF282828)
-        for (i in 1 until gridLinesCount) {
-            val y = height * i / gridLinesCount
-            drawLine(
-                color = gridColor,
-                start = androidx.compose.ui.geometry.Offset(0f, y),
-                end = androidx.compose.ui.geometry.Offset(width, y),
-                strokeWidth = 1f
-            )
-        }
-        
-        // Draw vertical grid lines
-        val verticalGridCount = 8
-        for (i in 1 until verticalGridCount) {
-            val x = width * i / verticalGridCount
-            drawLine(
-                color = gridColor,
-                start = androidx.compose.ui.geometry.Offset(x, 0f),
-                end = androidx.compose.ui.geometry.Offset(x, height),
-                strokeWidth = 1f
-            )
-        }
-        
-        if (history.isEmpty()) return@Canvas
-        
-        // Find max value in history to auto-scale, with a minimum of 1.0 Mbps
-        val maxVal = history.flatMap { listOf(it.first, it.second) }.maxOrNull()?.coerceAtLeast(1f) ?: 1f
-        val scaleMax = maxVal * 1.15f
-        
-        val pointsCount = history.size
-        val dx = if (pointsCount > 1) width / (pointsCount - 1) else width
-        
-        val rxPath = androidx.compose.ui.graphics.Path()
-        val rxAreaPath = androidx.compose.ui.graphics.Path()
-        
-        val txPath = androidx.compose.ui.graphics.Path()
-        val txAreaPath = androidx.compose.ui.graphics.Path()
-        
-        history.forEachIndexed { index, pair ->
-            val rx = pair.first
-            val tx = pair.second
-            
-            val x = index * dx
-            val yRx = height - (rx / scaleMax) * height
-            val yTx = height - (tx / scaleMax) * height
-            
-            if (index == 0) {
-                rxPath.moveTo(x, yRx)
-                rxAreaPath.moveTo(x, height)
-                rxAreaPath.lineTo(x, yRx)
-                
-                txPath.moveTo(x, yTx)
-                txAreaPath.moveTo(x, height)
-                txAreaPath.lineTo(x, yTx)
-            } else {
-                rxPath.lineTo(x, yRx)
-                rxAreaPath.lineTo(x, yRx)
-                
-                txPath.lineTo(x, yTx)
-                txAreaPath.lineTo(x, yTx)
-            }
-            
-            if (index == pointsCount - 1) {
-                rxAreaPath.lineTo(x, height)
-                rxAreaPath.close()
-                
-                txAreaPath.lineTo(x, height)
-                txAreaPath.close()
-            }
-        }
-        
-        // Draw areas
-        drawPath(
-            path = rxAreaPath,
-            color = colorRx.copy(alpha = 0.20f)
-        )
-        drawPath(
-            path = txAreaPath,
-            color = colorTx.copy(alpha = 0.20f)
-        )
-        
-        // Draw solid lines
-        drawPath(
-            path = rxPath,
-            color = colorRx,
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
-        )
-        drawPath(
-            path = txPath,
-            color = colorTx,
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
-        )
-    }
-}
-
-@Composable
 fun SimpleTrafficChart(areaId: String, secretName: String) {
-    var currentRxString by remember { mutableStateOf("0.00 Mbps") }
-    var currentTxString by remember { mutableStateOf("0.00 Mbps") }
+    var currentRxString by remember { mutableStateOf("0.0 Mbps") }
+    var currentTxString by remember { mutableStateOf("0.0 Mbps") }
     
     var rxMbps by remember { mutableStateOf(0f) }
     var txMbps by remember { mutableStateOf(0f) }
     
-    val trafficHistory = remember {
-        val list = mutableStateListOf<Pair<Float, Float>>()
-        repeat(50) {
-            list.add(Pair(0f, 0f))
-        }
-        list
-    }
-    
-    val colorTx = Color(0xFF2ECC71) // Upload: Bright Green (Winbox style)
-    val colorRx = Color(0xFF3498DB) // Download: Bright Blue (Winbox style)
+    val colorTx = Color(0xFF51A351) // Upload
+    val colorRx = Color(0xFF2F70B8) // Download
     
     val localContext = androidx.compose.ui.platform.LocalContext.current
     val token = remember {
@@ -688,12 +569,9 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
     
     androidx.compose.runtime.LaunchedEffect(secretName) {
         val iface = "<pppoe-$secretName>"
-        val baseUrl = com.example.ui.data.remote.ApiClient.BASE_URL
-        val cleanBaseUrl = baseUrl.removeSuffix("/")
-        val wsBaseUrl = cleanBaseUrl.replace("http://", "ws://").replace("https://", "wss://")
-        val wsUrl = "$wsBaseUrl/ws/traffic?areaId=${areaId}&interface=${java.net.URLEncoder.encode(iface, "UTF-8")}&token=${token}"
-        
-        android.util.Log.d("SimpleTrafficChart", "Connecting WS: $wsUrl")
+        val baseUrl = "http://103.253.245.25:4500/"
+        val wsBaseUrl = baseUrl.replace("http://", "ws://").replace("https://", "wss://")
+        val wsUrl = "${wsBaseUrl}ws/traffic?areaId=${areaId}&interface=${java.net.URLEncoder.encode(iface, "UTF-8")}&token=${token}"
         
         val client = okhttp3.OkHttpClient.Builder()
             .readTimeout(0, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -709,7 +587,6 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
                     
                     val listener = object : okhttp3.WebSocketListener() {
                         override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) {
-                            android.util.Log.d("SimpleTrafficChart", "WS Opened successfully")
                             lastWsMessageTime = System.currentTimeMillis()
                         }
                         
@@ -717,25 +594,15 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
                             try {
                                 val jsonObject = org.json.JSONObject(text)
                                 if (jsonObject.has("error")) {
-                                    android.util.Log.e("SimpleTrafficChart", "WS Data Error: " + jsonObject.getString("error"))
                                     return
                                 }
+                                currentRxString = jsonObject.optString("rx_string", "0.0 Mbps")
+                                currentTxString = jsonObject.optString("tx_string", "0.0 Mbps")
                                 
                                 val rxVal = jsonObject.optDouble("rx", 0.0)
                                 val txVal = jsonObject.optDouble("tx", 0.0)
-                                val rMbps = (rxVal / 1_000_000.0).toFloat()
-                                val tMbps = (txVal / 1_000_000.0).toFloat()
-                                
-                                rxMbps = rMbps
-                                txMbps = tMbps
-                                
-                                currentRxString = String.format(java.util.Locale.US, "%.2f Mbps", rMbps)
-                                currentTxString = String.format(java.util.Locale.US, "%.2f Mbps", tMbps)
-                                
-                                trafficHistory.add(Pair(rMbps, tMbps))
-                                if (trafficHistory.size > 50) {
-                                    trafficHistory.removeAt(0)
-                                }
+                                rxMbps = (rxVal / 1_000_000.0).toFloat()
+                                txMbps = (txVal / 1_000_000.0).toFloat()
                                 
                                 lastWsMessageTime = System.currentTimeMillis()
                             } catch(e: Exception) {
@@ -744,11 +611,11 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
                         }
                         
                         override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
-                            android.util.Log.e("SimpleTrafficChart", "WS Failure: ${t.message}", t)
+                            // Let polling handle it on failure
                         }
                         
                         override fun onClosed(webSocket: okhttp3.WebSocket, code: Int, reason: String) {
-                            android.util.Log.d("SimpleTrafficChart", "WS Closed: $reason")
+                            // Let polling handle it on close
                         }
                     }
                     
@@ -758,7 +625,6 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
                         while (true) {
                             kotlinx.coroutines.delay(2000)
                             if (System.currentTimeMillis() - lastWsMessageTime > 10000) {
-                                android.util.Log.d("SimpleTrafficChart", "WS Timeout, reconnecting...")
                                 break
                             }
                         }
@@ -778,40 +644,26 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
                     val now = System.currentTimeMillis()
                     if (now - lastWsMessageTime > 5000) {
                         try {
-                            android.util.Log.d("SimpleTrafficChart", "WS inactive, using Polling fallback for interface $iface")
                             val responseList = com.example.ui.data.remote.ApiClient.apiService.getMikrotikTraffic(areaId, iface)
                             if (responseList.isNotEmpty()) {
                                 val response = responseList[0]
                                 val rxBits = response.rxBits?.toLongOrNull() ?: response.rx ?: ((response.rxByte ?: 0) * 8)
                                 val txBits = response.txBits?.toLongOrNull() ?: response.tx ?: ((response.txByte ?: 0) * 8)
                                 
-                                val rMbps = rxBits.toFloat() / 1_000_000f
-                                val tMbps = txBits.toFloat() / 1_000_000f
-                                rxMbps = rMbps
-                                txMbps = tMbps
+                                rxMbps = rxBits.toFloat() / 1_000_000f
+                                txMbps = txBits.toFloat() / 1_000_000f
                                 
-                                currentRxString = String.format(java.util.Locale.US, "%.2f Mbps", rMbps)
-                                currentTxString = String.format(java.util.Locale.US, "%.2f Mbps", tMbps)
-                                
-                                trafficHistory.add(Pair(rMbps, tMbps))
-                                if (trafficHistory.size > 50) {
-                                    trafficHistory.removeAt(0)
-                                }
+                                currentRxString = response.rxString ?: String.format(java.util.Locale.US, "%.1f Mbps", rxMbps)
+                                currentTxString = response.txString ?: String.format(java.util.Locale.US, "%.1f Mbps", txMbps)
                             } else {
-                                currentRxString = "0.00 Mbps"
-                                currentTxString = "0.00 Mbps"
+                                currentRxString = "0.0 Mbps"
+                                currentTxString = "0.0 Mbps"
                                 rxMbps = 0f
                                 txMbps = 0f
-                                
-                                trafficHistory.add(Pair(0f, 0f))
-                                if (trafficHistory.size > 50) {
-                                    trafficHistory.removeAt(0)
-                                }
                             }
                         } catch(e: Exception) {
-                            android.util.Log.e("SimpleTrafficChart", "Polling fallback failed: ${e.message}", e)
-                            currentRxString = "0.00 Mbps"
-                            currentTxString = "0.00 Mbps"
+                            currentRxString = "0.0 Mbps"
+                            currentTxString = "0.0 Mbps"
                         }
                     }
                     kotlinx.coroutines.delay(2000)
@@ -829,7 +681,6 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Legend and real-time numeric text
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "Download", tint = colorRx, modifier = Modifier.size(16.dp))
@@ -846,63 +697,6 @@ fun SimpleTrafficChart(areaId: String, secretName: String) {
                 Text("TX (Upload):", color = Color.LightGray, fontSize = 12.sp)
             }
             Text(currentTxString, color = colorTx, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        }
-        
-        Spacer(modifier = Modifier.height(4.dp))
-        
-        // Custom real-time Winbox-style scrolling graph
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(110.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .border(1.dp, Color(0xFF333333), RoundedCornerShape(4.dp))
-        ) {
-            WinboxTrafficGraph(
-                history = trafficHistory,
-                colorRx = colorRx,
-                colorTx = colorTx,
-                modifier = Modifier.fillMaxSize()
-            )
-            
-            // Auto-scale labels overlaid on the graph
-            val maxVal = trafficHistory.flatMap { listOf(it.first, it.second) }.maxOrNull()?.coerceAtLeast(1f) ?: 1f
-            val scaleMax = maxVal * 1.15f
-            
-            Column(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = String.format(java.util.Locale.US, "%.2f Mbps", scaleMax),
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                )
-                Text(
-                    text = String.format(java.util.Locale.US, "%.2f Mbps", scaleMax / 2f),
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                )
-                Text(
-                    text = "0.00 Mbps",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                )
-            }
         }
     }
 }
