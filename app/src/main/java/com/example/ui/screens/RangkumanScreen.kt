@@ -34,7 +34,7 @@ fun RangkumanScreen(onBack: () -> Unit) {
     val neonYellow = Color(0xFFFFC107)
 
     var selectedMonth by remember { mutableStateOf("Semua Waktu") }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     var pembukuanData by remember { mutableStateOf<com.example.ui.data.remote.PembukuanResponse?>(null) }
     var totalUangBelumDiSetor by remember { mutableStateOf(0.0) }
     var totalSudahDiSetor by remember { mutableStateOf(0.0) }
@@ -55,7 +55,7 @@ fun RangkumanScreen(onBack: () -> Unit) {
             totalUangBelumDiSetor = sumSisa
             totalSudahDiSetor = sumSetor
         } catch(e: Exception) {}
-        finally { isLoading = false }
+        finally { isBackgroundLoading = false }
     }
     var monthDropdownExpanded by remember { mutableStateOf(false) }
     val months = listOf("Semua Waktu")
@@ -78,9 +78,19 @@ fun RangkumanScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = primaryCyan
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             Text(
                 "Rangkuman Pembukuan",
                 color = textMain,
@@ -142,22 +152,22 @@ fun RangkumanScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Pembayaran Tunai", color = textSecondary, fontSize = 14.sp)
-                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.pemasukan?.toLong() ?: 0L)).replace(",", ".")}", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if(isBackgroundLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.pemasukan?.toLong() ?: 0L)).replace(",", ".")}", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Pemasukkan Lain-lain", color = textSecondary, fontSize = 14.sp)
-                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.categories?.get("Lain-lain")?.toLong() ?: 0L)).replace(",", ".")}", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if(isBackgroundLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.categories?.get("Lain-lain")?.toLong() ?: 0L)).replace(",", ".")}", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Pengeluaran", color = neonRed, fontSize = 14.sp)
-                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.pengeluaran?.toLong() ?: 0L)).replace(",", ".")}", color = neonRed, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if(isBackgroundLoading) "..." else "Rp. ${String.format("%,d", (pembukuanData?.pengeluaran?.toLong() ?: 0L)).replace(",", ".")}", color = neonRed, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     
                     Divider(color = Color(0xFF333333), thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
                     
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Total", color = textSecondary, fontSize = 14.sp)
-                        Text(if(isLoading) "..." else "Rp. ${String.format("%,d", ((pembukuanData?.pemasukan ?: 0.0) - (pembukuanData?.pengeluaran ?: 0.0)).toLong()).replace(",", ".")}", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(if(isBackgroundLoading) "..." else "Rp. ${String.format("%,d", ((pembukuanData?.pemasukan ?: 0.0) - (pembukuanData?.pengeluaran ?: 0.0)).toLong()).replace(",", ".")}", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -174,11 +184,11 @@ fun RangkumanScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Uang Belum di Setor", color = textSecondary, fontSize = 14.sp)
-                        Text(if (isLoading) "..." else "Rp. ${String.format("%,d", totalUangBelumDiSetor.toLong()).replace(",", ".")}", color = neonYellow, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (isBackgroundLoading) "..." else "Rp. ${String.format("%,d", totalUangBelumDiSetor.toLong()).replace(",", ".")}", color = neonYellow, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Sudah di Setor", color = textSecondary, fontSize = 14.sp)
-                        Text(if (isLoading) "..." else "Rp. ${String.format("%,d", totalSudahDiSetor.toLong()).replace(",", ".")}", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (isBackgroundLoading) "..." else "Rp. ${String.format("%,d", totalSudahDiSetor.toLong()).replace(",", ".")}", color = neonGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -194,4 +204,5 @@ fun RangkumanScreen(onBack: () -> Unit) {
             )
         }
     }
+}
 }

@@ -16,6 +16,7 @@ object SettingsManager {
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         themeStateFlow.value = appTheme
+        fontScaleStateFlow.value = fontScale
     }
 
     var companyName: String
@@ -35,6 +36,16 @@ object SettingsManager {
         }
 
     val themeStateFlow = kotlinx.coroutines.flow.MutableStateFlow("Sesuai Sistem")
+
+    private const val KEY_FONT_SCALE = "font_scale"
+    var fontScale: String
+        get() = prefs.getString(KEY_FONT_SCALE, "Kecil") ?: "Kecil"
+        set(value) {
+            prefs.edit().putString(KEY_FONT_SCALE, value).apply()
+            fontScaleStateFlow.value = value
+        }
+
+    val fontScaleStateFlow = kotlinx.coroutines.flow.MutableStateFlow("Kecil")
 
     var dashboardInfo2: String
         get() = prefs.getString(KEY_DASHBOARD_INFO_2, "Tersedia update router firmware") ?: "Tersedia update router firmware"

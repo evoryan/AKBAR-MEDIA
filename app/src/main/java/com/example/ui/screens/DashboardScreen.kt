@@ -414,7 +414,8 @@ fun DashboardScreen(
         }
         
         // PPPoE Offline Users (Swipeable)
-        val pppoePagerState = rememberPagerState(pageCount = { 1 + allowedAreas.size })
+        val pageCountValue = if (allowedAreas.isEmpty()) 1 else allowedAreas.size
+        val pppoePagerState = rememberPagerState(pageCount = { pageCountValue })
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -425,35 +426,14 @@ fun DashboardScreen(
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 HorizontalPager(state = pppoePagerState) { page ->
-                    if (page == 0) {
+                    if (allowedAreas.isEmpty()) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Text("PPPoE Offline (Semua)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
-                                Text("Lihat Semua", fontSize = 12.sp, color = primaryBg, modifier = Modifier.clickable { onNavigateToMikrotik() })
-                            }
+                            Text("PPPoE Offline", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                             Spacer(modifier = Modifier.height(16.dp))
-                            
-                            if (uiState is DashboardState.Success) {
-                                val offlineUsers = (uiState as DashboardState.Success).offlinePppoe
-                                if (offlineUsers.isEmpty()) {
-                                    Text("Tidak ada PPPoE offline", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 14.sp)
-                                } else {
-                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        offlineUsers.take(5).forEach { user ->
-                                            OfflineUserItem(user.name, user.lastLogoff)
-                                        }
-                                    }
-                                }
-                            } else if (uiState is DashboardState.Loading) {
-                                Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(color = primaryBg, modifier = Modifier.size(24.dp))
-                                }
-                            } else {
-                                Text("Gagal memuat data", color = textSecondary, fontSize = 14.sp)
-                            }
+                            Text("Tidak ada area terkonfigurasi atau diizinkan", color = textSecondary, fontSize = 14.sp)
                         }
                     } else {
-                        val area = allowedAreas[page - 1]
+                        val area = allowedAreas[page]
                         DashboardAreaSecretsPage(
                             area = area,
                             primaryBg = primaryBg,
@@ -463,13 +443,13 @@ fun DashboardScreen(
                     }
                 }
                 
-                if (1 + allowedAreas.size > 1) {
+                if (pageCountValue > 1) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        repeat(1 + allowedAreas.size) { iteration ->
+                        repeat(pageCountValue) { iteration ->
                             val color = if (pppoePagerState.currentPage == iteration) primaryBg else cardBorder
                             Box(
                                 modifier = Modifier

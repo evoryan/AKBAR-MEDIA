@@ -66,20 +66,20 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
     var showOnlyOffline by remember { mutableStateOf(false) }
     
     var allDevices by remember { mutableStateOf<List<AcsDevice>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedArea by remember { mutableStateOf<com.example.ui.screens.Area?>(null) }
 
     LaunchedEffect(Unit) {
         try {
-            isLoading = true
+            isBackgroundLoading = true
             com.example.ui.data.UserSession.getOrFetchAreas()
             val raw = ApiClient.apiService.getAcsDevices()
             allDevices = raw.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.areaName ?: "") }
         } catch(e: Exception) {
             errorMsg = "Gagal memuat data ACS: ${e.message}"
         } finally {
-            isLoading = false
+            isBackgroundLoading = false
         }
     }
 
@@ -116,11 +116,11 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = primaryCyan)
-                }
-                return@Scaffold
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    color = primaryCyan
+                )
             }
             
             if (errorMsg != null) {

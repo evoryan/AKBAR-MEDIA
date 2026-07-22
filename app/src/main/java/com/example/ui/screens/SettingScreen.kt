@@ -113,8 +113,8 @@ fun SettingScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // TEMA
-            Text("TEMA APLIKASI", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
+            // TAMPILAN APLIKASI
+            Text("TAMPILAN APLIKASI", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
             val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -132,6 +132,9 @@ fun SettingScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
             var currentTheme by remember { mutableStateOf(com.example.ui.data.SettingsManager.appTheme) }
             
+            var showFontScaleDialog by remember { mutableStateOf(false) }
+            var currentFontScale by remember { mutableStateOf(com.example.ui.data.SettingsManager.fontScale) }
+            
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -139,13 +142,23 @@ fun SettingScreen(
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             ) {
-                SettingItem(
-                    icon = Icons.Default.Palette, 
-                    title = "Tema Aplikasi", 
-                    subtitle = currentTheme, 
-                    iconTint = textMain, 
-                    onClick = { showThemeDialog = true }
-                )
+                Column {
+                    SettingItem(
+                        icon = Icons.Default.Palette, 
+                        title = "Tema Aplikasi", 
+                        subtitle = currentTheme, 
+                        iconTint = textMain, 
+                        onClick = { showThemeDialog = true }
+                    )
+                    HorizontalDivider(color = cardBorder)
+                    SettingItem(
+                        icon = Icons.Default.FormatSize, 
+                        title = "Skala Ukuran Font", 
+                        subtitle = currentFontScale, 
+                        iconTint = textMain, 
+                        onClick = { showFontScaleDialog = true }
+                    )
+                }
             }
             
             if (showThemeDialog) {
@@ -180,6 +193,44 @@ fun SettingScreen(
                     },
                     confirmButton = {
                         TextButton(onClick = { showThemeDialog = false }) {
+                            Text("Batal", color = primaryBg)
+                        }
+                    }
+                )
+            }
+
+            if (showFontScaleDialog) {
+                AlertDialog(
+                    onDismissRequest = { showFontScaleDialog = false },
+                    title = { Text("Pilih Ukuran Font", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)) },
+                    containerColor = cardBg,
+                    text = {
+                        Column {
+                            listOf("Kecil", "Sedang", "Besar").forEach { scaleName ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            com.example.ui.data.SettingsManager.fontScale = scaleName
+                                            currentFontScale = scaleName
+                                            showFontScaleDialog = false
+                                        }
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = (scaleName == currentFontScale),
+                                        onClick = null,
+                                        colors = RadioButtonDefaults.colors(selectedColor = primaryBg)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(scaleName, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showFontScaleDialog = false }) {
                             Text("Batal", color = primaryBg)
                         }
                     }

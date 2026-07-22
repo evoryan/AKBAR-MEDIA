@@ -42,7 +42,7 @@ fun RasioScreen(onBack: () -> Unit) {
     var areaList by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
     var odcList by remember { mutableStateOf<List<com.example.ui.data.OdcItem>>(emptyList()) }
     var odpList by remember { mutableStateOf<List<com.example.ui.data.OdpItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     var showDialog by remember { mutableStateOf(false) }
     var editItem by remember { mutableStateOf<RasioItem?>(null) }
     
@@ -65,7 +65,7 @@ fun RasioScreen(onBack: () -> Unit) {
         } catch (e: Exception) {
             Toast.makeText(context, "Gagal memuat rasio", Toast.LENGTH_SHORT).show()
         } finally {
-            isLoading = false
+            isBackgroundLoading = false
         }
     }
     
@@ -92,15 +92,21 @@ fun RasioScreen(onBack: () -> Unit) {
         },
         containerColor = bgMain
     ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = primaryBg)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = primaryBg,
+                    trackColor = cardBorder
+                )
             }
-        } else {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .padding(horizontal = 16.dp)
             ) {
                 Row(

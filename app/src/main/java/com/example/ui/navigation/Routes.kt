@@ -24,7 +24,7 @@ object MikrotikRoute
 data class AcsRoute(val searchQuery: String = "")
 
 @Serializable
-data class ManageSecretsRoute(val areaId: String)
+data class ManageSecretsRoute(val areaId: String, val initialFilter: String = "ALL")
 
 @Serializable
 object AddCustomerRoute
@@ -119,3 +119,6 @@ object JaringanRoute
 object RasioRoute
 @Serializable
 object ProfileRoute
+
+@Serializable
+object NocDashboardRoute

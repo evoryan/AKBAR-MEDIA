@@ -57,7 +57,7 @@ fun FloatingNavBar(
             NavItem(
                 icon = Icons.Default.Dashboard,
                 label = "Beranda",
-                isSelected = currentRoute?.contains("DashboardRoute") == true,
+                isSelected = currentRoute?.contains("DashboardRoute") == true || currentRoute?.contains("NocDashboardRoute") == true,
                 primaryContainer = primaryContainer,
                 onPrimaryContainer = onPrimaryContainer,
                 textSecondary = textSecondary,

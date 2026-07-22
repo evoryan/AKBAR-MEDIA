@@ -55,7 +55,7 @@ import java.util.*
 fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String, onFinish: () -> Unit) {
     val context = LocalContext.current
     var customer by remember { mutableStateOf<Customer?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     
     LaunchedEffect(customerId) {
         try {
@@ -64,7 +64,7 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
         } catch(e: Exception) {
             Toast.makeText(context, "Gagal memuat data pelanggan", Toast.LENGTH_SHORT).show()
         } finally {
-            isLoading = false
+            isBackgroundLoading = false
         }
     }
 
@@ -123,6 +123,13 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
                 .verticalScroll(rememberScrollState())
                 .padding(24.dp)
         ) {
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    color = neonCyan,
+                    trackColor = Color.Transparent
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

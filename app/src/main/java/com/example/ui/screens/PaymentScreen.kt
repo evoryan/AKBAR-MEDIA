@@ -57,7 +57,7 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     var customer by remember { mutableStateOf<Customer?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     
     val currentMonth = remember {
         val cal = java.util.Calendar.getInstance()
@@ -106,7 +106,7 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
         } catch(e: Exception) {
             android.widget.Toast.makeText(context, "Gagal memuat pelanggan", android.widget.Toast.LENGTH_SHORT).show()
         } finally {
-            isLoading = false
+            isBackgroundLoading = false
         }
     }
     
@@ -147,17 +147,23 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
             )
         }
     ) { innerPadding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = neonCyan)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(bgMain)
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = neonCyan,
+                    trackColor = cardBorder
+                )
             }
-        } else {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(bgMain)
-                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {

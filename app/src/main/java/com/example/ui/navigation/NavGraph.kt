@@ -15,6 +15,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -55,9 +58,29 @@ fun AkbarMediaNavGraph() {
         NavHost(
             navController = navController,
             startDestination = SplashRoute,
-            modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomNav) 104.dp else 0.dp)
+            modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomNav) 104.dp else 0.dp),
+            enterTransition = { fadeIn(animationSpec = tween(100)) },
+            exitTransition = { fadeOut(animationSpec = tween(100)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(100)) },
+            popExitTransition = { fadeOut(animationSpec = tween(100)) }
         ) {
-                        composable<SplashRoute> {
+            composable<NocDashboardRoute> {
+                NocDashboardScreen(
+                    onNavigateToAcs = { navController.navigate(AcsRoute("")) },
+                    onNavigateToMikrotik = { navController.navigate(MikrotikRoute) },
+                    onNavigateToJaringan = { navController.navigate(JaringanRoute) },
+                    onNavigateToPelanggan = { navController.navigate(CustomersRoute) },
+                    onNavigateToPembukuan = { navController.navigate(SemuaPembukuanRoute()) },
+                    onNavigateToSetting = { navController.navigate(SettingRoute) },
+                    onNavigateToDashboard = { navController.navigate(DashboardRoute) },
+                    onNavigateToManageSecrets = { areaId, filter ->
+                        navController.navigate(ManageSecretsRoute(areaId = areaId, initialFilter = filter))
+                    },
+                    onNavigateToStockBarang = { navController.navigate(StockBarangRoute) }
+                )
+            }
+
+            composable<SplashRoute> {
                 SplashScreen(
                     onNavigateToLogin = {
                         navController.navigate(LoginRoute) {
@@ -65,8 +88,15 @@ fun AkbarMediaNavGraph() {
                         }
                     },
                     onNavigateToDashboard = {
-                        navController.navigate(DashboardRoute) {
-                            popUpTo(SplashRoute) { inclusive = true }
+                        val currentUser = com.example.ui.data.UserSession.currentUser.value
+                        if (currentUser?.role == com.example.ui.data.UserRole.TEKNISI) {
+                            navController.navigate(NocDashboardRoute) {
+                                popUpTo(SplashRoute) { inclusive = true }
+                            }
+                        } else {
+                            navController.navigate(DashboardRoute) {
+                                popUpTo(SplashRoute) { inclusive = true }
+                            }
                         }
                     }
                 )
@@ -75,8 +105,15 @@ fun AkbarMediaNavGraph() {
             composable<LoginRoute> {
                 LoginScreen(
                     onLoginSuccess = {
-                        navController.navigate(DashboardRoute) {
-                            popUpTo(LoginRoute) { inclusive = true }
+                        val currentUser = com.example.ui.data.UserSession.currentUser.value
+                        if (currentUser?.role == com.example.ui.data.UserRole.TEKNISI) {
+                            navController.navigate(NocDashboardRoute) {
+                                popUpTo(LoginRoute) { inclusive = true }
+                            }
+                        } else {
+                            navController.navigate(DashboardRoute) {
+                                popUpTo(LoginRoute) { inclusive = true }
+                            }
                         }
                     }
                 )
@@ -321,7 +358,11 @@ fun AkbarMediaNavGraph() {
             }
             composable<ManageSecretsRoute> {
                 val route = it.toRoute<ManageSecretsRoute>()
-                ManageSecretsScreen(areaId = route.areaId, onBack = { navController.popBackStack() })
+                ManageSecretsScreen(
+                    areaId = route.areaId,
+                    initialFilter = route.initialFilter,
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
         
@@ -332,8 +373,15 @@ fun AkbarMediaNavGraph() {
                 FloatingNavBar(
                     currentRoute = currentDestination,
                     onNavigateToDashboard = { 
-                        navController.navigate(DashboardRoute) {
-                            popUpTo(DashboardRoute) { inclusive = true }
+                        val currentUser = com.example.ui.data.UserSession.currentUser.value
+                        if (currentUser?.role == com.example.ui.data.UserRole.TEKNISI) {
+                            navController.navigate(NocDashboardRoute) {
+                                popUpTo(NocDashboardRoute) { inclusive = true }
+                            }
+                        } else {
+                            navController.navigate(DashboardRoute) {
+                                popUpTo(DashboardRoute) { inclusive = true }
+                            }
                         }
                     },
                     onNavigateToCustomers = { navController.navigate(CustomersRoute) },

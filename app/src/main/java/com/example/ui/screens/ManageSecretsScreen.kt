@@ -48,7 +48,7 @@ data class PPPoESecret(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
+fun ManageSecretsScreen(areaId: String, initialFilter: String = "ALL", onBack: () -> Unit) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
@@ -61,7 +61,16 @@ fun ManageSecretsScreen(areaId: String, onBack: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
-    var currentFilter by remember { mutableStateOf(SecretFilter.ALL) }
+    var currentFilter by remember {
+        mutableStateOf(
+            when (initialFilter) {
+                "ONLINE" -> SecretFilter.ONLINE
+                "OFFLINE" -> SecretFilter.OFFLINE
+                "DISABLED" -> SecretFilter.DISABLED
+                else -> SecretFilter.ALL
+            }
+        )
+    }
     var searchQuery by remember { mutableStateOf("") }
     
     var showAddDialog by remember { mutableStateOf(false) }

@@ -163,6 +163,9 @@ interface ApiService {
     @GET("api/dashboard/summary")
     suspend fun getDashboardSummary(): DashboardSummaryResponse
 
+    @GET("api/sync")
+    suspend fun syncData(): SyncResponse
+
     @POST("api/login")
     suspend fun login(@Body request: LoginRequest): AdminUser
 
@@ -372,7 +375,54 @@ data class PaymentHistory(
     @com.squareup.moshi.Json(name = "created_at") val createdAt: String? = null
 )
 
+data class SyncResponse(
+    val customers: List<CustomerSyncItem>,
+    val tagihan: List<TagihanSyncItem>,
+    val routerStatus: List<RouterStatusSyncItem>
+)
 
+data class CustomerSyncItem(
+    val id: String,
+    val name: String? = null,
+    val phone: String? = null,
+    val area: String? = null,
+    val address: String? = null,
+    val username: String? = null,
+    val billingDate: String? = null,
+    val status: String? = null,
+    val price: String? = null,
+    val discount: String? = null,
+    val register_date: String? = null,
+    val isolate_date: String? = null,
+    val package_name: String? = null,
+    val pppoe_secret: String? = null,
+    val odp_id: String? = null,
+    val odp_port: String? = null,
+    val additionalCost1: String? = null,
+    val additionalCost2: String? = null
+)
 
+data class TagihanSyncItem(
+    val id: String,
+    val customer_id: String? = null,
+    val bulan: String? = null,
+    val tahun: Int? = null,
+    val amount: String? = null,
+    val status: String? = null,
+    val admin_name: String? = null,
+    val created_at: String? = null
+)
+
+data class RouterStatusSyncItem(
+    val id: String,
+    val area_id: String? = null,
+    val area_name: String? = null,
+    val cpu_load: String? = null,
+    val uptime: String? = null,
+    val active_pppoe: String? = null,
+    val offline_pppoe: String? = null,
+    val status: String? = null,
+    val updated_at: String? = null
+)
 
 data class PingResponse(val status: String)

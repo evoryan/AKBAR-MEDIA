@@ -227,15 +227,18 @@ fun MikrotikCard(
             }
             
             if (isLoading) {
-                Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = neonCyan)
-                }
-            } else if (errorMsg != null) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = neonCyan,
+                    trackColor = Color.Transparent
+                )
+            }
+            if (errorMsg != null) {
                 Text(errorMsg!!, color = Color(0xFFFF003C), fontSize = 14.sp)
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    MikrotikStatCard("Active PPPoE", mikrotikStatus?.activePppoe ?: "-", neonCyan, textMain, textSecondary, Modifier.weight(1f))
-                    MikrotikStatCard("PPPoE Offline", mikrotikStatus?.offlinePppoe ?: "-", neonCyan, textMain, textSecondary, Modifier.weight(1f))
+                    MikrotikStatCard("Active PPPoE", if (isLoading) "..." else (mikrotikStatus?.activePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f))
+                    MikrotikStatCard("PPPoE Offline", if (isLoading) "..." else (mikrotikStatus?.offlinePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f))
                 }
             }
             

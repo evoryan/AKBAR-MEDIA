@@ -1049,7 +1049,7 @@ fun BotWaPackageQrScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var packages by remember { mutableStateOf<List<com.example.ui.screens.InternetPackage>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
@@ -1063,7 +1063,7 @@ fun BotWaPackageQrScreen() {
             } catch (e: Exception) {
                 android.widget.Toast.makeText(context, "Gagal memuat paket: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
             } finally {
-                isLoading = false
+                isBackgroundLoading = false
             }
         }
     }
@@ -1072,11 +1072,14 @@ fun BotWaPackageQrScreen() {
         loadPackages()
     }
 
-    if (isLoading) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = neonCyan)
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (isBackgroundLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = neonCyan,
+                trackColor = Color.Transparent
+            )
         }
-    } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1170,7 +1173,7 @@ fun BotWaHistoryScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var history by remember { mutableStateOf<List<com.example.ui.data.remote.WaHistoryItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
 
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
@@ -1184,7 +1187,7 @@ fun BotWaHistoryScreen() {
             } catch (e: Exception) {
                 android.widget.Toast.makeText(context, "Gagal memuat riwayat: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
             } finally {
-                isLoading = false
+                isBackgroundLoading = false
             }
         }
     }
@@ -1193,11 +1196,14 @@ fun BotWaHistoryScreen() {
         loadHistory()
     }
 
-    if (isLoading) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = neonCyan)
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (isBackgroundLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = neonCyan,
+                trackColor = Color.Transparent
+            )
         }
-    } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)

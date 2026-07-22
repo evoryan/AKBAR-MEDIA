@@ -50,7 +50,7 @@ fun EditCustomerScreen(customerId: String,
     val context = LocalContext.current
 
     var originalCustomer by remember { mutableStateOf<Customer?>(null) }
-    var isLoadingCustomer by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
@@ -189,7 +189,7 @@ fun EditCustomerScreen(customerId: String,
         } catch (e: Exception) {
             android.widget.Toast.makeText(context, "Gagal memuat data: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         } finally {
-            isLoadingCustomer = false
+            isBackgroundLoading = false
         }
     }
 
@@ -699,22 +699,25 @@ fun EditCustomerScreen(customerId: String,
         )
     }
 
-    if (isLoadingCustomer) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = primaryPurple)
-        }
-        return
-    }
     Scaffold(
         topBar = {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(bgDark).padding(horizontal = 16.dp, vertical = 20.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(bgDark).padding(horizontal = 16.dp, vertical = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                    }
+                    Text("Edit Pelanggan", color = textMain, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
                 }
-                Text("Edit Pelanggan", color = textMain, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+                if (isBackgroundLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = neonCyan,
+                        trackColor = Color.Transparent
+                    )
+                }
             }
         },
         containerColor = bgDark

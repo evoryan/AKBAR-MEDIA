@@ -149,7 +149,7 @@ fun InventoryScreen(onBack: () -> Unit) {
                                 Text("Stock: ${item.stock}", color = primaryBg, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                             Row {
-                                if (currentUser?.role == UserRole.SUPER_ADMIN) {
+                                if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.TEKNISI) {
                                     IconButton(onClick = {
                                     editItem = item
                                     showDialog = true

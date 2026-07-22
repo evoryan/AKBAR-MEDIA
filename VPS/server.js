@@ -700,6 +700,92 @@ app.get('/api/customers', async (req, res) => {
     }
 });
 
+app.get('/api/sync', async (req, res) => {
+    try {
+        await req.pool.query(`
+            CREATE TABLE IF NOT EXISTS status_router_terakhir (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                area_id INT UNIQUE,
+                area_name VARCHAR(100),
+                cpu_load VARCHAR(50),
+                uptime VARCHAR(50),
+                active_pppoe VARCHAR(50),
+                offline_pppoe VARCHAR(50),
+                status VARCHAR(20) DEFAULT 'Online',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `).catch(e => console.error("Error creating status_router_terakhir table:", e.message));
+
+        const [areas] = await req.pool.query('SELECT * FROM areas');
+
+        const promises = areas.map(async (area) => {
+            let cpuLoad = '-';
+            let uptime = '-';
+            let activePppoe = '-';
+            let offlinePppoe = '-';
+            let status = 'Offline';
+
+            if (area.routerIp && area.mikrotikUser && area.mikrotikPassword) {
+                const [host, portStr] = area.routerIp.split(':');
+                const port = parseInt(portStr) || 8728;
+                const client = new RouterOSClient({
+                    host, user: area.mikrotikUser, password: area.mikrotikPassword, port, timeout: 3000
+                });
+
+                try {
+                    const api = await connectMikrotik(client, 3000);
+                    const resourceMenu = api.menu('/system/resource');
+                    const resources = await resourceMenu.get();
+                    const resource = resources[0];
+
+                    const pppoeActiveMenu = api.menu('/ppp/active');
+                    const actives = await pppoeActiveMenu.get();
+                    
+                    const pppSecretMenu = api.menu('/ppp/secret');
+                    const allSecrets = await pppSecretMenu.get();
+
+                    cpuLoad = (resource && resource['cpu-load'] !== undefined) ? resource['cpu-load'] + '%' : '0%';
+                    uptime = (resource && resource['uptime']) || 'Unknown';
+                    activePppoe = actives.length.toString();
+                    offlinePppoe = (allSecrets.length - actives.length).toString();
+                    status = 'Online';
+                } catch (err) {
+                    status = 'Offline';
+                } finally {
+                    try { client.close(); } catch (_) {}
+                }
+            }
+
+            await req.pool.query(`
+                INSERT INTO status_router_terakhir (area_id, area_name, cpu_load, uptime, active_pppoe, offline_pppoe, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                    area_name = VALUES(area_name),
+                    cpu_load = VALUES(cpu_load),
+                    uptime = VALUES(uptime),
+                    active_pppoe = VALUES(active_pppoe),
+                    offline_pppoe = VALUES(offline_pppoe),
+                    status = VALUES(status)
+            `, [area.id, area.name, cpuLoad, uptime, activePppoe, offlinePppoe, status]).catch(e => console.error(e));
+        });
+
+        await Promise.all(promises).catch(e => console.error("Error updating status_router_terakhir in sync:", e));
+
+        const [customers] = await req.pool.query('SELECT * FROM customers');
+        const [tagihan] = await req.pool.query('SELECT * FROM tagihan_bulanan');
+        const [routerStatus] = await req.pool.query('SELECT * FROM status_router_terakhir');
+
+        res.json({
+            customers: customers.map(c => ({ ...c, id: c.id.toString() })),
+            tagihan: tagihan.map(t => ({ ...t, id: t.id.toString(), customer_id: t.customer_id ? t.customer_id.toString() : null })),
+            routerStatus: routerStatus.map(r => ({ ...r, id: r.id.toString(), area_id: r.area_id ? r.area_id.toString() : null }))
+        });
+    } catch (error) {
+        console.error("Sync API Error:", error.message);
+        res.status(500).json({ error: error.message || "Failed to sync" });
+    }
+});
+
 
 
 app.get('/api/uang-di-admin', async (req, res) => {

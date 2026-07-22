@@ -50,6 +50,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 
+import com.example.ui.data.local.AppDatabase
+import com.example.ui.data.local.PelangganEntity
+import androidx.compose.runtime.collectAsState
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomersScreen(
@@ -58,16 +62,66 @@ fun CustomersScreen(
     onNavigateToAddCustomer: () -> Unit,
     onNavigateToEditCustomer: (String) -> Unit
 ) {
-        var customers by remember { mutableStateOf<List<Customer>>(emptyList()) }
-    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val db = remember { AppDatabase.getDatabase(context) }
+    val localPelangganList by db.pelangganDao().getAllPelanggan().collectAsState(initial = emptyList())
+
+    val customers = remember(localPelangganList) {
+        localPelangganList.map { entity ->
+            Customer(
+                id = entity.id.toString(),
+                name = entity.name,
+                phone = entity.phone,
+                area = entity.area,
+                address = entity.address,
+                username = entity.username,
+                billingDate = entity.billingDate,
+                status = entity.status,
+                price = entity.price,
+                discount = entity.discount,
+                registerDate = entity.register_date,
+                isolateDate = entity.isolate_date,
+                packageName = entity.package_name,
+                additionalCost1 = entity.additionalCost1,
+                additionalCost2 = entity.additionalCost2,
+                pppoeSecret = entity.pppoe_secret,
+                odpId = entity.odp_id?.toString(),
+                odpPort = entity.odp_port
+            )
+        }.filter { UserSession.isAreaNameAllowed(it.area) }
+    }
 
     LaunchedEffect(Unit) {
         try {
             UserSession.getOrFetchAreas()
-            val raw = ApiClient.apiService.getCustomers()
-            customers = raw.filter { UserSession.isAreaNameAllowed(it.area) }
+            val syncResponse = ApiClient.apiService.syncData()
+            val mapped = syncResponse.customers.map { item ->
+                PelangganEntity(
+                    id = item.id.toIntOrNull() ?: 0,
+                    name = item.name ?: "",
+                    phone = item.phone ?: "",
+                    area = item.area ?: "",
+                    address = item.address,
+                    username = item.username ?: "",
+                    billingDate = item.billingDate ?: "",
+                    status = item.status ?: "",
+                    price = item.price ?: "",
+                    discount = item.discount ?: "",
+                    register_date = item.register_date,
+                    isolate_date = item.isolate_date,
+                    package_name = item.package_name,
+                    pppoe_secret = item.pppoe_secret,
+                    odp_id = item.odp_id?.toIntOrNull(),
+                    odp_port = item.odp_port,
+                    additionalCost1 = item.additionalCost1,
+                    additionalCost2 = item.additionalCost2
+                )
+            }
+            db.pelangganDao().deleteAll()
+            db.pelangganDao().insertAll(mapped)
         } catch (e: Exception) {
+            // Silently fall back to cached copy
         }
     }
     
@@ -267,7 +321,10 @@ fun CustomersScreen(
                     coroutineScope.launch {
                         try {
                             ApiClient.apiService.deleteCustomer(customerToDeleteState!!.id)
-                            customers = customers.filter { it.id != customerToDeleteState!!.id }
+                            val delId = customerToDeleteState!!.id.toIntOrNull()
+                            if (delId != null) {
+                                db.pelangganDao().deleteById(delId)
+                            }
                             showDeleteConfirm = false
                             customerToDeleteState = null
                         } catch (e: Exception) {}

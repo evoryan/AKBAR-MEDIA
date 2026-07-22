@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
@@ -28,6 +29,15 @@ import kotlinx.coroutines.launch
 import com.example.ui.data.remote.ApiClient
 import com.example.ui.data.OdpItem
 import com.example.ui.data.remote.PaymentRequest
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.asAndroidBitmap
+import android.provider.MediaStore
+import android.content.ContentValues
+import android.graphics.Bitmap
+import android.content.Intent
+import android.net.Uri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,58 +61,81 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
     var mikrotikStatus by remember { mutableStateOf<String>("-") }
     var mikrotikUptime by remember { mutableStateOf<String>("") }
     var acsDevice by remember { mutableStateOf<com.example.ui.screens.AcsDevice?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isMikrotikLoading by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     
     var paymentHistory by remember { mutableStateOf<List<com.example.ui.data.remote.PaymentHistory>>(emptyList()) }
     var showPaymentDialog by remember { mutableStateOf(false) }
     var isPaying by remember { mutableStateOf(false) }
     
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    
+    val graphicsLayer = rememberGraphicsLayer()
+    var selectedHistoryForPreview by remember { mutableStateOf<com.example.ui.data.remote.PaymentHistory?>(null) }
 
     LaunchedEffect(customerId) {
+        isBackgroundLoading = true
         try {
             val custs = ApiClient.apiService.getCustomers()
             val c = custs.find { it.id == customerId }
             customer = c
-            
+            isBackgroundLoading = false
             
             if (c != null) {
-                try {
-                    paymentHistory = ApiClient.apiService.getCustomerHistory(c.id)
-                } catch(e: Exception) {}
+                // Fetch payment history in background
+                launch {
+                    try {
+                        paymentHistory = ApiClient.apiService.getCustomerHistory(c.id)
+                    } catch(e: Exception) {}
+                }
 
-                // Get ODP if exist
-                if (!c.odpId.isNullOrEmpty()) {
-                    val odps = ApiClient.apiService.getOdpList()
-                    odpItem = odps.find { it.id.toString() == c.odpId }
+                // Get ODP if exist in background
+                launch {
+                    try {
+                        if (!c.odpId.isNullOrEmpty()) {
+                            val odps = ApiClient.apiService.getOdpList()
+                            odpItem = odps.find { it.id.toString() == c.odpId }
+                        }
+                    } catch(e: Exception) {}
                 }
                 
-                // Get ACS Device
-                if (!c.pppoeSecret.isNullOrEmpty()) {
+                // Get ACS Device in background
+                launch {
                     try {
-                        val acsList = ApiClient.apiService.getAcsDevices()
-                        acsDevice = acsList.find { (it.username ?: "").trim().equals(c.pppoeSecret?.trim(), ignoreCase = true) }
-                    } catch (e: Exception) {}
-                    
-                    // Get Mikrotik Secret Status
-                    if (c.area.isNotEmpty()) {
-                        val areas = ApiClient.apiService.getAreas()
-                        val area = areas.find { it.name == c.area }
-                        if (area != null) {
-                            val secrets = ApiClient.apiService.getMikrotikSecrets(area.id)
-                            val sec = secrets.find { it.name == c.pppoeSecret }
-                            if (sec != null) {
-                                mikrotikStatus = sec.status
-                                mikrotikUptime = sec.uptime
-                            }
+                        if (!c.pppoeSecret.isNullOrEmpty()) {
+                            val acsList = ApiClient.apiService.getAcsDevices()
+                            acsDevice = acsList.find { (it.username ?: "").trim().equals(c.pppoeSecret?.trim(), ignoreCase = true) }
                         }
-                    }
+                    } catch(e: Exception) {}
                 }
             }
         } catch (e: Exception) {
+            isBackgroundLoading = false
             Toast.makeText(context, "Gagal memuat data", Toast.LENGTH_SHORT).show()
-        } finally {
-            isLoading = false
+        }
+    }
+
+    LaunchedEffect(customer) {
+        val c = customer
+        if (c != null && !c.pppoeSecret.isNullOrEmpty() && c.area.isNotEmpty()) {
+            isMikrotikLoading = true
+            try {
+                val areas = ApiClient.apiService.getAreas()
+                val area = areas.find { it.name == c.area }
+                if (area != null) {
+                    val secrets = ApiClient.apiService.getMikrotikSecrets(area.id)
+                    val sec = secrets.find { it.name == c.pppoeSecret }
+                    if (sec != null) {
+                        mikrotikStatus = sec.status
+                        mikrotikUptime = sec.uptime
+                    }
+                }
+            } catch (e: Exception) {
+                mikrotikStatus = "Error"
+            } finally {
+                isMikrotikLoading = false
+            }
         }
     }
 
@@ -143,6 +176,131 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
         )
     }
 
+    if (selectedHistoryForPreview != null) {
+        AlertDialog(
+            onDismissRequest = { selectedHistoryForPreview = null },
+            title = {
+                Text(
+                    "Preview Nota",
+                    color = textMain,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                val previewHistory = selectedHistoryForPreview!!
+                val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                val amountDouble = previewHistory.amount.toDoubleOrNull() ?: 0.0
+                val formattedAmount = "Rp. ${formatter.format(amountDouble)}"
+                
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White)
+                            .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
+                            .padding(16.dp)
+                            .drawWithContent {
+                                graphicsLayer.record {
+                                    this@drawWithContent.drawContent()
+                                }
+                                drawLayer(graphicsLayer)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        com.example.ui.components.ThermalInvoiceView(
+                            headerText = com.example.ui.data.SettingsManager.invoiceHeader,
+                            footerText = com.example.ui.data.SettingsManager.invoiceFooterText,
+                            customer = customer,
+                            months = previewHistory.description,
+                            totalAmount = formattedAmount
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        ActionItemCol(Icons.Default.Print, "Cetak", neonCyan, textSecondary) {
+                            Toast.makeText(context, "Fitur cetak belum tersedia", Toast.LENGTH_SHORT).show()
+                        }
+                        ActionItemCol(Icons.AutoMirrored.Filled.Message, "Kirim WA", neonCyan, textSecondary) {
+                            val phone = customer?.phone
+                            if (!phone.isNullOrBlank()) {
+                                try {
+                                    var formattedPhone = phone
+                                    if (formattedPhone.startsWith("0")) {
+                                        formattedPhone = "62" + formattedPhone.substring(1)
+                                    }
+                                    val rawTemplate = if (com.example.ui.data.SettingsManager.waGatewayEnabled && com.example.ui.data.SettingsManager.waNotifyPaymentSuccess) {
+                                        com.example.ui.data.SettingsManager.waTemplatePaymentSuccess
+                                    } else {
+                                        "Halo {nama},\nTerima kasih, pembayaran tagihan internet untuk bulan {bulan} sejumlah {nominal} telah kami terima dan lunas.\n\nSalam,\n{perusahaan}"
+                                    }
+                                    val text = rawTemplate
+                                        .replace("{nama}", customer?.name ?: "")
+                                        .replace("{bulan}", previewHistory.description)
+                                        .replace("{nominal}", formattedAmount)
+                                        .replace("{perusahaan}", com.example.ui.data.SettingsManager.companyName)
+                                    val intent = Intent(Intent.ACTION_VIEW)
+                                    intent.data = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=${Uri.encode(text)}")
+                                    context.startActivity(intent)
+                                } catch(e: Exception) {
+                                    Toast.makeText(context, "Tidak dapat membuka WhatsApp", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "Nomor pelanggan tidak tersedia", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        ActionItemCol(Icons.Default.Share, "Bagikan", neonCyan, textSecondary) {
+                            coroutineScope.launch {
+                                try {
+                                    val bitmap = graphicsLayer.toImageBitmap().asAndroidBitmap()
+                                    val contentValues = ContentValues().apply {
+                                        put(MediaStore.Images.Media.DISPLAY_NAME, "Invoice_${customer?.name}_${previewHistory.id}.jpg")
+                                        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                                    }
+                                    val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                                    if (uri != null) {
+                                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                                        }
+                                        val sendIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            type = "image/jpeg"
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        val shareIntent = Intent.createChooser(sendIntent, "Bagikan Invoice")
+                                        context.startActivity(shareIntent)
+                                    } else {
+                                        Toast.makeText(context, "Gagal menyiapkan gambar", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal membagikan gambar", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedHistoryForPreview = null }) {
+                    Text("Tutup", color = neonCyan, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     Scaffold(containerColor = bgMain,
         topBar = {
             TopAppBar(
@@ -168,22 +326,31 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
             }
         }
     ) { innerPadding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = neonCyan)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(bgMain)
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+        ) {
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = neonCyan,
+                    trackColor = cardBorder
+                )
             }
-        } else if (customer == null) {
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                Text("Pelanggan tidak ditemukan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(bgMain)
-                    .padding(innerPadding)
-                    .verticalScroll(rememberScrollState())
-            ) {
+
+            if (!isBackgroundLoading && customer == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Pelanggan tidak ditemukan", color = textMain, fontSize = 16.sp)
+                }
+            } else {
                 // Top Section (Profile)
                 Column(
                     modifier = Modifier
@@ -199,16 +366,33 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                             .background(primaryBlue),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            customer?.name?.take(1)?.uppercase() ?: "P",
-                            color = neonCyan,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (isBackgroundLoading) {
+                            CircularProgressIndicator(
+                                color = neonCyan,
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(
+                                customer?.name?.take(1)?.uppercase() ?: "P",
+                                color = neonCyan,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(customer?.name ?: "Nama Pelanggan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text(customer?.phone ?: "-", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+                    Text(
+                        if (isBackgroundLoading) "Memuat..." else (customer?.name ?: "Nama Pelanggan"),
+                        color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Text(
+                        if (isBackgroundLoading) "" else (customer?.phone ?: "-"),
+                        color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666),
+                        fontSize = 12.sp
+                    )
                 }
 
                 // Tabs
@@ -246,13 +430,21 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                     Text("Sumber: ${customer?.area}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                                     Text("User: ${customer?.pppoeSecret?.takeIf { it.isNotBlank() } ?: "-"}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (mikrotikStatus.equals("online", true)) Color(0xFF00FF00).copy(alpha = 0.2f) else if (mikrotikStatus.equals("disabled", true)) Color.Gray.copy(alpha = 0.2f) else Color.Red.copy(alpha = 0.2f))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(mikrotikStatus.uppercase(), color = if (mikrotikStatus.equals("online", true)) Color.Green else if (mikrotikStatus.equals("disabled", true)) Color.LightGray else Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                if (isMikrotikLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = neonCyan,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (mikrotikStatus.equals("online", true)) Color(0xFF00FF00).copy(alpha = 0.2f) else if (mikrotikStatus.equals("disabled", true)) Color.Gray.copy(alpha = 0.2f) else Color.Red.copy(alpha = 0.2f))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(mikrotikStatus.uppercase(), color = if (mikrotikStatus.equals("online", true)) Color.Green else if (mikrotikStatus.equals("disabled", true)) Color.LightGray else Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                             
@@ -318,7 +510,16 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                         }
 
                     } else if (selectedTabIndex == 1) {
-                        PaymentHistorySection(paymentHistory, cardBg = cardBg, cardBorder = cardBorder, textMain = textMain, textSecondary = textSecondary, neonCyan = neonCyan, neonPink = neonPink)
+                        PaymentHistorySection(
+                            paymentHistory,
+                            cardBg = cardBg,
+                            cardBorder = cardBorder,
+                            textMain = textMain,
+                            textSecondary = textSecondary,
+                            neonCyan = neonCyan,
+                            neonPink = neonPink,
+                            onItemClick = { selectedHistoryForPreview = it }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -337,7 +538,16 @@ fun DetailRow(label: String, value: String) {
 }
 
 @Composable
-fun PaymentHistorySection(history: List<com.example.ui.data.remote.PaymentHistory>, cardBg: Color, cardBorder: Color, textMain: Color, textSecondary: Color, neonCyan: Color, neonPink: Color) {
+fun PaymentHistorySection(
+    history: List<com.example.ui.data.remote.PaymentHistory>,
+    cardBg: Color,
+    cardBorder: Color,
+    textMain: Color,
+    textSecondary: Color,
+    neonCyan: Color,
+    neonPink: Color,
+    onItemClick: (com.example.ui.data.remote.PaymentHistory) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Riwayat Transaksi", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold, fontSize = 18.sp)
         
@@ -351,6 +561,7 @@ fun PaymentHistorySection(history: List<com.example.ui.data.remote.PaymentHistor
                         .clip(RoundedCornerShape(12.dp))
                         .background(cardBg)
                         .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                        .clickable { onItemClick(item) }
                         .padding(16.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -360,15 +571,44 @@ fun PaymentHistorySection(history: List<com.example.ui.data.remote.PaymentHistor
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(item.description, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Rp. ${item.amount}", color = neonCyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Lunas", color = neonPink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("Rp. ${item.amount}", color = neonCyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Lunas", color = neonPink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Icon(
+                                imageVector = Icons.Default.Print,
+                                contentDescription = "Cetak",
+                                tint = neonCyan.copy(alpha = 0.8f),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ActionItemCol(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    iconColor: Color,
+    textColor: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(8.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = iconColor, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(label, color = textColor, fontSize = 11.sp)
     }
 }
 

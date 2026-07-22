@@ -121,7 +121,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     val tipeOptions = listOf("Pilih Tipe Pembukuan", "Pemasukan", "Pengeluaran", "Setor")
     
     var pembukuanList by remember { mutableStateOf(emptyList<com.example.ui.data.remote.PembukuanItem>()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     var editingItem by remember { mutableStateOf<com.example.ui.data.remote.PembukuanItem?>(null) }
     
     
@@ -132,7 +132,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
-            isLoading = false
+            isBackgroundLoading = false
         }
     }
     
@@ -279,11 +279,14 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = primaryBlue)
-                }
-            } else if (pembukuanList.isEmpty()) {
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    color = primaryBlue
+                )
+            }
+            
+            if (!isBackgroundLoading && pembukuanList.isEmpty()) {
                 Text(
                     text = "Tidak ada Data",
                     color = textSecondary,

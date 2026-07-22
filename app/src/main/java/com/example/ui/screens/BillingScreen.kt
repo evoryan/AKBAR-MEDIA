@@ -64,19 +64,69 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     val errorRed = Color(0xFFFF003C)
     val successGreen = Color(0xFF00FF00)
 
-    var customers by remember { mutableStateOf<List<Customer>>(emptyList()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = remember { com.example.ui.data.local.AppDatabase.getDatabase(context) }
+    val localPelangganList by db.pelangganDao().getAllPelanggan().collectAsState(initial = emptyList())
+
+    val customers = remember(localPelangganList) {
+        localPelangganList.map { entity ->
+            Customer(
+                id = entity.id.toString(),
+                name = entity.name,
+                phone = entity.phone,
+                area = entity.area,
+                address = entity.address,
+                username = entity.username,
+                billingDate = entity.billingDate,
+                status = entity.status,
+                price = entity.price,
+                discount = entity.discount,
+                registerDate = entity.register_date,
+                isolateDate = entity.isolate_date,
+                packageName = entity.package_name,
+                additionalCost1 = entity.additionalCost1,
+                additionalCost2 = entity.additionalCost2,
+                pppoeSecret = entity.pppoe_secret,
+                odpId = entity.odp_id?.toString(),
+                odpPort = entity.odp_port
+            )
+        }.filter { it.status != "TERHAPUS" && com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
+    }
+
     var showCancelDialog by remember { mutableStateOf(false) }
     var customerToCancel by remember { mutableStateOf<Customer?>(null) }
     var cancelPassword by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
-    val context = androidx.compose.ui.platform.LocalContext.current
     
     fun fetchCustomers() {
         coroutineScope.launch {
             try {
                 com.example.ui.data.UserSession.getOrFetchAreas()
-                val raw = ApiClient.apiService.getCustomers().filter { it.status != "TERHAPUS" }
-                customers = raw.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
+                val syncResponse = ApiClient.apiService.syncData()
+                val mapped = syncResponse.customers.map { item ->
+                    com.example.ui.data.local.PelangganEntity(
+                        id = item.id.toIntOrNull() ?: 0,
+                        name = item.name ?: "",
+                        phone = item.phone ?: "",
+                        area = item.area ?: "",
+                        address = item.address,
+                        username = item.username ?: "",
+                        billingDate = item.billingDate ?: "",
+                        status = item.status ?: "",
+                        price = item.price ?: "",
+                        discount = item.discount ?: "",
+                        register_date = item.register_date,
+                        isolate_date = item.isolate_date,
+                        package_name = item.package_name,
+                        pppoe_secret = item.pppoe_secret,
+                        odp_id = item.odp_id?.toIntOrNull(),
+                        odp_port = item.odp_port,
+                        additionalCost1 = item.additionalCost1,
+                        additionalCost2 = item.additionalCost2
+                    )
+                }
+                db.pelangganDao().deleteAll()
+                db.pelangganDao().insertAll(mapped)
             } catch (e: Exception) {}
         }
     }
@@ -166,7 +216,10 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 )
                                 if (loginRes.role.name == "SUPER_ADMIN" || loginRes.role.name == "ADMIN") {
                                     ApiClient.apiService.deleteBilling(DeleteBillingRequest(customerToCancel!!.id))
-                                    customers = customers.map { if (it.id == customerToCancel!!.id) it.copy(status = "BELUM BAYAR") else it }
+                                    val custId = customerToCancel!!.id.toIntOrNull()
+                                    if (custId != null) {
+                                        db.pelangganDao().updateStatus(custId, "BELUM BAYAR")
+                                    }
                                     Toast.makeText(context, "Pembayaran dibatalkan", Toast.LENGTH_SHORT).show()
                                     showCancelDialog = false
                                     cancelPassword = ""

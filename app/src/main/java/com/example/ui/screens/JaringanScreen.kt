@@ -47,7 +47,7 @@ fun JaringanScreen(onBack: () -> Unit) {
     var customerList by remember { mutableStateOf<List<Customer>>(emptyList()) }
     var areaList by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
     var filterArea by remember { mutableStateOf("All") }
-    var isLoading by remember { mutableStateOf(true) }
+    var isBackgroundLoading by remember { mutableStateOf(true) }
     
     var searchQuery by remember { mutableStateOf("") }
     
@@ -86,7 +86,7 @@ fun JaringanScreen(onBack: () -> Unit) {
         } catch (e: Exception) {
             Toast.makeText(context, "Gagal memuat data jaringan", Toast.LENGTH_SHORT).show()
         }
-        isLoading = false
+        isBackgroundLoading = false
     }
     
     Scaffold(
@@ -103,15 +103,21 @@ fun JaringanScreen(onBack: () -> Unit) {
         },
         containerColor = bgMain
     ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = primaryBg)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (isBackgroundLoading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = primaryBg,
+                    trackColor = cardBorder
+                )
             }
-        } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {

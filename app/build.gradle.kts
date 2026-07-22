@@ -102,6 +102,7 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   implementation(libs.androidx.navigation.compose)
+  implementation(libs.androidx.work.runtime.ktx)
   implementation(libs.opencsv)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.androidx.room.ktx)
