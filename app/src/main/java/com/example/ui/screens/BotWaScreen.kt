@@ -98,6 +98,7 @@ fun BotWaScreen(onBack: () -> Unit) {
     val tabs = listOf("Pengaturan", "QR Paket", "Riwayat")
 
     var isWaLinked by remember { mutableStateOf(false) }
+    var isInitialChecked by remember { mutableStateOf(false) }
     var botNumber by remember { mutableStateOf("") }
     var connectionStatus by remember { mutableStateOf("DISCONNECTED") }
     var qrBase64 by remember { mutableStateOf<String?>(null) }
@@ -115,6 +116,8 @@ fun BotWaScreen(onBack: () -> Unit) {
             connectionStatus = statusResponse.status
         } catch (e: Exception) {
             e.printStackTrace()
+        } finally {
+            isInitialChecked = true
         }
     }
 
@@ -137,8 +140,8 @@ fun BotWaScreen(onBack: () -> Unit) {
     }
 
     // Auto countdown and polling for QR code refresh
-    LaunchedEffect(isWaLinked, selectedTab) {
-        if (!isWaLinked && selectedTab == 0) {
+    LaunchedEffect(isWaLinked, selectedTab, isInitialChecked) {
+        if (isInitialChecked && !isWaLinked && selectedTab == 0) {
             val tId = currentUser?.id ?: return@LaunchedEffect
             while (true) {
                 try {

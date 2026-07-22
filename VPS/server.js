@@ -1964,10 +1964,10 @@ app.post('/api/odp', async (req, res) => {
 
 app.post('/api/categories', async (req, res) => {
     try {
-        const { name, description } = req.body;
+        const { name } = req.body;
         const [result] = await req.pool.query(
-            'INSERT INTO categories (name, description) VALUES (?, ?)',
-            [name, description]
+            'INSERT INTO categories (name) VALUES (?)',
+            [name]
         );
         res.json({ message: "Kategori ditambahkan", id: result.insertId.toString() });
     } catch (error) {
@@ -1975,16 +1975,62 @@ app.post('/api/categories', async (req, res) => {
     }
 });
 
+app.put('/api/categories/:id', async (req, res) => {
+    try {
+        const { name } = req.body;
+        await req.pool.query(
+            'UPDATE categories SET name = ? WHERE id = ?',
+            [name, req.params.id]
+        );
+        res.json({ message: "Kategori berhasil diperbarui" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan" });
+    }
+});
+
 app.post('/api/inventory', async (req, res) => {
     try {
-        const { categoryId, name, brand, type, initialStock, finalStock } = req.body;
+        const { categoryId, name, stock } = req.body;
         const [result] = await req.pool.query(
-            'INSERT INTO inventory (categoryId, name, brand, type, initialStock, finalStock) VALUES (?, ?, ?, ?, ?, ?)',
-            [categoryId, name, brand, type, initialStock, finalStock]
+            'INSERT INTO inventory (categoryId, name, stock) VALUES (?, ?, ?)',
+            [categoryId, name, stock || 0]
         );
         res.json({ message: "Inventory ditambahkan", id: result.insertId.toString() });
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+    }
+});
+
+app.put('/api/inventory/:id', async (req, res) => {
+    try {
+        const { name, categoryId, stock } = req.body;
+        await req.pool.query(
+            'UPDATE inventory SET name = ?, categoryId = ?, stock = ? WHERE id = ?',
+            [name, categoryId, stock, req.params.id]
+        );
+        res.json({ message: "Inventory berhasil diperbarui" });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan" });
+    }
+});
+
+app.post('/api/stock_history', async (req, res) => {
+    try {
+        const { type, itemName, quantity, adminName, timestamp, itemId } = req.body;
+        const [result] = await req.pool.query(
+            'INSERT INTO stock_history (type, itemName, quantity, adminName, timestamp) VALUES (?, ?, ?, ?, ?)',
+            [type, itemName, quantity, adminName, timestamp || Date.now()]
+        );
+        if (itemId) {
+            const diff = type === 'IN' ? quantity : -quantity;
+            await req.pool.query(
+                'UPDATE inventory SET stock = stock + ? WHERE id = ?',
+                [diff, itemId]
+            );
+        }
+        res.json({ message: "Transaksi berhasil disimpan", id: result.insertId.toString() });
+    } catch (error) {
+        console.error("API Error:", error.message); res.status(500).json({ error: error.message || "Terjadi kesalahan" });
     }
 });
 

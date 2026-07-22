@@ -260,12 +260,16 @@ fun InventoryScreen(onBack: () -> Unit) {
                             } catch(e: Exception) {}
                         }
                     } else {
-                        val diff = newStock - (editItem?.stock ?: 0)
-                        if(diff != 0) {
-                             
-                                }
-                        inventoryList = inventoryList.map {
-                            if (it.id == (editItem?.id ?: "")) it.copy(name = name, categoryId = selectedCategory, stock = newStock) else it
+                        coroutineScope.launch {
+                            try {
+                                val updatedItem = editItem?.copy(
+                                    name = name,
+                                    categoryId = selectedCategory,
+                                    stock = newStock
+                                ) ?: return@launch
+                                ApiClient.apiService.updateInventory(updatedItem.id, updatedItem)
+                                inventoryList = ApiClient.apiService.getInventory()
+                            } catch(e: Exception) {}
                         }
                     }
                     showDialog = false

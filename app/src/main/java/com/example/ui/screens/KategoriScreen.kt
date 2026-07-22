@@ -196,8 +196,12 @@ fun KategoriScreen(onBack: () -> Unit) {
                             } catch(e: Exception) {}
                         }
                     } else {
-                        categoriesList = categoriesList.map {
-                            if (it.id == (editItem?.id ?: "")) it.copy(name = name) else it
+                        coroutineScope.launch {
+                            try {
+                                val updatedItem = editItem?.copy(name = name) ?: return@launch
+                                ApiClient.apiService.updateCategory(updatedItem.id, updatedItem)
+                                categoriesList = ApiClient.apiService.getCategories()
+                            } catch(e: Exception) {}
                         }
                     }
                     showDialog = false

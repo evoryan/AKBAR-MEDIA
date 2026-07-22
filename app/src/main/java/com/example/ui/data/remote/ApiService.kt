@@ -297,8 +297,17 @@ interface ApiService {
     @POST("api/inventory")
     suspend fun addInventory(@Body item: com.example.ui.data.InventoryItem): ApiResponse
 
+    @PUT("api/inventory/{id}")
+    suspend fun updateInventory(@Path("id") id: String, @Body item: com.example.ui.data.InventoryItem): ApiResponse
+
     @POST("api/categories")
     suspend fun addCategory(@Body item: com.example.ui.data.CategoryItem): ApiResponse
+
+    @PUT("api/categories/{id}")
+    suspend fun updateCategory(@Path("id") id: String, @Body item: com.example.ui.data.CategoryItem): ApiResponse
+
+    @POST("api/stock_history")
+    suspend fun addStockHistory(@Body item: Map<String, String>): ApiResponse
 
     @POST("api/admins")
     suspend fun addAdmin(@Body item: com.example.ui.data.AdminUser): ApiResponse

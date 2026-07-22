@@ -119,6 +119,10 @@ async function initTenantWhatsApp(tenantId) {
                     console.log(`[WA Gateway] Tenant ${tenantId} socket is already active in another process (PID: ${lockPid}). Skipping duplicate init.`);
                     return;
                 } catch (err) {
+                    if (err.code === 'EPERM') {
+                        console.log(`[WA Gateway] Tenant ${tenantId} socket is active in another process (PID: ${lockPid}) with restricted permissions. Skipping duplicate init.`);
+                        return;
+                    }
                     // Process is dead, lock is stale, clean it up
                     console.log(`[WA Gateway] Stale lock file found for tenant ${tenantId} (PID ${lockPid} is dead). Removing lock.`);
                     try { fs.unlinkSync(lockFilePath); } catch (e) {}
@@ -200,8 +204,11 @@ async function initTenantWhatsApp(tenantId) {
                 sessions[tenantId].qrImage = null;
                 sessions[tenantId].botNumber = null;
                 
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                console.log(`[WA Gateway] Connection closed for tenant ${tenantId}. Reason:`, lastDisconnect?.error?.message, 'Reconnecting:', shouldReconnect);
+                const errMsg = lastDisconnect?.error?.message || '';
+                const isConflict = errMsg.toLowerCase().includes('conflict');
+                const isLoggedOut = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut;
+                const shouldReconnect = !isLoggedOut || isConflict;
+                console.log(`[WA Gateway] Connection closed for tenant ${tenantId}. Reason:`, lastDisconnect?.error?.message || errMsg, 'Reconnecting:', shouldReconnect);
                 
                 sessions[tenantId].status = 'disconnected';
                 await updateTenantWaStatus(tenantId, 'DISCONNECTED');
