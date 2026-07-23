@@ -413,7 +413,7 @@ fun SettingScreen(
                             onClick = { downloadAction() },
                             enabled = !isDownloading
                         ) {
-                            Text(if (isDownloading) "Mengunduh..." else "Update Fix (Download & Install)", color = if (isDownloading) Color.Gray else primaryBg)
+                            Text(if (isDownloading) "Mengunduh..." else "Update-Fix", color = if (isDownloading) Color.Gray else primaryBg)
                         }
                         if (!isDownloading) {
                             TextButton(onClick = { showUpdateDialog = false }) {
