@@ -6,7 +6,7 @@ const axios = require('axios');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
 const { sendTenantNotification } = require('./fcm_service');
-const whatsappGateway = require('./whatsapp-gateway');
+const whatsappGateway = require('./wahaService');
 require('dotenv').config();
 
 const fs = require('fs');
@@ -2164,6 +2164,38 @@ app.get('/api/mikrotik/status/:id', async (req, res) => {
                 offlinePppoe: (allSecrets.length - activePppoe.length).toString()
             };
         }, res, "Mikrotik status error");
+
+        if (result) res.json(result);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
+
+app.get('/api/mikrotik/logs/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+
+        const result = await runWithMikrotik(area, async (api) => {
+            const logMenu = api.menu('/log');
+            const rawLogs = await logMenu.get();
+            
+            const filteredLogs = rawLogs.filter(log => {
+                const msg = (log.message || '').toLowerCase();
+                const tps = (log.topics || '').toLowerCase();
+                return msg.includes('pppoe') || tps.includes('pppoe') || msg.includes('ppp') || tps.includes('ppp');
+            }).reverse().slice(0, 50);
+
+            return filteredLogs.map(l => ({
+                id: l['.id'] || '',
+                time: l.time || '',
+                topics: l.topics || '',
+                message: l.message || ''
+            }));
+        }, res, "Mikrotik log error");
 
         if (result) res.json(result);
     } catch (error) {

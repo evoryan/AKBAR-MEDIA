@@ -42,6 +42,8 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.Image
 
 fun decodeBase64ToImageBitmap(base64Str: String): ImageBitmap? {
@@ -157,6 +159,33 @@ fun BotWaScreen(onBack: () -> Unit) {
                         qrBase64 = qrResponse.qrImage
                         qrText = qrResponse.qr
                         connectionStatus = qrResponse.status
+
+                        if (qrBase64 == null) {
+                            try {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val okHttpClient = okhttp3.OkHttpClient.Builder()
+                                        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                                        .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                                        .build()
+                                    
+                                    val imgRequest = okhttp3.Request.Builder()
+                                        .url("http://103.253.245.25:2200/api/tenant_${tId}/auth/qr")
+                                        .addHeader("X-Api-Key", "akbarapikey2026")
+                                        .build()
+                                    
+                                    okHttpClient.newCall(imgRequest).execute().use { response ->
+                                        if (response.isSuccessful) {
+                                            val imgBytes = response.body?.bytes()
+                                            if (imgBytes != null && imgBytes.isNotEmpty()) {
+                                                qrBase64 = android.util.Base64.encodeToString(imgBytes, android.util.Base64.DEFAULT)
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (fallbackEx: Exception) {
+                                fallbackEx.printStackTrace()
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -241,7 +270,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                         .background(successGreen.copy(alpha = 0.15f))
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
-                                    Text("BAILEYS MD", color = successGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text("WAHA ENGINE", color = successGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -276,7 +305,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Browser Sesi", color = textSecondary, fontSize = 13.sp)
-                                Text("Baileys Multi-Device", color = textMain, fontSize = 13.sp)
+                                Text("WAHA Multi-Tenant API", color = textMain, fontSize = 13.sp)
                             }
 
                             Spacer(modifier = Modifier.height(4.dp))
@@ -366,91 +395,55 @@ fun BotWaScreen(onBack: () -> Unit) {
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // Interactive QR Code Container
+                            // QR Code Container
                             Box(
                                 modifier = Modifier
                                     .size(220.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(Color.White)
                                     .border(1.dp, textSecondary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        isWaLinked = true
-                                        Toast.makeText(context, "Berhasil Menghubungkan WhatsApp Bot!", Toast.LENGTH_LONG).show()
-                                    }
                                     .padding(16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    val qrImageBitmap = remember(qrBase64) {
-                                        qrBase64?.let { decodeBase64ToImageBitmap(it) }
-                                    }
+                                val qrImageBitmap = remember(qrBase64) {
+                                    qrBase64?.let { decodeBase64ToImageBitmap(it) }
+                                }
 
-                                    if (qrImageBitmap != null) {
+                                if (qrImageBitmap != null) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Image(
                                             bitmap = qrImageBitmap,
                                             contentDescription = "WhatsApp QR Code",
-                                            modifier = Modifier.size(160.dp)
+                                            modifier = Modifier.size(180.dp),
+                                            filterQuality = FilterQuality.None
                                         )
                                         Spacer(modifier = Modifier.height(8.dp))
-                                        Text("Pindai QR ini menggunakan WhatsApp Anda", color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    } else {
-                                        if (isLoadingQr) {
-                                            Box(modifier = Modifier.size(160.dp), contentAlignment = Alignment.Center) {
-                                                androidx.compose.material3.CircularProgressIndicator(color = neonCyan)
-                                            }
-                                        } else {
-                                            Canvas(modifier = Modifier.size(160.dp).background(Color.White)) {
-                                                val qrColor = Color(0xFF1E1E1E)
-                                                // Top-Left Finder
-                                                drawRect(color = qrColor, topLeft = Offset(0f, 0f), size = Size(40f, 40f))
-                                                drawRect(color = Color.White, topLeft = Offset(8f, 8f), size = Size(24f, 24f))
-                                                drawRect(color = qrColor, topLeft = Offset(12f, 12f), size = Size(16f, 16f))
-
-                                                // Top-Right Finder
-                                                drawRect(color = qrColor, topLeft = Offset(size.width - 40f, 0f), size = Size(40f, 40f))
-                                                drawRect(color = Color.White, topLeft = Offset(size.width - 32f, 8f), size = Size(24f, 24f))
-                                                drawRect(color = qrColor, topLeft = Offset(size.width - 28f, 12f), size = Size(16f, 16f))
-
-                                                // Bottom-Left Finder
-                                                drawRect(color = qrColor, topLeft = Offset(0f, size.height - 40f), size = Size(40f, 40f))
-                                                drawRect(color = Color.White, topLeft = Offset(8f, size.height - 32f), size = Size(24f, 24f))
-                                                drawRect(color = qrColor, topLeft = Offset(12f, size.height - 28f), size = Size(16f, 16f))
-
-                                                // Generate structured pseudo QR noise
-                                                val random = java.util.Random(424242)
-                                                val cellSize = 8f
-                                                val cols = (size.width / cellSize).toInt()
-                                                val rows = (size.height / cellSize).toInt()
-                                                for (r in 0 until rows) {
-                                                    for (c in 0 until cols) {
-                                                        // Skip finder zones
-                                                        if ((r < 6 && c < 6) || (r < 6 && c >= cols - 6) || (r >= rows - 6 && c < 6)) {
-                                                            continue
-                                                        }
-                                                        // Center WhatsApp-like green indicator badge space
-                                                        if (r in (rows/2 - 2)..(rows/2 + 2) && c in (cols/2 - 2)..(cols/2 + 2)) {
-                                                            continue
-                                                        }
-                                                        if (random.nextBoolean()) {
-                                                            drawRect(
-                                                                color = qrColor,
-                                                                topLeft = Offset(c * cellSize, r * cellSize),
-                                                                size = Size(cellSize, cellSize)
-                                                            )
-                                                        }
-                                                    }
-                                                }
-
-                                                // Draw a centered subtle green indicator
-                                                drawCircle(
-                                                    color = Color(0xFF25D366),
-                                                    radius = 16f,
-                                                    center = Offset(size.width / 2, size.height / 2)
-                                                )
-                                            }
+                                        Text("Pindai QR ini menggunakan WhatsApp Anda", color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                                    }
+                                } else {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                            modifier = Modifier.padding(8.dp)
+                                        ) {
+                                            androidx.compose.material3.CircularProgressIndicator(color = neonCyan, modifier = Modifier.size(36.dp))
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text(
+                                                text = "Menghubungkan ke WAHA...",
+                                                color = textMain,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Sedang mengambil QR Code asli dari server WhatsApp Gateway",
+                                                color = textSecondary,
+                                                fontSize = 9.sp,
+                                                textAlign = TextAlign.Center
+                                            )
                                         }
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text("Klik QR Code untuk Simulasikan Scan", color = Color.Gray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -475,7 +468,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                 Icon(Icons.Default.Info, contentDescription = null, tint = warningYellow, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    "PENTING: Gunakan akun WhatsApp AKBAR MEDIA atau bot khusus. Sesi ini dikelola aman melalui enkripsi socket Baileys.", 
+                                    "PENTING: Gunakan akun WhatsApp AKBAR MEDIA atau bot khusus. Sesi ini dikelola aman melalui WAHA WhatsApp HTTP API.", 
                                     color = textSecondary, 
                                     fontSize = 11.sp
                                 )
@@ -504,7 +497,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Konfigurasi Gateway Baileys",
+                            "Konfigurasi Gateway WAHA",
                             color = textMain,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -532,7 +525,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                         color = textMain
                                     )
                                     Text(
-                                        "Kirim pesan pemberitahuan otomatis ke pelanggan menggunakan Baileys socket",
+                                        "Kirim pesan pemberitahuan otomatis ke pelanggan menggunakan WAHA HTTP API",
                                         fontSize = 12.sp,
                                         color = textSecondary
                                     )
@@ -567,7 +560,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Engine Core", color = textSecondary, fontSize = 13.sp)
                                 }
-                                Text("@whiskeysockets/baileys (v6.6.0)", color = textMain, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                Text("WAHA Engine (Docker API)", color = textMain, fontWeight = FontWeight.Medium, fontSize = 13.sp)
                             }
                             
                             Row(
@@ -690,7 +683,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                             com.example.ui.data.SettingsManager.waTemplateIsolir = waTemplateIsolir
                             com.example.ui.data.SettingsManager.waTemplateOtp = waTemplateOtp
                             
-                            Toast.makeText(context, "Pengaturan WhatsApp Gateway Baileys Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Pengaturan WhatsApp Gateway WAHA Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
                         shape = RoundedCornerShape(10.dp),
@@ -721,11 +714,11 @@ fun BotWaScreen(onBack: () -> Unit) {
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Uji Coba Kirim Pesan Baileys", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textMain)
+                                Text("Uji Coba Kirim Pesan WAHA", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textMain)
                             }
 
                             Text(
-                                "Uji langsung koneksi gateway Baileys dengan mengirim pesan percobaan ke nomor apa saja.",
+                                "Uji langsung koneksi gateway WAHA dengan mengirim pesan percobaan ke nomor apa saja.",
                                 fontSize = 12.sp,
                                 color = textSecondary
                             )
@@ -781,7 +774,7 @@ fun BotWaScreen(onBack: () -> Unit) {
                                                     )
                                                 )
                                                 if (response.status == "success") {
-                                                    Toast.makeText(context, "Pesan Berhasil Terkirim via Baileys WhatsApp Gateway!", Toast.LENGTH_LONG).show()
+                                                    Toast.makeText(context, "Pesan Berhasil Terkirim via WAHA WhatsApp Gateway!", Toast.LENGTH_LONG).show()
                                                     // Refresh history tab or clear input
                                                     testDestination = ""
                                                     testMessage = ""

@@ -44,6 +44,7 @@ fun DashboardScreen(
     onNavigateToSetting: () -> Unit,
     onNavigateToJaringan: () -> Unit,
     onNavigateToProfile: () -> Unit,
+    onNavigateToGangguan: () -> Unit,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -257,7 +258,7 @@ fun DashboardScreen(
             }
         }
         
-        // Total Pendapatan (Swipeable)
+        // Total Lunas Bayar (Swipeable)
         val pagerState = rememberPagerState(pageCount = { 2 })
         Box(
             modifier = Modifier
@@ -282,7 +283,7 @@ fun DashboardScreen(
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                if (page == 0) "Total Pendapatan ($selectedMonth $selectedYear)" else "Total Pendapatan Global",
+                                if (page == 0) "Total Lunas Bayar ($selectedMonth $selectedYear)" else "Total Lunas Bayar Global",
                                 fontWeight = FontWeight.Medium, fontSize = 14.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
                             )
                         }
@@ -292,7 +293,13 @@ fun DashboardScreen(
                             is DashboardState.Success -> {
                                 val format = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("id-ID"))
                                 format.maximumFractionDigits = 0
-                                val amount = if (page == 0) state.data.monthlyRevenue else state.data.totalGlobalRevenue
+                                val amount = if (page == 0) {
+                                    state.tagihanList
+                                        .filter { it.status == "LUNAS CASH" && it.bulan.equals(selectedMonth, ignoreCase = true) && it.tahun.toString() == selectedYear }
+                                        .sumOf { it.amount }
+                                } else {
+                                    state.data.totalGlobalRevenue
+                                }
                                 Text(format.format(amount), fontWeight = FontWeight.Bold, fontSize = 32.sp, color = primaryBg)
                             }
                             is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
@@ -373,7 +380,7 @@ fun DashboardScreen(
         ) {
             ShortcutItem(Icons.Default.PersonAdd, "Tambah\nPelanggan", primaryBg, modifier = Modifier.weight(1f), onClick = onNavigateToCustomers)
             ShortcutItem(Icons.Default.Payment, "Bayar\nTagihan", gridSuccessBg, modifier = Modifier.weight(1f), onClick = onNavigateToBilling)
-            ShortcutItem(Icons.Default.BugReport, "Lapor\nGangguan", gridErrorBg, modifier = Modifier.weight(1f), onClick = {})
+            ShortcutItem(Icons.Default.Warning, "Data\nGangguan", gridErrorBg, modifier = Modifier.weight(1f), onClick = onNavigateToGangguan)
         }
 
         // Menu Utama Card
@@ -451,6 +458,56 @@ fun DashboardScreen(
                     ) {
                         repeat(pageCountValue) { iteration ->
                             val color = if (pppoePagerState.currentPage == iteration) primaryBg else cardBorder
+                            Box(
+                                modifier = Modifier
+                                    .padding(2.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .size(6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Log Mikrotik Card (Swipeable)
+        val logsPagerState = rememberPagerState(pageCount = { pageCountValue })
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(cardBg)
+                .border(1.dp, cardBorder, RoundedCornerShape(28.dp))
+                .padding(20.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                HorizontalPager(state = logsPagerState) { page ->
+                    if (allowedAreas.isEmpty()) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("Log Mikrotik (pppoe)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Tidak ada area terkonfigurasi atau diizinkan", color = textSecondary, fontSize = 14.sp)
+                        }
+                    } else {
+                        val area = allowedAreas[page]
+                        DashboardAreaLogsPage(
+                            area = area,
+                            primaryBg = primaryBg,
+                            textSecondary = textSecondary,
+                            onNavigateToMikrotik = onNavigateToMikrotik
+                        )
+                    }
+                }
+                
+                if (pageCountValue > 1) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        repeat(pageCountValue) { iteration ->
+                            val color = if (logsPagerState.currentPage == iteration) primaryBg else cardBorder
                             Box(
                                 modifier = Modifier
                                     .padding(2.dp)
@@ -714,6 +771,195 @@ fun DashboardAreaSecretsPage(
                     if (list.size > 5) {
                         Text(
                             "dan ${list.size - 5} secret lainnya...",
+                            fontSize = 12.sp,
+                            color = primaryBg,
+                            modifier = Modifier
+                                .clickable { onNavigateToMikrotik() }
+                                .padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DashboardAreaLogsPage(
+    area: com.example.ui.screens.Area,
+    primaryBg: Color,
+    textSecondary: Color,
+    onNavigateToMikrotik: () -> Unit
+) {
+    var logs by remember { mutableStateOf<List<com.example.ui.data.remote.MikrotikLog>?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var isOffline by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var retryTrigger by remember { mutableStateOf(0) }
+
+    LaunchedEffect(area.id, retryTrigger) {
+        isLoading = true
+        isOffline = false
+        errorMsg = null
+        try {
+            val res = com.example.ui.data.remote.ApiClient.apiService.getMikrotikLogs(area.id)
+            logs = res
+        } catch (e: Exception) {
+            isOffline = true
+            errorMsg = e.message
+        } finally {
+            isLoading = false
+        }
+    }
+
+    val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isOffline) Color(0xFFFF003C).copy(alpha = 0.1f)
+                            else if (isLoading) Color.Yellow.copy(alpha = 0.1f)
+                            else Color(0xFF00FF4D).copy(alpha = 0.1f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ReceiptLong,
+                        contentDescription = null,
+                        tint = if (isOffline) Color(0xFFFF003C) else if (isLoading) Color.Yellow else Color(0xFF00FF4D),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        area.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = if (isDark) Color.White else Color(0xFF1A1A1A)
+                    )
+                    Text(
+                        "Log Mikrotik (pppoe)",
+                        fontSize = 11.sp,
+                        color = textSecondary
+                    )
+                }
+            }
+            IconButton(onClick = { retryTrigger++ }, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Refresh Logs",
+                    tint = textSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = primaryBg, modifier = Modifier.size(24.dp))
+            }
+        } else if (isOffline) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .clickable { retryTrigger++ },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFFF003C),
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Gagal Memuat Log",
+                        color = Color(0xFFFF003C),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        "Ketuk untuk mencoba lagi",
+                        color = textSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        } else {
+            val list = logs ?: emptyList()
+            if (list.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Tidak ada log PPPoE", color = textSecondary, fontSize = 14.sp)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    list.take(5).forEach { log ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onNavigateToMikrotik() }
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    log.time,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = primaryBg
+                                )
+                                Text(
+                                    log.topics,
+                                    fontSize = 10.sp,
+                                    color = textSecondary,
+                                    fontWeight = FontWeight.Light
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            val isError = log.message.contains("fail", ignoreCase = true) ||
+                                          log.message.contains("err", ignoreCase = true) ||
+                                          log.message.contains("disconnect", ignoreCase = true) ||
+                                          log.message.contains("timeout", ignoreCase = true) ||
+                                          log.message.contains("down", ignoreCase = true) ||
+                                          log.message.contains("terminate", ignoreCase = true) ||
+                                          log.topics.contains("error", ignoreCase = true) ||
+                                          log.topics.contains("warning", ignoreCase = true)
+                            Text(
+                                log.message,
+                                fontSize = 13.sp,
+                                color = if (isError) Color(0xFFFF5252) else if (isDark) Color.White else Color(0xFF1A1A1A),
+                                fontWeight = if (isError) FontWeight.Medium else FontWeight.Normal
+                            )
+                        }
+                    }
+                    if (list.size > 5) {
+                        Text(
+                            "dan ${list.size - 5} log lainnya...",
                             fontSize = 12.sp,
                             color = primaryBg,
                             modifier = Modifier

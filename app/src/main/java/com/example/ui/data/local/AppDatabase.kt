@@ -50,6 +50,19 @@ data class StatusRouterTerakhirEntity(
     val updated_at: String? = null
 )
 
+@Entity(tableName = "gangguan")
+data class GangguanEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val customerName: String, // opsional
+    val description: String,
+    val status: String, // "OTW", "SELESAI"
+    val date: String,
+    val reporter: String,
+    val teknisi: String = "",
+    val biaya: Double = 0.0,
+    val resolverAdmin: String? = null
+)
+
 @Dao
 interface PelangganDao {
     @Query("SELECT * FROM pelanggan ORDER BY name ASC")
@@ -92,11 +105,30 @@ interface StatusRouterTerakhirDao {
     suspend fun deleteAll()
 }
 
-@Database(entities = [PelangganEntity::class, TagihanEntity::class, StatusRouterTerakhirEntity::class], version = 1, exportSchema = false)
+@Dao
+interface GangguanDao {
+    @Query("SELECT * FROM gangguan ORDER BY id DESC")
+    fun getAllGangguan(): Flow<List<GangguanEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGangguan(gangguan: GangguanEntity)
+
+    @Query("UPDATE gangguan SET status = :status WHERE id = :id")
+    suspend fun updateStatus(id: Int, status: String)
+
+    @Query("UPDATE gangguan SET status = :status, resolverAdmin = :resolverAdmin WHERE id = :id")
+    suspend fun updateStatusAndResolver(id: Int, status: String, resolverAdmin: String)
+
+    @Query("DELETE FROM gangguan WHERE id = :id")
+    suspend fun deleteGangguan(id: Int)
+}
+
+@Database(entities = [PelangganEntity::class, TagihanEntity::class, StatusRouterTerakhirEntity::class, GangguanEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pelangganDao(): PelangganDao
     abstract fun tagihanDao(): TagihanDao
     abstract fun statusRouterDao(): StatusRouterTerakhirDao
+    abstract fun gangguanDao(): GangguanDao
 
     companion object {
         @Volatile

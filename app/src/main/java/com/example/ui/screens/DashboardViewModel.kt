@@ -15,7 +15,11 @@ import kotlinx.coroutines.launch
 
 sealed class DashboardState {
     object Loading : DashboardState()
-    data class Success(val data: DashboardSummaryResponse, val offlinePppoe: List<OfflinePppoeUser> = emptyList()) : DashboardState()
+    data class Success(
+        val data: DashboardSummaryResponse,
+        val offlinePppoe: List<OfflinePppoeUser> = emptyList(),
+        val tagihanList: List<com.example.ui.data.local.TagihanEntity> = emptyList()
+    ) : DashboardState()
     data class Error(val message: String) : DashboardState()
 }
 
@@ -57,7 +61,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
 
-                DashboardState.Success(summaryResponse, offlinePppoeList)
+                DashboardState.Success(summaryResponse, offlinePppoeList, tagihanList)
             }.collect { state ->
                 _uiState.value = state
             }

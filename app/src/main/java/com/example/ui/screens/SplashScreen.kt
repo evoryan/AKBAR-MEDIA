@@ -79,7 +79,7 @@ fun SplashScreen(onNavigateToLogin: () -> Unit, onNavigateToDashboard: () -> Uni
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Billing System v1.2a",
+                text = "Billing System v1.3",
                 fontWeight = FontWeight.Medium,
                 fontSize = 16.sp,
                 color = Color(0xFFAAAAAA)

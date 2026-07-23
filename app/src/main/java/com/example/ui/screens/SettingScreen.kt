@@ -357,52 +357,69 @@ fun SettingScreen(
                 Column {
                     Text("Versi saat ini: $currentVersion")
                     Text("Versi terbaru: $latestVersion")
-                    if (isNewer) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (isDownloading) {
+                        Text("Mengunduh update... ${(downloadProgress * 100).toInt()}%")
                         Spacer(modifier = Modifier.height(8.dp))
-                        if (isDownloading) {
-                            Text("Mengunduh update... ${(downloadProgress * 100).toInt()}%")
-                            Spacer(modifier = Modifier.height(8.dp))
-                            androidx.compose.material3.LinearProgressIndicator(
-                                progress = { downloadProgress },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = primaryBg,
-                            )
-                        } else {
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { downloadProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = primaryBg,
+                        )
+                    } else {
+                        if (isNewer) {
                             Text("Apakah Anda ingin mengunduh versi terbaru?")
+                        } else {
+                            Text("Apakah Anda ingin mengunduh ulang versi ini sebagai update perbaikan?")
                         }
                     }
                 }
             },
             confirmButton = {
-                if (isNewer) {
-                    TextButton(
-                        onClick = {
-                            val url = updateInfo!!.assets.firstOrNull()?.browser_download_url
-                            if (url != null) {
-                                isDownloading = true
-                                coroutineScope.launch {
-                                    val file = downloadApk(context, url) { progress ->
-                                        downloadProgress = progress
-                                    }
-                                    isDownloading = false
-                                    if (file != null) {
-                                        showUpdateDialog = false
-                                        installApk(context, file)
-                                    } else {
-                                        Toast.makeText(context, "Gagal mengunduh update", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            } else {
-                                Toast.makeText(context, "Link download tidak ditemukan", Toast.LENGTH_SHORT).show()
+                val url = updateInfo!!.assets.firstOrNull()?.browser_download_url
+                val downloadAction = {
+                    if (url != null) {
+                        isDownloading = true
+                        coroutineScope.launch {
+                            val file = downloadApk(context, url) { progress ->
+                                downloadProgress = progress
                             }
-                        },
-                        enabled = !isDownloading
-                    ) {
-                        Text(if (isDownloading) "Mengunduh..." else "Download & Install", color = if (isDownloading) Color.Gray else primaryBg)
+                            isDownloading = false
+                            if (file != null) {
+                                showUpdateDialog = false
+                                installApk(context, file)
+                            } else {
+                                Toast.makeText(context, "Gagal mengunduh update", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        Toast.makeText(context, "Link download tidak ditemukan", Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    TextButton(onClick = { showUpdateDialog = false }) {
-                        Text("Tutup", color = primaryBg)
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isNewer) {
+                        TextButton(
+                            onClick = { downloadAction() },
+                            enabled = !isDownloading
+                        ) {
+                            Text(if (isDownloading) "Mengunduh..." else "Download & Install", color = if (isDownloading) Color.Gray else primaryBg)
+                        }
+                    } else {
+                        TextButton(
+                            onClick = { downloadAction() },
+                            enabled = !isDownloading
+                        ) {
+                            Text(if (isDownloading) "Mengunduh..." else "Update Fix (Download & Install)", color = if (isDownloading) Color.Gray else primaryBg)
+                        }
+                        if (!isDownloading) {
+                            TextButton(onClick = { showUpdateDialog = false }) {
+                                Text("Tutup", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
+                            }
+                        }
                     }
                 }
             },

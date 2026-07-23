@@ -119,6 +119,7 @@ object JaringanRoute
 object RasioRoute
 @Serializable
 object ProfileRoute
-
+@Serializable
+object GangguanRoute
 @Serializable
 object NocDashboardRoute

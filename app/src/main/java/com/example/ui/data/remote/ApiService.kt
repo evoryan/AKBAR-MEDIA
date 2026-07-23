@@ -324,6 +324,9 @@ interface ApiService {
     @GET("api/mikrotik/status/{id}")
     suspend fun getMikrotikStatus(@Path("id") id: String): MikrotikStatus
 
+    @GET("api/mikrotik/logs/{id}")
+    suspend fun getMikrotikLogs(@Path("id") id: String): List<MikrotikLog>
+
     
 
     @GET("api/mikrotik/profiles/{id}")
@@ -435,3 +438,11 @@ data class RouterStatusSyncItem(
 )
 
 data class PingResponse(val status: String)
+
+@kotlinx.serialization.Serializable
+data class MikrotikLog(
+    val id: String = "",
+    val time: String = "",
+    val topics: String = "",
+    val message: String = ""
+)

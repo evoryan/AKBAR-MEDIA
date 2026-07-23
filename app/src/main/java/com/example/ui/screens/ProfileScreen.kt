@@ -42,6 +42,7 @@ fun ProfileScreen(
     val cardBorder = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF333333) else Color(0xFFE0E0E0)
 
     val currentUser by UserSession.currentUser.collectAsState()
+    var showLogoutDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = bgMain,
@@ -216,7 +217,7 @@ fun ProfileScreen(
             }
 
             OutlinedButton(
-                onClick = onLogout,
+                onClick = { showLogoutDialog = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -233,6 +234,30 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            containerColor = cardBg,
+            title = { Text("Konfirmasi Logout", color = textMain, fontWeight = FontWeight.Bold) },
+            text = { Text("Apakah Anda yakin ingin keluar dari aplikasi?", color = textSecondary) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogout()
+                    }
+                ) {
+                    Text("Ya, Keluar", color = Color(0xFFFF3B30), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Batal", color = primaryBg)
+                }
+            }
+        )
     }
 }
 
