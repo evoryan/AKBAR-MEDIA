@@ -99,4 +99,18 @@ object SettingsManager {
     var waTemplateOtp: String
         get() = prefs.getString("wa_template_otp", "Kode OTP Anda adalah: {otp}\n\nJangan membagikan kode ini kepada siapa pun.\n\nAKBAR MEDIA") ?: ""
         set(value) = prefs.edit().putString("wa_template_otp", value).apply()
+
+    var tenantInfos: List<String>
+        get() {
+            val jsonStr = prefs.getString("tenant_info_list", "[]") ?: "[]"
+            return try {
+                kotlinx.serialization.json.Json.decodeFromString<List<String>>(jsonStr)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        set(value) {
+            val jsonStr = kotlinx.serialization.json.Json.encodeToString(value)
+            prefs.edit().putString("tenant_info_list", jsonStr).apply()
+        }
 }

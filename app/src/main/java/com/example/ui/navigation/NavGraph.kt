@@ -313,7 +313,8 @@ fun AkbarMediaNavGraph() {
                     onNavigateToCompanySettings = { navController.navigate(CompanySettingsRoute) },
                     onNavigateToBackupRestore = { navController.navigate(BackupRestoreRoute) },
                     onNavigateToInvoiceSettings = { navController.navigate(InvoiceSettingsRoute) },
-                                        onLogout = {
+                    onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) },
+                    onLogout = {
                         val context = navController.context
                         com.example.ui.data.UserSession.clearSession(context)
                         navController.navigate(LoginRoute) {
@@ -324,6 +325,7 @@ fun AkbarMediaNavGraph() {
             }
             
             composable<UpdateEmailRoute> { UpdateEmailScreen(onBack = { navController.popBackStack() }) }
+            composable<InfoTenantRoute> { InfoTenantScreen(onBack = { navController.popBackStack() }) }
             composable<UpdateProfilRoute> { UpdateProfilScreen(onBack = { navController.popBackStack() }) }
             composable<GantiPasswordRoute> { 
                 GantiPasswordScreen(

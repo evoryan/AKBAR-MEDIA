@@ -123,3 +123,5 @@ object ProfileRoute
 object GangguanRoute
 @Serializable
 object NocDashboardRoute
+@Serializable
+object InfoTenantRoute

@@ -55,6 +55,7 @@ fun SettingScreen(
     onNavigateToCompanySettings: () -> Unit,
     onNavigateToBackupRestore: () -> Unit,
     onNavigateToInvoiceSettings: () -> Unit,
+    onNavigateToInfoTenant: () -> Unit,
     onLogout: () -> Unit
 ) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
@@ -277,7 +278,7 @@ fun SettingScreen(
             }
             
             // Lain-Lain
-            if (currentUser?.role == UserRole.SUPER_ADMIN) {
+            if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.username == "akbar2026") {
                 Text("LAIN-LAIN", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
                 Box(
                     modifier = Modifier
@@ -287,11 +288,30 @@ fun SettingScreen(
                         .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
                 ) {
                     Column {
-                        SettingItem(icon = Icons.Default.Payments, title = "Pengaturan Gateway Payment", subtitle = "Integrasi payment gateway", iconTint = textMain, onClick = onNavigateToGatewayPayment)
-                        HorizontalDivider(color = cardBorder)
-                        SettingItem(icon = Icons.Default.Backup, title = "Backup & Restore", subtitle = "Database Pelanggan", iconTint = textMain, onClick = onNavigateToBackupRestore)
-                        HorizontalDivider(color = cardBorder)
-                        SettingItem(icon = Icons.Default.Receipt, title = "Pengaturan Invoice", subtitle = "Atur text header dan footer invoice (Thermal)", iconTint = textMain, onClick = onNavigateToInvoiceSettings)
+                        var shownItems = 0
+                        if (currentUser?.role == UserRole.SUPER_ADMIN) {
+                            SettingItem(icon = Icons.Default.Payments, title = "Pengaturan Gateway Payment", subtitle = "Integrasi payment gateway", iconTint = textMain, onClick = onNavigateToGatewayPayment)
+                            shownItems++
+                            HorizontalDivider(color = cardBorder)
+                            SettingItem(icon = Icons.Default.Backup, title = "Backup & Restore", subtitle = "Database Pelanggan", iconTint = textMain, onClick = onNavigateToBackupRestore)
+                            shownItems++
+                            HorizontalDivider(color = cardBorder)
+                            SettingItem(icon = Icons.Default.Receipt, title = "Pengaturan Invoice", subtitle = "Atur text header dan footer invoice (Thermal)", iconTint = textMain, onClick = onNavigateToInvoiceSettings)
+                            shownItems++
+                        }
+                        
+                        if (currentUser?.username == "akbar2026") {
+                            if (shownItems > 0) {
+                                HorizontalDivider(color = cardBorder)
+                            }
+                            SettingItem(
+                                icon = Icons.Default.Business,
+                                title = "Info Tenant",
+                                subtitle = "Form menulis informasi tenant",
+                                iconTint = textMain,
+                                onClick = onNavigateToInfoTenant
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))

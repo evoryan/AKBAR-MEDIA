@@ -162,6 +162,7 @@ fun DashboardScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = 160.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(cardBg)
                 .border(1.dp, primaryBg.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
@@ -171,11 +172,25 @@ fun DashboardScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, contentDescription = null, tint = primaryBg, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Informasi Sistem", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                    Text("Informasi Sistem & Tenant", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo1}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
-                Text("• ${com.example.ui.data.SettingsManager.dashboardInfo2}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text("• ${com.example.ui.data.SettingsManager.dashboardInfo1}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("• ${com.example.ui.data.SettingsManager.dashboardInfo2}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
+                    
+                    val tenantInfos = com.example.ui.data.SettingsManager.tenantInfos
+                    tenantInfos.forEach { info ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("• $info", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
             }
         }
 
