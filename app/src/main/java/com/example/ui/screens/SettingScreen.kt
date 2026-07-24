@@ -56,6 +56,7 @@ fun SettingScreen(
     onNavigateToBackupRestore: () -> Unit,
     onNavigateToInvoiceSettings: () -> Unit,
     onNavigateToInfoTenant: () -> Unit,
+    onNavigateToSinkronisasi: () -> Unit,
     onLogout: () -> Unit
 ) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
@@ -278,7 +279,7 @@ fun SettingScreen(
             }
             
             // Lain-Lain
-            if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.username == "akbar2026") {
+            if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.ADMIN || currentUser?.username == "akbar2026") {
                 Text("LAIN-LAIN", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
                 Box(
                     modifier = Modifier
@@ -300,6 +301,20 @@ fun SettingScreen(
                             shownItems++
                         }
                         
+                        if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.ADMIN) {
+                            if (shownItems > 0) {
+                                HorizontalDivider(color = cardBorder)
+                            }
+                            SettingItem(
+                                icon = Icons.Default.Sync,
+                                title = "Sinkronisasi",
+                                subtitle = "Cek secret Mikrotik yang belum digunakan",
+                                iconTint = textMain,
+                                onClick = onNavigateToSinkronisasi
+                            )
+                            shownItems++
+                        }
+
                         if (currentUser?.username == "akbar2026") {
                             if (shownItems > 0) {
                                 HorizontalDivider(color = cardBorder)

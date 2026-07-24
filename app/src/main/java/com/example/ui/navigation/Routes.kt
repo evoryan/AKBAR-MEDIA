@@ -125,3 +125,5 @@ object GangguanRoute
 object NocDashboardRoute
 @Serializable
 object InfoTenantRoute
+@Serializable
+object SinkronisasiRoute
