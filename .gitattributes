@@ -1,0 +1,5 @@
+# Treat jar files as binary to avoid Git corrupting them with line ending conversion
+*.jar binary
+*.png binary
+*.jpg binary
+*.jks binary
