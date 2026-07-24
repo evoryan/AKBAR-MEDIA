@@ -21,6 +21,7 @@ object UserSession {
     
     fun saveSession(context: Context, user: AdminUser) {
         currentUser.value = user
+        cachedAreas = emptyList() // clear cache on session switch
         val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
         sharedPrefs.edit().apply {
             putString("user_id", user.id)
@@ -138,6 +139,7 @@ object UserSession {
         val dbName = currentUser.value?.db_name
         val role = currentUser.value?.role
         currentUser.value = null
+        cachedAreas = emptyList() // clear cache on logout
         val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
         dbName?.let {
             val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")

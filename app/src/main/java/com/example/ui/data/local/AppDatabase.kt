@@ -135,16 +135,24 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "akbar_media_room.db"
-                )
-                .fallbackToDestructiveMigration()
-                .build()
-                INSTANCE = instance
-                instance
+            val dbName = com.example.ui.data.UserSession.currentUser.value?.db_name ?: "akbar_media"
+            val filename = "akbar_media_room_${dbName}.db"
+            return synchronized(this) {
+                val current = INSTANCE
+                if (current == null || current.openHelper.databaseName != filename) {
+                    current?.close()
+                    val instance = Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        filename
+                    )
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    INSTANCE = instance
+                    instance
+                } else {
+                    current
+                }
             }
         }
     }

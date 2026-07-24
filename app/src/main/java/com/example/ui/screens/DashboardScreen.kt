@@ -666,9 +666,9 @@ fun DashboardAreaSecretsPage(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        area.name,
+                        "Mikrotik ${area.name} (${area.routerIp})",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         color = if (isDark) Color.White else Color(0xFF1A1A1A)
                     )
                     Text(
@@ -857,9 +857,9 @@ fun DashboardAreaLogsPage(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        area.name,
+                        "Mikrotik ${area.name} (${area.routerIp})",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         color = if (isDark) Color.White else Color(0xFF1A1A1A)
                     )
                     Text(

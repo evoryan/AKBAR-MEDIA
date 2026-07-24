@@ -96,7 +96,9 @@ fun DaftarAdminScreen(onBack: () -> Unit) {
         ) {
             val filteredAdmins = adminList.filter { item ->
                 val curr = currentUser ?: return@filter false
-                if (curr.role == UserRole.SUPER_ADMIN) true
+                if (curr.role == UserRole.SUPER_ADMIN) {
+                    item.id == curr.id || item.role != UserRole.SUPER_ADMIN
+                }
                 else if (curr.role == UserRole.ADMIN) {
                     item.id == curr.id || com.example.ui.data.UserSession.canManageAdmin(item)
                 } else {
