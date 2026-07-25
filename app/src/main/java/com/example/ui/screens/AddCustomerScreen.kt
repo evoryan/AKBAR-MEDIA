@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.ContactsContract
 import androidx.compose.material.icons.filled.Contacts
@@ -60,6 +61,7 @@ fun AddCustomerScreen(
     var selectedArea by remember { mutableStateOf<Area?>(null) }
     var selectedPackage by remember { mutableStateOf<InternetPackage?>(null) }
     var selectedSecret by remember { mutableStateOf<PPPoESecret?>(null) }
+    var secretInput by remember { mutableStateOf("") }
     var selectedOdp by remember { mutableStateOf<OdpItem?>(null) }
     var selectedPort by remember { mutableStateOf("") }
     
@@ -133,6 +135,7 @@ fun AddCustomerScreen(
     var selectedTabIndex by remember { mutableStateOf(0) }
 
     var showAreaDialog by remember { mutableStateOf(false) }
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
     var showPackageDialog by remember { mutableStateOf(false) }
     var showSecretDialog by remember { mutableStateOf(false) }
     var secretSearchQuery by remember { mutableStateOf("") }
@@ -170,6 +173,7 @@ fun AddCustomerScreen(
     LaunchedEffect(selectedArea) {
         if (selectedArea != null) {
             selectedSecret = null
+            secretInput = ""
             isLoadingSecrets = true
             
             // Fetch Secrets
@@ -256,6 +260,45 @@ fun AddCustomerScreen(
         }
     }
 
+    val hasChanges = name.isNotBlank() || phone.isNotBlank() || address.isNotBlank() ||
+            selectedArea != null || selectedPackage != null || secretInput.isNotBlank() ||
+            selectedOdp != null || selectedPort.isNotBlank()
+
+    val handleBack = {
+        if (hasChanges) {
+            showExitConfirmDialog = true
+        } else {
+            onBack()
+        }
+    }
+
+    BackHandler(enabled = true) {
+        handleBack()
+    }
+
+    if (showExitConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirmDialog = false },
+            title = { Text("Keluar Tanpa Menyimpan?", color = errorRed) },
+            text = { Text("Apakah Anda yakin ingin keluar? Perubahan yang belum disimpan akan hilang.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExitConfirmDialog = false
+                        onBack()
+                    }
+                ) {
+                    Text("Ya, Keluar", color = errorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirmDialog = false }) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
+        )
+    }
+
     if (showAreaDialog) {
         AlertDialog(
             onDismissRequest = { showAreaDialog = false },
@@ -318,7 +361,10 @@ fun AddCustomerScreen(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                             singleLine = true
                         )
-                        val filteredSecrets = secrets.filter { it.name.contains(secretSearchQuery, ignoreCase = true) }
+                        val usedSecretNames = customers.mapNotNull { it.pppoeSecret }.filter { it.isNotBlank() }.toSet()
+                        val filteredSecrets = secrets.filter { 
+                            !usedSecretNames.contains(it.name) && it.name.contains(secretSearchQuery, ignoreCase = true) 
+                        }
                         if (filteredSecrets.isEmpty()) {
                             Text("Tidak ada secret yang cocok.")
                         } else {
@@ -329,6 +375,7 @@ fun AddCustomerScreen(
                                         text = secret.name,
                                         modifier = Modifier.fillMaxWidth().clickable {
                                             selectedSecret = secret
+                                            secretInput = secret.name
                                             showSecretDialog = false
                                             secretSearchQuery = ""
                                         }.padding(16.dp)
@@ -428,6 +475,7 @@ fun AddCustomerScreen(
                                     
                                     // Select the newly added secret
                                     selectedSecret = secrets.find { it.name == newSecretUsername } ?: selectedSecret
+                                    secretInput = selectedSecret?.name ?: newSecretUsername
                                     
                                     Toast.makeText(context, "Secret berhasil ditambahkan", Toast.LENGTH_SHORT).show()
                                     showAddSecretDialog = false
@@ -679,7 +727,7 @@ fun AddCustomerScreen(
                 modifier = Modifier.fillMaxWidth().background(bgDark).padding(horizontal = 16.dp, vertical = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = { handleBack() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
                 }
                 Text("Tambah Pelanggan", color = textMain, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
@@ -831,25 +879,32 @@ fun AddCustomerScreen(
                         Text("Pilih Secret PPPoE untuk binding pelanggan:", color = textMain, fontSize = 14.sp)
                         Spacer(modifier = Modifier.height(16.dp))
                         
-                        Box {
-                            OutlinedTextField(
-                                value = selectedSecret?.name ?: "",
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("PPPoE Secret", color = textSecondary) },
-                                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = "Pilih", tint = neonCyan) },
-                                modifier = Modifier.fillMaxWidth().clickable { showSecretDialog = true },
-                                colors = OutlinedTextFieldDefaults.colors(disabledTextColor = textMain, disabledBorderColor = textSecondary, disabledLabelColor = textSecondary)
-                            )
-                            // Invisible box over text field to handle click
-                            Box(modifier = Modifier.matchParentSize().clickable { 
-                                if (selectedArea == null) {
-                                    Toast.makeText(context, "Pilih area di Tab Akun terlebih dahulu", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    showSecretDialog = true 
+                        OutlinedTextField(
+                            value = secretInput,
+                            onValueChange = { newValue ->
+                                secretInput = newValue
+                                selectedSecret = secrets.find { it.name.equals(newValue, ignoreCase = true) }
+                            },
+                            label = { Text("PPPoE Secret", color = textSecondary) },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    if (selectedArea == null) {
+                                        Toast.makeText(context, "Pilih area di Tab Akun terlebih dahulu", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        showSecretDialog = true 
+                                    }
+                                }) {
+                                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "Pilih", tint = neonCyan)
                                 }
-                            })
-                        }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = neonCyan,
+                                unfocusedBorderColor = textSecondary,
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain
+                            )
+                        )
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedButton(
@@ -884,7 +939,7 @@ fun AddCustomerScreen(
                                 coroutineScope.launch {
                                     try {
                                         val newCust = Customer(
-                                            id = "", name = name, phone = phone, area = selectedArea?.name ?: "Semua", address = address, username = selectedSecret?.name ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: "Rp. 0", discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = selectedSecret?.name ?: ""
+                                            id = "", name = name, phone = phone, area = selectedArea?.name ?: "Semua", address = address, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: "Rp. 0", discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = secretInput
                                         )
                                         ApiClient.apiService.addCustomer(newCust)
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
@@ -969,7 +1024,7 @@ fun AddCustomerScreen(
                                 coroutineScope.launch {
                                     try {
                                         val newCust = Customer(
-                                            id = "", name = name, phone = phone, area = selectedArea?.name ?: "Semua", address = address, username = selectedSecret?.name ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: "Rp. 0", discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = selectedSecret?.name ?: "", odpId = selectedOdp?.id ?: "", odpPort = selectedPort
+                                            id = "", name = name, phone = phone, area = selectedArea?.name ?: "Semua", address = address, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: "Rp. 0", discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = secretInput, odpId = selectedOdp?.id ?: "", odpPort = selectedPort
                                         )
                                         ApiClient.apiService.addCustomer(newCust)
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()

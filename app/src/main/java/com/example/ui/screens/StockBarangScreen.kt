@@ -124,6 +124,8 @@ fun StockBarangScreen(
                     title = "Barang",
                     icon = Icons.Default.Inventory,
                     iconTint = Color(0xFF00FF4D), // Greenish
+                    cardBg = cardBg,
+                    cardBorder = cardBorder,
                     modifier = Modifier.weight(1f),
                     onClick = onNavigateToInventory
                 )
@@ -131,6 +133,8 @@ fun StockBarangScreen(
                     title = "Kategori",
                     icon = Icons.Default.Category,
                     iconTint = Color(0xFFFFB300), // Yellowish
+                    cardBg = cardBg,
+                    cardBorder = cardBorder,
                     modifier = Modifier.weight(1f),
                     onClick = onNavigateToKategori
                 )
@@ -138,6 +142,8 @@ fun StockBarangScreen(
                     title = "History",
                     icon = Icons.Default.History,
                     iconTint = Color(0xFF00BFFF), // Blueish
+                    cardBg = cardBg,
+                    cardBorder = cardBorder,
                     modifier = Modifier.weight(1f),
                     onClick = onNavigateToHistory
                 )
@@ -149,19 +155,19 @@ fun StockBarangScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
-                    .padding(16.dp)
+                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                    .padding(12.dp)
             ) {
                 Column {
-                    Text("Barang Terambil hari ini :", color = textSecondary, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Barang Terambil hari ini :", color = textSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
                     if (itemsTakenToday.isEmpty()) {
                         Text(
                             "Tidak ada Data",
                             color = textMain,
-                            fontSize = 14.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
@@ -169,21 +175,21 @@ fun StockBarangScreen(
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             items(itemsTakenToday) { tx ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
+                                        .padding(vertical = 3.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text(tx.itemName, color = textMain, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                        Text("Oleh: ${tx.adminName}", color = textSecondary, fontSize = 11.sp)
+                                        Text(tx.itemName, color = textMain, fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                                        Text("Oleh: ${tx.adminName}", color = textSecondary, fontSize = 10.sp)
                                     }
-                                    Text("-${tx.quantity}", color = Color(0xFFFF003C), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text("-${tx.quantity}", color = Color(0xFFFF003C), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             }
                         }
@@ -337,22 +343,24 @@ fun StockMenuCard(
     title: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconTint: Color,
+    cardBg: Color,
+    cardBorder: Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF11111A))
-            .border(1.dp, Color(0xFF333333), RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             .clickable { onClick() }
-            .padding(vertical = 16.dp, horizontal = 8.dp),
+            .padding(vertical = 12.dp, horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(32.dp))
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 11.sp, fontWeight = FontWeight.Medium)
         }
     }
 }

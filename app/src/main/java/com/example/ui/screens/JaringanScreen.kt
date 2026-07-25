@@ -371,7 +371,8 @@ fun ExpandableOdcItem(odc: OdcItem, odpList: List<OdpItem>, odcList: List<OdcIte
                 Spacer(modifier = Modifier.height(8.dp))
                 val usedByOdp = odpList.filter { it.portInput == odc.name }
                 val usedByOdc = odcList.filter { it.portInput == odc.name && it.id != odc.id }
-                val terpakai = usedByOdp.size + usedByOdc.size
+                val usedByRasio = rasioList.filter { it.portInput == odc.name }
+                val terpakai = usedByOdp.size + usedByOdc.size + usedByRasio.size
                 val kosong = (odc.portCount - terpakai).coerceAtLeast(0)
                 
                 Text("Total Port: ${odc.portCount}", color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -384,10 +385,12 @@ fun ExpandableOdcItem(odc: OdcItem, odpList: List<OdpItem>, odcList: List<OdcIte
                     usedByOdc.forEach { item ->
                         Text("- ODC: ${item.name}", color = textSecondary, fontSize = 12.sp)
                     }
+                    usedByRasio.forEach { item ->
+                        Text("- Rasio: ${item.name}", color = textSecondary, fontSize = 12.sp)
+                    }
                     usedByOdp.forEach { item ->
                         Text("- ODP: ${item.name}", color = textSecondary, fontSize = 12.sp)
                     }
-                    
                 }
             }
         }
