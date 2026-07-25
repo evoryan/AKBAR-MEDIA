@@ -113,4 +113,12 @@ object SettingsManager {
             val jsonStr = kotlinx.serialization.json.Json.encodeToString(value)
             prefs.edit().putString("tenant_info_list", jsonStr).apply()
         }
+
+    var lastNotifiedInfo: String
+        get() = prefs.getString("last_notified_info", "") ?: ""
+        set(value) = prefs.edit().putString("last_notified_info", value).apply()
+
+    var lastSeenGangguanId: Int
+        get() = prefs.getInt("last_seen_gangguan_id", 0)
+        set(value) = prefs.edit().putInt("last_seen_gangguan_id", value).apply()
 }

@@ -154,12 +154,9 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                 val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
                 val regDate = sdf.parse(customer.registerDate)
                 val billDate = sdf.parse(customer.billingDate)
-                val today = java.util.Date()
+                val today = sdf.parse(sdf.format(java.util.Date()))
                 if (regDate != null && billDate != null) {
-                    val belumMemasukiMasaTagihan = today.before(billDate)
-                    val diffInMillis = kotlin.math.abs(billDate.time - regDate.time)
-                    val diffInDays = diffInMillis / (1000 * 60 * 60 * 24)
-                    belumMemasukiMasaTagihan && diffInDays < 10
+                    (today.equals(regDate) || today.after(regDate)) && today.before(billDate)
                 } else {
                     false
                 }

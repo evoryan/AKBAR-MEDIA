@@ -50,6 +50,15 @@ fun GangguanScreen(onBack: () -> Unit) {
     val currentUserState by UserSession.currentUser.collectAsState()
     val adminRealName = currentUserState?.name ?: "Admin"
 
+    LaunchedEffect(listGangguan) {
+        if (listGangguan.isNotEmpty()) {
+            val maxId = listGangguan.maxOf { it.id }
+            if (maxId > com.example.ui.data.SettingsManager.lastSeenGangguanId) {
+                com.example.ui.data.SettingsManager.lastSeenGangguanId = maxId
+            }
+        }
+    }
+
     var listArea by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
     LaunchedEffect(Unit) {
         try {

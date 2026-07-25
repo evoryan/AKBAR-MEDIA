@@ -63,6 +63,21 @@ fun DashboardScreen(
     
     var allowedAreas by remember { mutableStateOf<List<com.example.ui.screens.Area>>(emptyList()) }
     
+    val db = remember { com.example.ui.data.local.AppDatabase.getDatabase(mContext) }
+    val listGangguan by db.gangguanDao().getAllGangguan().collectAsState(initial = emptyList())
+    val hasUnreadGangguan = remember(listGangguan, com.example.ui.data.SettingsManager.lastSeenGangguanId) {
+        listGangguan.any { it.id > com.example.ui.data.SettingsManager.lastSeenGangguanId }
+    }
+    
+    var currentDateTime by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val sdf = java.text.SimpleDateFormat("EEEE, dd MMMM yyyy HH:mm:ss", java.util.Locale("id", "ID"))
+        while (true) {
+            currentDateTime = sdf.format(java.util.Date())
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    
     LaunchedEffect(Unit) {
         coroutineScope.launch {
             try {
@@ -87,6 +102,25 @@ fun DashboardScreen(
                 } catch (e: Exception) {
                     // Ignore silent fail
                 }
+            }
+        }
+
+        coroutineScope.launch {
+            while (true) {
+                try {
+                    val firstInfo = com.example.ui.data.SettingsManager.tenantInfos.firstOrNull()
+                    if (firstInfo != null && firstInfo != com.example.ui.data.SettingsManager.lastNotifiedInfo) {
+                        com.example.ui.data.SettingsManager.lastNotifiedInfo = firstInfo
+                        com.example.ui.data.NotificationHelper.showNotification(
+                            context = mContext,
+                            title = "Informasi Baru dari akbar2026",
+                            body = firstInfo
+                        )
+                    }
+                } catch (e: Exception) {
+                    // Ignore silent fail
+                }
+                kotlinx.coroutines.delay(10000) // Check every 10 seconds
             }
         }
 
@@ -144,6 +178,10 @@ fun DashboardScreen(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("Halo, ${currentUser?.name ?: "Admin"}", fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
+                if (currentDateTime.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(currentDateTime, fontSize = 12.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF888888) else androidx.compose.ui.graphics.Color(0xFF888888), fontWeight = FontWeight.Normal)
+                }
             }
             Box(
                 modifier = Modifier
@@ -181,15 +219,15 @@ fun DashboardScreen(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
+                    val tenantInfos = com.example.ui.data.SettingsManager.tenantInfos
+                    tenantInfos.forEach { info ->
+                        Text("• $info", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
                     Text("• ${com.example.ui.data.SettingsManager.dashboardInfo1}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("• ${com.example.ui.data.SettingsManager.dashboardInfo2}", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
-                    
-                    val tenantInfos = com.example.ui.data.SettingsManager.tenantInfos
-                    tenantInfos.forEach { info ->
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("• $info", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
                 }
             }
         }
@@ -395,7 +433,7 @@ fun DashboardScreen(
         ) {
             ShortcutItem(Icons.Default.PersonAdd, "Tambah\nPelanggan", primaryBg, modifier = Modifier.weight(1f), onClick = onNavigateToCustomers)
             ShortcutItem(Icons.Default.Payment, "Bayar\nTagihan", gridSuccessBg, modifier = Modifier.weight(1f), onClick = onNavigateToBilling)
-            ShortcutItem(Icons.Default.Warning, "Data\nGangguan", gridErrorBg, modifier = Modifier.weight(1f), onClick = onNavigateToGangguan)
+            ShortcutItem(Icons.Default.Warning, "Data\nGangguan", gridErrorBg, modifier = Modifier.weight(1f), showBadge = hasUnreadGangguan, onClick = onNavigateToGangguan)
         }
 
         // Menu Utama Card
@@ -566,7 +604,7 @@ fun RowScope.MenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, tit
 }
 
 @Composable
-fun ShortcutItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, bgColor: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ShortcutItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, bgColor: Color, modifier: Modifier = Modifier, showBadge: Boolean = false, onClick: () -> Unit) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
@@ -576,10 +614,21 @@ fun ShortcutItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: S
             .padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null, tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), modifier = Modifier.size(24.dp))
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 10.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Box {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(icon, contentDescription = null, tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(title, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 10.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            if (showBadge) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFF3B30))
+                        .align(Alignment.TopEnd)
+                )
+            }
         }
     }
 }

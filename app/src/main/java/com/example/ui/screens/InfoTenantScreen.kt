@@ -21,11 +21,13 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.data.SettingsManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfoTenantScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
     val primaryBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
@@ -99,13 +101,20 @@ fun InfoTenantScreen(onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
-                            if (newInfoText.trim().isNotEmpty()) {
+                            val text = newInfoText.trim()
+                            if (text.isNotEmpty()) {
                                 val updatedList = infoList.toMutableList().apply {
-                                    add(0, newInfoText.trim()) // Add at the top
+                                    add(0, text) // Add at the top
                                 }
                                 SettingsManager.tenantInfos = updatedList
+                                SettingsManager.lastNotifiedInfo = text
                                 infoList = updatedList
                                 newInfoText = ""
+                                com.example.ui.data.NotificationHelper.showNotification(
+                                    context = context,
+                                    title = "Informasi Baru dari akbar2026",
+                                    body = text
+                                )
                             } else {
                                 showError = true
                             }

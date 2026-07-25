@@ -4,13 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Router
@@ -112,5 +106,16 @@ fun SplashScreen(onNavigateToLogin: () -> Unit, onNavigateToDashboard: () -> Uni
                 color = Color(0xFFAAAAAA)
             )
         }
+
+        // Footer Text
+        Text(
+            text = "Akbar Media Group ©2026",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF666666) else Color(0xFF999999),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp)
+        )
     }
 }

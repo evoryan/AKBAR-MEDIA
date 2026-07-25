@@ -150,5 +150,16 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 }
             }
         }
+
+        // Footer Text
+        Text(
+            text = "Akbar Media Group ©2026",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF666666) else Color(0xFF999999),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp)
+        )
     }
 }
