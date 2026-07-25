@@ -153,10 +153,41 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
             if (!customer.registerDate.isNullOrEmpty() && !customer.billingDate.isNullOrEmpty()) {
                 val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
                 val regDate = sdf.parse(customer.registerDate)
-                val billDate = sdf.parse(customer.billingDate)
                 val today = sdf.parse(sdf.format(java.util.Date()))
-                if (regDate != null && billDate != null) {
-                    (today.equals(regDate) || today.after(regDate)) && today.before(billDate)
+                
+                val dayNumber = try {
+                    val parsedDate = sdf.parse(customer.billingDate)
+                    if (parsedDate != null) {
+                        val cal = java.util.Calendar.getInstance()
+                        cal.time = parsedDate
+                        cal.get(java.util.Calendar.DAY_OF_MONTH)
+                    } else {
+                        customer.billingDate.toIntOrNull()
+                    }
+                } catch (e: Exception) {
+                    customer.billingDate.toIntOrNull()
+                }
+                
+                var billDate: java.util.Date? = null
+                if (dayNumber != null && regDate != null) {
+                    val calendar = java.util.Calendar.getInstance()
+                    calendar.time = regDate
+                    calendar.set(java.util.Calendar.DAY_OF_MONTH, 1)
+                    val maxDay = calendar.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                    val targetDay = if (dayNumber > maxDay) maxDay else dayNumber
+                    calendar.set(java.util.Calendar.DAY_OF_MONTH, targetDay)
+                    if (calendar.time.before(regDate)) {
+                        calendar.add(java.util.Calendar.MONTH, 1)
+                        calendar.set(java.util.Calendar.DAY_OF_MONTH, 1)
+                        val nextMax = calendar.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                        val nextTarget = if (dayNumber > nextMax) nextMax else dayNumber
+                        calendar.set(java.util.Calendar.DAY_OF_MONTH, nextTarget)
+                    }
+                    billDate = calendar.time
+                }
+                
+                if (billDate != null && today != null) {
+                    today.before(billDate)
                 } else {
                     false
                 }
