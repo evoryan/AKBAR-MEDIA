@@ -332,6 +332,78 @@ fun SettingScreen(
                 Spacer(modifier = Modifier.height(32.dp))
             }
 
+            // API & KONEKSI
+            Text("API & KONEKSI", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
+            var showApiUrlDialog by remember { mutableStateOf(false) }
+            var currentApiUrl by remember { mutableStateOf(com.example.ui.data.SettingsManager.apiBaseUrl) }
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cardBg)
+                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+            ) {
+                Column {
+                    SettingItem(
+                        icon = Icons.Default.Link,
+                        title = "Alamat API Backend",
+                        subtitle = currentApiUrl,
+                        iconTint = textMain,
+                        onClick = { showApiUrlDialog = true }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (showApiUrlDialog) {
+                var inputUrl by remember { mutableStateOf(currentApiUrl) }
+                AlertDialog(
+                    onDismissRequest = { showApiUrlDialog = false },
+                    title = { Text("Ubah API Backend", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)) },
+                    containerColor = cardBg,
+                    text = {
+                        Column {
+                            Text("Masukkan URL API backend baru:", color = textSecondary, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = inputUrl,
+                                onValueChange = { inputUrl = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBg,
+                                    unfocusedBorderColor = cardBorder,
+                                    focusedTextColor = textMain,
+                                    unfocusedTextColor = textMain
+                                )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                if (inputUrl.isNotBlank()) {
+                                    val formattedUrl = if (inputUrl.endsWith("/")) inputUrl else "$inputUrl/"
+                                    com.example.ui.data.SettingsManager.apiBaseUrl = formattedUrl
+                                    currentApiUrl = formattedUrl
+                                    com.example.ui.data.remote.ApiClient.updateBaseUrl(formattedUrl)
+                                    Toast.makeText(context, "API URL berhasil diubah", Toast.LENGTH_SHORT).show()
+                                }
+                                showApiUrlDialog = false
+                            }
+                        ) {
+                            Text("Simpan", color = primaryBg)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showApiUrlDialog = false }) {
+                            Text("Batal", color = textSecondary)
+                        }
+                    }
+                )
+            }
+
             // SISTEM
             Text("SISTEM", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
             Box(

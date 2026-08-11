@@ -14,6 +14,7 @@ class SyncWorker(
     override suspend fun doWork(): Result {
         Log.d("SyncWorker", "Starting background data sync...")
         return try {
+            com.example.ui.data.SettingsManager.init(applicationContext)
             ApiClient.init(applicationContext)
 
             val syncResponse = ApiClient.apiService.syncData()

@@ -37,9 +37,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    com.example.ui.data.SettingsManager.init(applicationContext)
     com.example.ui.data.remote.ApiClient.init(applicationContext)
     com.example.ui.data.remote.NetworkMonitor.init(applicationContext)
-    com.example.ui.data.SettingsManager.init(applicationContext)
 
     // Schedule background WorkManager Sync (Immediate startup sync + Periodic background sync)
     try {

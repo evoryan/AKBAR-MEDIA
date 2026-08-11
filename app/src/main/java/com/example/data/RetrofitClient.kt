@@ -4,12 +4,11 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 object RetrofitClient {
-    // Change this to your VPS URL
-    private const val BASE_URL = "http://YOUR_VPS_IP/api/"
-
     val instance: ApiService by lazy {
+        val baseUrl = com.example.ui.data.SettingsManager.apiBaseUrl
+        val safeUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(safeUrl)
             .addConverterFactory(MoshiConverterFactory.create())
             .build()
             .create(ApiService::class.java)

@@ -11,13 +11,12 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
-    private const val BASE_URL = "http://103.253.245.25:4500/"
-    
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
         
     private var database: OfflineDatabase? = null
+    private var client: OkHttpClient? = null
     
     lateinit var apiService: ApiService
         private set
@@ -33,21 +32,26 @@ object ApiClient {
             .allowMainThreadQueries() // Allowed for generic interceptor ease
             .build()
             
-            val client = OkHttpClient.Builder()
+            client = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .addInterceptor(AuthInterceptor(context))
                 .build()
                 
-            val retrofit = Retrofit.Builder()
-                .baseUrl(BASE_URL)
-                .client(client)
-                .addConverterFactory(MoshiConverterFactory.create(moshi))
-                .build()
-                
-            apiService = retrofit.create(ApiService::class.java)
-            
+            updateBaseUrl(com.example.ui.data.SettingsManager.apiBaseUrl)
         }
+    }
+    
+    fun updateBaseUrl(newUrl: String) {
+        val safeUrl = if (newUrl.endsWith("/")) newUrl else "$newUrl/"
+        val currentClient = client ?: OkHttpClient.Builder().build()
+        val retrofit = Retrofit.Builder()
+            .baseUrl(safeUrl)
+            .client(currentClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            
+        apiService = retrofit.create(ApiService::class.java)
     }
     
     fun getDatabase(): OfflineDatabase? = database

@@ -19,6 +19,14 @@ object SettingsManager {
         fontScaleStateFlow.value = fontScale
     }
 
+    private const val KEY_API_BASE_URL = "api_base_url"
+    var apiBaseUrl: String
+        get() = prefs.getString(KEY_API_BASE_URL, "http://amg.akbarmediagroup.my.id/") ?: "http://amg.akbarmediagroup.my.id/"
+        set(value) {
+            val formatted = if (value.endsWith("/")) value else "$value/"
+            prefs.edit().putString(KEY_API_BASE_URL, formatted).apply()
+        }
+
     var companyName: String
         get() = prefs.getString(KEY_COMPANY_NAME, "Akbar Media") ?: "Akbar Media"
         set(value) = prefs.edit().putString(KEY_COMPANY_NAME, value).apply()

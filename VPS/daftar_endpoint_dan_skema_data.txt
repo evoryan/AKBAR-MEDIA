@@ -1,0 +1,319 @@
+========================================================================
+             DAFTAR ENDPOINT LENGKAP & SKEMA DATA API - AKBAR MEDIA
+========================================================================
+
+Dokumen ini berisi daftar lengkap endpoint REST API yang digunakan oleh aplikasi 
+Akbar Media beserta skema data (JSON payload) untuk memudahkan pembuatan 
+aplikasi berbasis web (Frontend) yang terintegrasi dengan database dan backend 
+Node.js (server.js) yang sama.
+
+------------------------------------------------------------------------
+1. INFORMASI BASE URL & KONEKSI
+------------------------------------------------------------------------
+- Base URL API (Production/VPS): Silakan sesuaikan dengan IP / Domain VPS Anda.
+- Port Default: Biasanya berjalan pada port 3000, 5000, atau sesuai konfigurasi .env di VPS Anda.
+- Header Default untuk request:
+  * Content-Type: application/json
+  * Authorization: Bearer <token_admin> (jika menggunakan autentikasi)
+
+------------------------------------------------------------------------
+2. DAFTAR ENDPOINT API & METODE HTTP
+------------------------------------------------------------------------
+
+A. AUTENTIKASI & ADMIN (/api/auth atau /api/admins)
+----------------------------------------------------
+1. Login Admin
+   - Endpoint: POST /api/login
+   - Request Body:
+     {
+       "username": "admin_username",
+       "password": "admin_password"
+     }
+   - Response (Success):
+     {
+       "status": "success",
+       "token": "eyJhbGciOi...",
+       "admin": {
+         "id": "1",
+         "name": "Admin Akbar Media",
+         "role": "SUPERADMIN"
+       }
+     }
+
+B. PELANGGAN (CUSTOMERS) (/api/customers)
+------------------------------------------
+1. Ambil Semua Data Pelanggan
+   - Endpoint: GET /api/customers
+   - Response: List of Customer (Array)
+
+2. Ambil Detail Pelanggan Berdasarkan ID
+   - Endpoint: GET /api/customers/{id}
+   - Response: Single Customer Object
+
+3. Tambah Pelanggan Baru
+   - Endpoint: POST /api/customers
+   - Request Body: Skema Customer (lihat bagian 3)
+   - Response:
+     {
+       "status": "success",
+       "message": "Pelanggan berhasil ditambahkan",
+       "data": { ... }
+     }
+
+4. Update Data Pelanggan
+   - Endpoint: PUT /api/customers/{id}
+   - Request Body: Skema Customer (lihat bagian 3)
+   - Response:
+     {
+       "status": "success",
+       "message": "Pelanggan berhasil diupdate"
+     }
+
+5. Hapus Pelanggan
+   - Endpoint: DELETE /api/customers/{id}
+   - Response:
+     {
+       "status": "success",
+       "message": "Pelanggan berhasil dihapus"
+     }
+
+6. Pencarian Pelanggan
+   - Endpoint: GET /api/customers/search?q={query_pencarian}
+   - Response: Array of Customer yang cocok
+
+7. Sinkronisasi Data Pelanggan (Bulk Sync)
+   - Endpoint: POST /api/customers/sync
+   - Request Body: Array of CustomerSyncItem
+   - Response:
+     {
+       "status": "success",
+       "synced": 15
+     }
+
+C. WILAYAH (AREAS) (/api/areas)
+--------------------------------
+1. Ambil Semua Area
+   - Endpoint: GET /api/areas
+   - Response: Array of Area
+
+2. Tambah Area Baru
+   - Endpoint: POST /api/areas
+   - Request Body:
+     {
+       "name": "Nama Area",
+       "code": "KODE_AREA"
+     }
+
+3. Update Area
+   - Endpoint: PUT /api/areas/{id}
+   - Request Body:
+     {
+       "name": "Nama Area Update"
+     }
+
+4. Hapus Area
+   - Endpoint: DELETE /api/areas/{id}
+
+D. PAKET INTERNET (PACKAGES) (/api/packages)
+---------------------------------------------
+1. Ambil Semua Paket Internet
+   - Endpoint: GET /api/packages
+   - Response: Array of InternetPackage
+
+2. Tambah Paket Baru
+   - Endpoint: POST /api/packages
+   - Request Body:
+     {
+       "name": "Nama Paket",
+       "speed": "10 Mbps",
+       "price": 150000
+     }
+
+3. Update Paket
+   - Endpoint: PUT /api/packages/{id}
+
+4. Hapus Paket
+   - Endpoint: DELETE /api/packages/{id}
+
+E. MIKROTIK & PPPoE SECRETS (/api/mikrotik)
+--------------------------------------------
+1. Ambil Semua PPPoE Secrets (Berdasarkan Area)
+   - Endpoint: GET /api/mikrotik/secrets?areaId={areaId}
+   - Response: Array of PPPoESecret
+
+2. Tambah PPPoE Secret Baru ke Router
+   - Endpoint: POST /api/mikrotik/secrets
+   - Request Body:
+     {
+       "areaId": "id_area",
+       "name": "username_secret",
+       "password": "password_secret",
+       "profile": "default_or_package_profile"
+     }
+
+F. INFRASTRUKTUR JARINGAN (ODC, ODP, RASIO)
+--------------------------------------------
+1. ODC (Optical Distribution Cabinet) (/api/odc)
+   - GET /api/odc -> Mengambil semua data ODC
+   - POST /api/odc -> Menambah ODC baru
+   - PUT /api/odc/{id} -> Mengupdate ODC
+   - DELETE /api/odc/{id} -> Menghapus ODC
+
+2. ODP (Optical Distribution Point) (/api/odp)
+   - GET /api/odp -> Mengambil semua data ODP
+   - POST /api/odp -> Menambah ODP baru
+   - PUT /api/odp/{id} -> Mengupdate ODP
+   - DELETE /api/odp/{id} -> Menghapus ODP
+
+3. RASIO (Pembagi Port / Splitter) (/api/rasio)
+   - GET /api/rasio -> Mengambil semua data Rasio
+   - POST /api/rasio -> Menambah Rasio baru
+   - PUT /api/rasio/{id} -> Mengupdate Rasio
+   - DELETE /api/rasio/{id} -> Menghapus Rasio
+
+G. STOK BARANG & INVENTARIS (/api/inventory atau /api/stock)
+-------------------------------------------------------------
+1. Data Stok Barang
+   - GET /api/inventory -> Mengambil semua barang di gudang
+   - POST /api/inventory -> Menambah barang baru
+   - PUT /api/inventory/{id} -> Mengupdate detail barang (stok/nama)
+   - DELETE /api/inventory/{id} -> Menghapus barang
+
+2. Riwayat Pengambilan/Pemasukan Barang
+   - GET /api/inventory/history -> Mengambil semua log riwayat barang keluar/masuk
+   - POST /api/inventory/take -> Log pengambilan barang (mengurangi stok)
+     Request Body:
+     {
+       "itemId": "id_barang",
+       "adminName": "Nama Admin Pengambil",
+       "quantity": 5,
+       "notes": "Keperluan instalasi area X"
+     }
+
+
+------------------------------------------------------------------------
+3. SKEMA DATA & MODEL JSON (DATA STRUCTURE)
+------------------------------------------------------------------------
+
+A. MODEL: Customer (Pelanggan)
+--------------------------------
+{
+  "id": "CUST-001",               // String, Unique Identifier
+  "name": "Satria Evo",           // String, Nama Lengkap
+  "phone": "081234567890",        // String, Nomor WhatsApp/Telepon
+  "area": "Area Sidoarjo",        // String, Nama Area/Wilayah
+  "address": "Jl. Raya No. 10",   // String, Alamat Lengkap
+  "username": "satria_evo",       // String, PPPoE Username (atau default name)
+  "billingDate": "10",            // String, Tanggal Tagihan Bulanan (1-31)
+  "registerDate": "2026-01-15",   // String, Tanggal Registrasi
+  "isolateDate": "2026-02-15",    // String, Tanggal Isolir/Suspend
+  "packageName": "Paket 20 Mbps", // String, Nama Paket yang Dipilih
+  "status": "LUNAS",              // String, Status Tagihan: LUNAS / BELUM BAYAR / ISOLIR
+  "price": "Rp. 150.000",         // String, Harga Paket Terformat
+  "discount": "- Dskn : Rp. 0",   // String, Diskon Terformat
+  "additionalCost1": "Rp. 0",     // String, Biaya Tambahan 1 (opsional)
+  "additionalCost2": "Rp. 0",     // String, Biaya Tambahan 2 (opsional)
+  "pppoeSecret": "satria_evo",    // String, Secret PPPoE Terikat
+  "odpId": "12",                  // String (ID ODP), Opsional
+  "odpPort": "3"                  // String (Nomor Port ODP), Opsional
+}
+
+B. MODEL: Area (Wilayah)
+-------------------------
+{
+  "id": "AREA-01",
+  "name": "Krian",
+  "code": "KRN",
+  "totalCustomers": 124           // Integer, Jumlah pelanggan terdaftar di area ini
+}
+
+C. MODEL: InternetPackage (Paket Internet)
+-------------------------------------------
+{
+  "id": "PKG-01",
+  "name": "Paket Hemat 10M",
+  "speed": "10 Mbps",
+  "price": 100000                 // Double/Long
+}
+
+D. MODEL: PPPoESecret (Mikrotik Router Secret)
+-----------------------------------------------
+{
+  "id": "SEC-01",
+  "name": "username_pppoe",
+  "profile": "default_profile",
+  "status": "active",             // active / inactive / bound
+  "ipAddress": "10.10.20.5",      // IP Address jika aktif
+  "uptime": "2d 4h 12m"           // Uptime dari router
+}
+
+E. MODEL: OdcItem (Optical Distribution Cabinet)
+-------------------------------------------------
+{
+  "id": 1,                        // Integer (Autoincrement / Database ID)
+  "name": "ODC-KRN-01",           // String, Nama ODC
+  "portCount": 12,                // Integer, Total kapasitas port ODC
+  "portInput": "GPON-1/1/2",      // String, Port Input sumber/feeder
+  "redamanIn": "-15.4",           // String, Nilai redaman input (dBm)
+  "redamanOut": "-18.2"           // String, Nilai redaman output (dBm)
+}
+
+F. MODEL: OdpItem (Optical Distribution Point)
+-----------------------------------------------
+{
+  "id": 12,
+  "name": "ODP-KRN-01-05",
+  "odcId": "1",                   // String/Integer, Terikat ke ODC mana
+  "portCount": 8,
+  "portInput": "ODC-KRN-01",      // String, Sumber feeder port
+  "redamanIn": "-18.5",
+  "redamanOut": "-21.3",
+  "latitude": "-7.345678",        // String, Koordinat maps
+  "longitude": "112.654321"       // String, Koordinat maps
+}
+
+G. MODEL: RasioItem (Splitter Rasio Jaringan)
+----------------------------------------------
+{
+  "id": "RAS-01",
+  "name": "Rasio 1:2 Krian",
+  "type": "Rasio",                // String
+  "portCount": 2,                 // Integer, Jumlah output splitter
+  "portInput": "ODC-KRN-01",      // String, Sumber port hulu (bisa ODC/ODP)
+  "redamanIn": "-16.5",
+  "redamanOut": "-19.8",
+  "size": "1:2"                   // String, Ukuran rasio (1:2, 1:4, 1:8, dll)
+}
+
+H. MODEL: StockItem (Stok Gudang / Inventaris)
+-----------------------------------------------
+{
+  "id": "BARANG-01",
+  "name": "STB Fiberhome",
+  "stock": 25,                    // Integer, Sisa stok saat ini
+  "unit": "Pcs",                  // String, Satuan barang
+  "category": "Perangkat"         // String, Kategori barang
+}
+
+I. MODEL: StockHistory (Log Keluar/Masuk Barang)
+-------------------------------------------------
+{
+  "id": "LOG-99",
+  "itemId": "BARANG-01",
+  "itemName": "STB Fiberhome",
+  "adminName": "Satria Admin",
+  "quantity": 3,                  // Integer, Jumlah pengambilan
+  "type": "OUT",                  // String, OUT (pengambilan) atau IN (restock)
+  "date": "2026-07-25 15:30:22",  // String, Waktu transaksi
+  "notes": "Instalasi pelanggan baru"
+}
+
+------------------------------------------------------------------------
+Tips Integrasi untuk Frontend Web:
+1. Pastikan Anda mengatur konfigurasi CORS di server.js (sudah diperbarui 
+   untuk mengizinkan Origin dinamis & Credentials).
+2. Manfaatkan Axios atau Web Fetch API dengan mengaktifkan header 
+   Content-Type: application/json.
+3. Untuk autentikasi persisten, simpan token JWT yang diterima saat login 
+   ke dalam localStorage atau Cookie terenkripsi.
+------------------------------------------------------------------------

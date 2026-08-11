@@ -14,7 +14,15 @@ const path = require('path');
 const multer = require('multer');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: function (origin, callback) {
+        // allow all origins dynamically (echoing the request origin) to support credentials
+        callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
+}));
 app.use(express.json());
 
 // Setup static serving for uploads
@@ -217,10 +225,22 @@ const tenantContext = (req, res, next) => {
 };
 
 
+// Helper to check if tenant is a demo tenant (checking is_demo flag in JWT or demo substring in username/db_name)
+function isDemoTenant(req) {
+    if (!req.user) return false;
+    const db_name = req.user.db_name || '';
+    const username = req.user.username || '';
+    const is_demo = req.user.is_demo === 1 || req.user.is_demo === true || 
+                    db_name.toLowerCase().includes('demo') || 
+                    username.toLowerCase().includes('demo');
+    return is_demo;
+}
+
+
 // Auto-update schema to avoid errors if user doesn't run init.sql
 async function updateSchema() {
     try {
-        
+        await masterPool.query(`ALTER TABLE users ADD COLUMN is_demo TINYINT(1) DEFAULT 0`).catch(e=>{});
         await masterPool.query(`ALTER TABLE users ADD COLUMN area_id VARCHAR(100) DEFAULT 'semua'`).catch(e=>{});
         await masterPool.query(`CREATE TABLE IF NOT EXISTS pembukuan (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -663,9 +683,10 @@ app.post('/api/login', async (req, res) => {
             
             // Assuming the users table in master db has a 'db_name' column
             const db_name = user.db_name || 'app_db';
+            const is_demo = user.is_demo === 1 || user.is_demo === true ? 1 : 0;
             
             const token = jwt.sign(
-                { id: user.id, username: user.username, role: user.role, db_name: db_name }, 
+                { id: user.id, username: user.username, role: user.role, db_name: db_name, is_demo: is_demo }, 
                 JWT_SECRET, 
                 { expiresIn: '24h' }
             );
@@ -1317,6 +1338,29 @@ app.delete('/api/customers/:id', async (req, res) => {
     }
 });
 
+app.post('/api/customers/:id/isolir', async (req, res) => {
+    try {
+        const customerId = req.params.id;
+        const [rows] = await req.pool.query('SELECT * FROM customers WHERE id = ?', [customerId]);
+        if (rows.length === 0) {
+            return res.status(404).json({ error: "Pelanggan tidak ditemukan" });
+        }
+        
+        const today = new Date();
+        const formattedDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
+        
+        await req.pool.query(
+            'UPDATE customers SET status = "ISOLIR", isolate_date = ? WHERE id = ?',
+            [formattedDate, customerId]
+        );
+        
+        res.json({ message: "Pelanggan berhasil diisolir" });
+    } catch (error) {
+        console.error("Error isolating customer:", error);
+        res.status(500).json({ error: "Terjadi kesalahan saat mengisolir pelanggan" });
+    }
+});
+
 app.put('/api/customers/:id', async (req, res) => {
     try {
         const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
@@ -1343,6 +1387,13 @@ app.put('/api/customers/:id', async (req, res) => {
 
 app.post('/api/customers', async (req, res) => {
     try {
+        if (isDemoTenant(req)) {
+            const [countRows] = await req.pool.query('SELECT COUNT(*) as count FROM customers');
+            if (countRows[0] && countRows[0].count >= 20) {
+                return res.status(400).json({ error: "Batas Akun Demo: Maksimal 20 pelanggan." });
+            }
+        }
+
         const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
         const registerDate = req.body.registerDate || req.body.register_date;
         const isolateDate = req.body.isolateDate || req.body.isolate_date;
@@ -1894,6 +1945,13 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
 
 app.post('/api/areas', async (req, res) => {
     try {
+        if (isDemoTenant(req)) {
+            const [countRows] = await req.pool.query('SELECT COUNT(*) as count FROM areas');
+            if (countRows[0] && countRows[0].count >= 2) {
+                return res.status(400).json({ error: "Batas Akun Demo: Maksimal 2 lokasi." });
+            }
+        }
+
         const { name, description, routerIp, apiDomain, customerCount, mikrotikUser, mikrotikPassword, acsUser, acsPassword } = req.body;
         const [result] = await req.pool.query(
             'INSERT INTO areas (name, description, routerIp, apiDomain, customerCount, mikrotikUser, mikrotikPassword, acsUser, acsPassword) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -1907,6 +1965,13 @@ app.post('/api/areas', async (req, res) => {
 
 app.post('/api/odc', async (req, res) => {
     try {
+        if (isDemoTenant(req)) {
+            const [countRows] = await req.pool.query('SELECT COUNT(*) as count FROM odc_list');
+            if (countRows[0] && countRows[0].count >= 2) {
+                return res.status(400).json({ error: "Batas Akun Demo: Maksimal 2 ODC." });
+            }
+        }
+
         const { name, location, portCount, portInput, redaman_in, redaman_out, area } = req.body;
         const parsedPortCount = parseInt(portCount) || 0;
         let result;
@@ -1935,6 +2000,13 @@ app.post('/api/odc', async (req, res) => {
 
 app.post('/api/odp', async (req, res) => {
     try {
+        if (isDemoTenant(req)) {
+            const [countRows] = await req.pool.query('SELECT COUNT(*) as count FROM odp_list');
+            if (countRows[0] && countRows[0].count >= 2) {
+                return res.status(400).json({ error: "Batas Akun Demo: Maksimal 2 ODP." });
+            }
+        }
+
         const { odcId, name, portCount, portInput, redaman_in, redaman_out, area } = req.body;
         const parsedOdcId = parseInt(odcId) || 0;
         const parsedPortCount = parseInt(portCount) || 0;
@@ -2059,6 +2131,27 @@ app.post('/api/admins', async (req, res) => {
     try {
         const { name, username, role, password, area_id } = req.body;
         const db_name = req.user ? req.user.db_name : 'app_db';
+
+        if (isDemoTenant(req)) {
+            const targetRole = (role || 'ADMIN').toUpperCase();
+            if (targetRole === 'ADMIN' || targetRole === 'SUPER_ADMIN') {
+                const [rows] = await masterPool.query("SELECT COUNT(*) as count FROM users WHERE db_name = ? AND role = 'ADMIN'", [db_name]);
+                if (rows[0] && rows[0].count >= 1) {
+                    return res.status(400).json({ error: "Batas Akun Demo: Maksimal pendaftaran 1 Admin." });
+                }
+            } else if (targetRole === 'TEKNISI') {
+                const [rows] = await masterPool.query("SELECT COUNT(*) as count FROM users WHERE db_name = ? AND role = 'TEKNISI'", [db_name]);
+                if (rows[0] && rows[0].count >= 1) {
+                    return res.status(400).json({ error: "Batas Akun Demo: Maksimal pendaftaran 1 Teknisi." });
+                }
+            } else if (targetRole === 'COLLECTOR') {
+                const [rows] = await masterPool.query("SELECT COUNT(*) as count FROM users WHERE db_name = ? AND role = 'COLLECTOR'", [db_name]);
+                if (rows[0] && rows[0].count >= 1) {
+                    return res.status(400).json({ error: "Batas Akun Demo: Maksimal pendaftaran 1 Collector." });
+                }
+            }
+        }
+
         const [result] = await masterPool.query(
             'INSERT INTO users (name, username, role, password, db_name, area_id) VALUES (?, ?, ?, ?, ?, ?)',
             [name, username, role || 'ADMIN', password || '', db_name, area_id || 'semua']

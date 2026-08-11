@@ -5,12 +5,13 @@ const fs = require('fs');
 async function addTenant() {
     const args = process.argv.slice(2);
     if (args.length < 4) {
-        console.log("Penggunaan: node add_tenant.js <db_name> <username> <password> <name>");
-        console.log("Contoh: node add_tenant.js klien_baru admin_klien secret123 'Admin Klien'");
+        console.log("Penggunaan: node add_tenant.js <db_name> <username> <password> <name> [is_demo: 0 atau 1]");
+        console.log("Contoh: node add_tenant.js klien_baru admin_klien secret123 'Admin Klien' 1");
         process.exit(1);
     }
 
-    const [dbName, username, password, name] = args;
+    const [dbName, username, password, name, isDemoArg] = args;
+    const isDemo = isDemoArg === '1' || isDemoArg === 'true' ? 1 : 0;
 
     try {
         // Koneksi tanpa spesifik DB untuk membuat DB baru
@@ -40,11 +41,14 @@ async function addTenant() {
         if (existing.length > 0) {
             console.log(`Error: Username '${username}' sudah digunakan!`);
         } else {
+            // Pastikan kolom is_demo tersedia
+            await connection.query(`ALTER TABLE users ADD COLUMN is_demo TINYINT(1) DEFAULT 0`).catch(e=>{});
+            
             await connection.query(`
-                INSERT INTO users (name, username, password, role, db_name)
-                VALUES (?, ?, ?, 'SUPER_ADMIN', ?)
-            `, [name, username, password, dbName]);
-            console.log(`Berhasil! Tenant baru '${dbName}' dengan user '${username}' berhasil ditambahkan.`);
+                INSERT INTO users (name, username, password, role, db_name, is_demo)
+                VALUES (?, ?, ?, 'SUPER_ADMIN', ?, ?)
+            `, [name, username, password, dbName, isDemo]);
+            console.log(`Berhasil! Tenant baru '${dbName}' dengan user '${username}' (Demo: ${isDemo ? 'Ya' : 'Tidak'}) berhasil ditambahkan.`);
         }
 
         await connection.end();

@@ -168,8 +168,17 @@ fun BotWaScreen(onBack: () -> Unit) {
                                         .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                                         .build()
                                     
+                                    val wahaUrl = try {
+                                        val uri = java.net.URI(com.example.ui.data.SettingsManager.apiBaseUrl)
+                                        val host = uri.host ?: "103.253.245.25"
+                                        val scheme = uri.scheme ?: "http"
+                                        "$scheme://$host:2200/api/tenant_${tId}/auth/qr"
+                                    } catch (e: Exception) {
+                                        "http://103.253.245.25:2200/api/tenant_${tId}/auth/qr"
+                                    }
+                                    
                                     val imgRequest = okhttp3.Request.Builder()
-                                        .url("http://103.253.245.25:2200/api/tenant_${tId}/auth/qr")
+                                        .url(wahaUrl)
                                         .addHeader("X-Api-Key", "akbarapikey2026")
                                         .build()
                                     

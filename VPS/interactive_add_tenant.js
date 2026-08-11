@@ -38,6 +38,9 @@ async function addTenantInteractive() {
             process.exit(1);
         }
 
+        const isDemoResponse = await askQuestion("5. Apakah ini tenant DEMO? (y/N): ");
+        const isDemo = isDemoResponse.toLowerCase() === 'y' ? 1 : 0;
+
         rl.close();
 
         console.log("\nMemulai proses setup...");
@@ -69,11 +72,14 @@ async function addTenantInteractive() {
         if (existing.length > 0) {
             console.log(`Error: Username '${username}' sudah digunakan! Silakan ulangi dengan username lain.`);
         } else {
+            // Pastikan kolom is_demo tersedia
+            await connection.query(`ALTER TABLE users ADD COLUMN is_demo TINYINT(1) DEFAULT 0`).catch(e=>{});
+
             await connection.query(`
-                INSERT INTO users (name, username, password, role, db_name)
-                VALUES (?, ?, ?, 'SUPER_ADMIN', ?)
-            `, [name, username, password, dbName]);
-            console.log(`\n✅ Berhasil! Tenant baru '${dbName}' dengan user '${username}' berhasil ditambahkan.`);
+                INSERT INTO users (name, username, password, role, db_name, is_demo)
+                VALUES (?, ?, ?, 'SUPER_ADMIN', ?, ?)
+            `, [name, username, password, dbName, isDemo]);
+            console.log(`\n✅ Berhasil! Tenant baru '${dbName}' dengan user '${username}' (Demo: ${isDemo ? 'Ya' : 'Tidak'}) berhasil ditambahkan.`);
             console.log("Anda sekarang bisa login di aplikasi menggunakan akun tersebut.");
         }
 
