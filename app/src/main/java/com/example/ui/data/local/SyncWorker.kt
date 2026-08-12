@@ -84,6 +84,13 @@ class SyncWorker(
                     "${tagihanList.size} tagihan, " +
                     "${routerStatusList.size} router statuses updated.")
             Result.success()
+        } catch (e: retrofit2.HttpException) {
+            Log.e("SyncWorker", "Data sync failed with HTTP ${e.code()}", e)
+            if (e.code() == 401 || e.code() == 403) {
+                Result.failure()
+            } else {
+                Result.retry()
+            }
         } catch (e: Exception) {
             Log.e("SyncWorker", "Data sync failed", e)
             Result.retry()

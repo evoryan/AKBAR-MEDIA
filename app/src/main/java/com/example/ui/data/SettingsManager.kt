@@ -21,7 +21,15 @@ object SettingsManager {
 
     private const val KEY_API_BASE_URL = "api_base_url"
     var apiBaseUrl: String
-        get() = prefs.getString(KEY_API_BASE_URL, "http://amg.akbarmediagroup.my.id/") ?: "http://amg.akbarmediagroup.my.id/"
+        get() {
+            val saved = prefs.getString(KEY_API_BASE_URL, "http://amg.akbarmediagroup.my.id/") ?: "http://amg.akbarmediagroup.my.id/"
+            if (saved.contains("api.akbarmediagroup.me") || saved.contains("103.253.245.25")) {
+                val migrated = "http://amg.akbarmediagroup.my.id/"
+                prefs.edit().putString(KEY_API_BASE_URL, migrated).apply()
+                return migrated
+            }
+            return saved
+        }
         set(value) {
             val formatted = if (value.endsWith("/")) value else "$value/"
             prefs.edit().putString(KEY_API_BASE_URL, formatted).apply()
