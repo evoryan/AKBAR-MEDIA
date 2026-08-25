@@ -137,4 +137,44 @@ object SettingsManager {
     var lastSeenGangguanId: Int
         get() = prefs.getInt("last_seen_gangguan_id", 0)
         set(value) = prefs.edit().putInt("last_seen_gangguan_id", value).apply()
+
+    fun getSelectedPort(areaId: String): String {
+        return prefs.getString("traffic_selected_port_$areaId", "ether1") ?: "ether1"
+    }
+
+    fun setSelectedPort(areaId: String, port: String) {
+        prefs.edit().putString("traffic_selected_port_$areaId", port).apply()
+    }
+
+    fun getTrafficLastRx(areaId: String): Long {
+        return prefs.getLong("traffic_last_rx_$areaId", 0L)
+    }
+
+    fun setTrafficLastRx(areaId: String, value: Long) {
+        prefs.edit().putLong("traffic_last_rx_$areaId", value).apply()
+    }
+
+    fun getTrafficLastTx(areaId: String): Long {
+        return prefs.getLong("traffic_last_tx_$areaId", 0L)
+    }
+
+    fun setTrafficLastTx(areaId: String, value: Long) {
+        prefs.edit().putLong("traffic_last_tx_$areaId", value).apply()
+    }
+
+    fun getTrafficAccumRx(areaId: String): Long {
+        return prefs.getLong("traffic_accum_rx_$areaId", 0L)
+    }
+
+    fun setTrafficAccumRx(areaId: String, value: Long) {
+        prefs.edit().putLong("traffic_accum_rx_$areaId", value).apply()
+    }
+
+    fun getTrafficAccumTx(areaId: String): Long {
+        return prefs.getLong("traffic_accum_tx_$areaId", 0L)
+    }
+
+    fun setTrafficAccumTx(areaId: String, value: Long) {
+        prefs.edit().putLong("traffic_accum_tx_$areaId", value).apply()
+    }
 }

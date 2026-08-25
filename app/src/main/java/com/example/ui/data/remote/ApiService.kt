@@ -79,6 +79,13 @@ data class MikrotikProfile(
     val name: String
 )
 
+data class MikrotikInterface(
+    val name: String,
+    val type: String,
+    val rxByte: Long = 0,
+    val txByte: Long = 0
+)
+
 
 data class TrafficResponse(
     @com.squareup.moshi.Json(name = "rx-bits-per-second") val rxBits: String? = null,
@@ -323,6 +330,9 @@ interface ApiService {
 
     @GET("api/mikrotik/status/{id}")
     suspend fun getMikrotikStatus(@Path("id") id: String): MikrotikStatus
+
+    @GET("api/mikrotik/interfaces/{id}")
+    suspend fun getMikrotikInterfaces(@Path("id") id: String): List<MikrotikInterface>
 
     @GET("api/mikrotik/logs/{id}")
     suspend fun getMikrotikLogs(@Path("id") id: String): List<MikrotikLog>

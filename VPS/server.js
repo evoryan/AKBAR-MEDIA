@@ -2265,6 +2265,31 @@ app.get('/api/mikrotik/status/:id', async (req, res) => {
     }
 });
 
+app.get('/api/mikrotik/interfaces/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+
+        const result = await runWithMikrotik(area, async (api) => {
+            const interfaceMenu = api.menu('/interface').options('stats');
+            const interfaces = await interfaceMenu.get();
+            return interfaces.map(i => ({
+                name: i.name,
+                type: i.type,
+                rxByte: parseInt(i.rxByte || i.rxBytes || i['rx-byte'] || i['rx-bytes']) || 0,
+                txByte: parseInt(i.txByte || i.txBytes || i['tx-byte'] || i['tx-bytes']) || 0
+            }));
+        }, res, "Mikrotik interfaces error");
+
+        if (result) res.json(result);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
+
 app.get('/api/mikrotik/logs/:id', async (req, res) => {
     try {
         const { id } = req.params;

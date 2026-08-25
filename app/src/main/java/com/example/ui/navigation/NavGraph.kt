@@ -32,6 +32,7 @@ import com.example.ui.screens.*
 fun AkbarMediaNavGraph() {
     val navController = rememberNavController()
     var isServerOnline by remember { mutableStateOf(false) }
+    val currentUserState by com.example.ui.data.UserSession.currentUser.collectAsState()
 
     LaunchedEffect(Unit) {
         while(true) {
@@ -46,6 +47,14 @@ fun AkbarMediaNavGraph() {
     }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination?.route
+
+    LaunchedEffect(currentUserState, currentDestination) {
+        if (currentUserState == null && currentDestination != null && !currentDestination.contains("LoginRoute") && !currentDestination.contains("SplashRoute")) {
+            navController.navigate(LoginRoute) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
 
     val hideBottomNavRoutes = listOf(
         "com.example.ui.navigation.SplashRoute",

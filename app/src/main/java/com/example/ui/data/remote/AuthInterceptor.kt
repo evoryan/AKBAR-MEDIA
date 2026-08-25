@@ -21,6 +21,14 @@ class AuthInterceptor(private val context: Context) : Interceptor {
         }
         
         val request = builder.build()
-        return chain.proceed(request)
+        val response = chain.proceed(request)
+        
+        if (response.code == 401) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                UserSession.clearSession(context)
+            }
+        }
+        
+        return response
     }
 }

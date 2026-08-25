@@ -17,6 +17,18 @@ class SyncWorker(
             com.example.ui.data.SettingsManager.init(applicationContext)
             ApiClient.init(applicationContext)
 
+            // Ensure session is loaded
+            if (com.example.ui.data.UserSession.currentUser.value == null) {
+                com.example.ui.data.UserSession.loadSession(applicationContext)
+            }
+
+            // Skip background sync if user is not logged in or token is missing
+            val currentUser = com.example.ui.data.UserSession.currentUser.value
+            if (currentUser == null || currentUser.token.isNullOrBlank()) {
+                Log.d("SyncWorker", "User is not logged in. Skipping background data sync.")
+                return Result.success()
+            }
+
             val syncResponse = ApiClient.apiService.syncData()
             val db = AppDatabase.getDatabase(applicationContext)
 
@@ -85,10 +97,14 @@ class SyncWorker(
                     "${routerStatusList.size} router statuses updated.")
             Result.success()
         } catch (e: retrofit2.HttpException) {
-            Log.e("SyncWorker", "Data sync failed with HTTP ${e.code()}", e)
             if (e.code() == 401 || e.code() == 403) {
+                Log.w("SyncWorker", "Data sync unauthorized (HTTP ${e.code()}). Session might be expired.")
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    com.example.ui.data.UserSession.clearSession(applicationContext)
+                }
                 Result.failure()
             } else {
+                Log.e("SyncWorker", "Data sync failed with HTTP ${e.code()}", e)
                 Result.retry()
             }
         } catch (e: Exception) {

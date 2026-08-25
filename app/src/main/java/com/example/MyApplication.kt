@@ -15,6 +15,7 @@ class MyApplication : Application() {
                     .setApplicationId("1:959734436856:android:a0a29f38a62d13b90dfc0d")
                     .setApiKey("AIzaSyBUNCM9Esm-dCFMw7HNq9EUkif9cEf6p-o")
                     .setProjectId("akbar-media-cae03")
+                    .setGcmSenderId("959734436856")
                     .setStorageBucket("akbar-media-cae03.firebasestorage.app")
                     .build()
                 FirebaseApp.initializeApp(this, options)

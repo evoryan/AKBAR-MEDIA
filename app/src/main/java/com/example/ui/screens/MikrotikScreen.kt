@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
@@ -184,21 +186,97 @@ fun MikrotikCard(
     var isLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     
-    LaunchedEffect(area.id, preloadedStatus, preloadedIsLoading, preloadedErrorMsg) {
+    // Traffic Counter states
+    var selectedPortChangedTrigger by remember { mutableStateOf(0) }
+    val selectedPort = remember(area.id, selectedPortChangedTrigger) { com.example.ui.data.SettingsManager.getSelectedPort(area.id) }
+    
+    var currentRxBytes by remember { mutableStateOf(0L) }
+    var currentTxBytes by remember { mutableStateOf(0L) }
+    var accumulatedRxBytes by remember { mutableStateOf(0L) }
+    var accumulatedTxBytes by remember { mutableStateOf(0L) }
+    var trafficErrorMsg by remember { mutableStateOf<String?>(null) }
+    
+    var showPortDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(area.id, preloadedStatus, preloadedIsLoading, preloadedErrorMsg, selectedPortChangedTrigger) {
+        // Initial setup of accumulated bytes from SharedPreferences
+        accumulatedRxBytes = com.example.ui.data.SettingsManager.getTrafficAccumRx(area.id)
+        accumulatedTxBytes = com.example.ui.data.SettingsManager.getTrafficAccumTx(area.id)
+        currentRxBytes = com.example.ui.data.SettingsManager.getTrafficLastRx(area.id)
+        currentTxBytes = com.example.ui.data.SettingsManager.getTrafficLastTx(area.id)
+
         if (preloadedIsLoading != null) {
             isLoading = preloadedIsLoading
             mikrotikStatus = preloadedStatus
             errorMsg = preloadedErrorMsg
         } else {
-            try {
-                isLoading = true
-                errorMsg = null
+            isLoading = true
+            errorMsg = null
+        }
+        
+        // 1. Fetch main Mikrotik Status (PPPoE active/offline/cpu)
+        try {
+            if (preloadedIsLoading == null) {
                 mikrotikStatus = com.example.ui.data.remote.ApiClient.apiService.getMikrotikStatus(area.id)
-            } catch(e: Exception) {
-                errorMsg = "Gagal mengambil data: ${e.message}"
-            } finally {
+            }
+        } catch(e: Exception) {
+            errorMsg = "Gagal mengambil status: ${e.message}"
+        } finally {
+            if (preloadedIsLoading == null) {
                 isLoading = false
             }
+        }
+
+        // 2. Fetch traffic interfaces in an isolated try-catch block
+        try {
+            trafficErrorMsg = null
+            val interfaces = com.example.ui.data.remote.ApiClient.apiService.getMikrotikInterfaces(area.id)
+            val matchedPort = interfaces.find { it.name == selectedPort }
+            if (matchedPort != null) {
+                val currentRx = matchedPort.rxByte
+                val currentTx = matchedPort.txByte
+                
+                val lastRx = com.example.ui.data.SettingsManager.getTrafficLastRx(area.id)
+                val lastTx = com.example.ui.data.SettingsManager.getTrafficLastTx(area.id)
+                
+                var accumRx = com.example.ui.data.SettingsManager.getTrafficAccumRx(area.id)
+                var accumTx = com.example.ui.data.SettingsManager.getTrafficAccumTx(area.id)
+                
+                // RX Accumulation with reboot check
+                val deltaRx = if (lastRx == 0L) {
+                    0L // First read/fresh port switch baseline
+                } else if (currentRx >= lastRx) {
+                    currentRx - lastRx
+                } else {
+                    currentRx // Reboot/reset detected, count since start of reboot
+                }
+                accumRx += deltaRx
+                
+                // TX Accumulation with reboot check
+                val deltaTx = if (lastTx == 0L) {
+                    0L // First read/fresh port switch baseline
+                } else if (currentTx >= lastTx) {
+                    currentTx - lastTx
+                } else {
+                    currentTx // Reboot/reset detected, count since start of reboot
+                }
+                accumTx += deltaTx
+                
+                // Persist & Update State
+                com.example.ui.data.SettingsManager.setTrafficLastRx(area.id, currentRx)
+                com.example.ui.data.SettingsManager.setTrafficLastTx(area.id, currentTx)
+                com.example.ui.data.SettingsManager.setTrafficAccumRx(area.id, accumRx)
+                com.example.ui.data.SettingsManager.setTrafficAccumTx(area.id, accumTx)
+                
+                currentRxBytes = currentRx
+                currentTxBytes = currentTx
+                accumulatedRxBytes = accumRx
+                accumulatedTxBytes = accumTx
+            } else {
+                trafficErrorMsg = "Port '$selectedPort' tidak ditemukan di Mikrotik"
+            }
+        } catch(e: Exception) {
+            trafficErrorMsg = "Traffic counter offline atau butuh update backend"
         }
     }
 
@@ -216,12 +294,48 @@ fun MikrotikCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.Router, contentDescription = null, modifier = Modifier.size(48.dp), tint = neonCyan)
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
                         Text(area.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         Text(if (isLoading) "Connecting to ${area.routerIp}..." else if (errorMsg != null) "Error" else "Connected (${area.routerIp})", color = if (errorMsg != null) Color(0xFFFF003C) else neonCyan, fontSize = 14.sp)
+                    }
+                }
+                
+                // 3-Dot Options Menu
+                Box {
+                    var menuExpanded by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = textMain)
+                    }
+                    
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                        modifier = Modifier.background(cardBg)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Pilih Port Monitor", color = textMain) },
+                            onClick = {
+                                menuExpanded = false
+                                showPortDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Reset Akumulasi Traffic", color = textMain) },
+                            onClick = {
+                                menuExpanded = false
+                                com.example.ui.data.SettingsManager.setTrafficAccumRx(area.id, 0L)
+                                com.example.ui.data.SettingsManager.setTrafficAccumTx(area.id, 0L)
+                                com.example.ui.data.SettingsManager.setTrafficLastRx(area.id, 0L)
+                                com.example.ui.data.SettingsManager.setTrafficLastTx(area.id, 0L)
+                                accumulatedRxBytes = 0L
+                                accumulatedTxBytes = 0L
+                                currentRxBytes = 0L
+                                currentTxBytes = 0L
+                            }
+                        )
                     }
                 }
             }
@@ -240,6 +354,53 @@ fun MikrotikCard(
                     MikrotikStatCard("Active PPPoE", if (isLoading) "..." else (mikrotikStatus?.activePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f))
                     MikrotikStatCard("PPPoE Offline", if (isLoading) "..." else (mikrotikStatus?.offlinePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f))
                 }
+                
+                // Traffic Counter Section
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF05050A))
+                        .border(1.dp, neonCyan.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Port Terpilih: $selectedPort", color = neonCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                            Text("Traffic Counter", color = textSecondary, fontSize = 11.sp)
+                        }
+                        
+                        Spacer(modifier = Modifier.height(1.dp).fillMaxWidth().background(neonCyan.copy(alpha = 0.15f)))
+                        
+                        if (trafficErrorMsg != null) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text("Data Traffic Offline", color = Color(0xFFFFB300), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(trafficErrorMsg!!, color = textSecondary, fontSize = 11.sp)
+                            }
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("RX (Download)", color = textSecondary, fontSize = 11.sp)
+                                    Text(if (isLoading) "..." else formatBytes(accumulatedRxBytes), color = textMain, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text("Live: ${formatBytes(currentRxBytes)}", color = textSecondary, fontSize = 11.sp)
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("TX (Upload)", color = textSecondary, fontSize = 11.sp)
+                                    Text(if (isLoading) "..." else formatBytes(accumulatedTxBytes), color = textMain, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text("Live: ${formatBytes(currentTxBytes)}", color = textSecondary, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
             
             Spacer(modifier = Modifier.height(4.dp))
@@ -256,6 +417,109 @@ fun MikrotikCard(
                 Text("Manage Secrets", fontWeight = FontWeight.Bold)
             }
         }
+    }
+
+    // Dialog for selecting ports
+    if (showPortDialog) {
+        var isInterfacesLoading by remember { mutableStateOf(false) }
+        var interfacesList by remember { mutableStateOf<List<com.example.ui.data.remote.MikrotikInterface>>(emptyList()) }
+        var interfacesError by remember { mutableStateOf<String?>(null) }
+        
+        LaunchedEffect(Unit) {
+            isInterfacesLoading = true
+            interfacesError = null
+            try {
+                interfacesList = com.example.ui.data.remote.ApiClient.apiService.getMikrotikInterfaces(area.id)
+            } catch (e: Exception) {
+                interfacesError = "Gagal mengambil daftar port: ${e.message}"
+                // Fallback to default list if there's an error
+                interfacesList = listOf(
+                    com.example.ui.data.remote.MikrotikInterface("ether1", "ether"),
+                    com.example.ui.data.remote.MikrotikInterface("ether2", "ether"),
+                    com.example.ui.data.remote.MikrotikInterface("ether3", "ether"),
+                    com.example.ui.data.remote.MikrotikInterface("ether4", "ether"),
+                    com.example.ui.data.remote.MikrotikInterface("ether5", "ether"),
+                    com.example.ui.data.remote.MikrotikInterface("bridge", "bridge")
+                )
+            } finally {
+                isInterfacesLoading = false
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { showPortDialog = false },
+            title = { Text("Pilih Port Monitor", color = textMain) },
+            containerColor = cardBg,
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Pilih port Mikrotik di bawah ini untuk dihitung traffic counter-nya:", color = textSecondary, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    if (isInterfacesLoading) {
+                        Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = neonCyan)
+                        }
+                    } else if (interfacesError != null && interfacesList.isEmpty()) {
+                        Text(interfacesError ?: "Error", color = Color.Red, fontSize = 14.sp)
+                    } else {
+                        Box(modifier = Modifier.heightIn(max = 250.dp)) {
+                            LazyColumn {
+                                items(interfacesList) { item ->
+                                    val isSelected = item.name == selectedPort
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSelected) neonCyan.copy(alpha = 0.15f) else Color.Transparent)
+                                            .clickable {
+                                                com.example.ui.data.SettingsManager.setSelectedPort(area.id, item.name)
+                                                com.example.ui.data.SettingsManager.setTrafficLastRx(area.id, 0L)
+                                                com.example.ui.data.SettingsManager.setTrafficLastTx(area.id, 0L)
+                                                selectedPortChangedTrigger++
+                                                showPortDialog = false
+                                            }
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Router, 
+                                            contentDescription = null, 
+                                            tint = if (isSelected) neonCyan else textSecondary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(item.name, color = textMain, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, fontSize = 15.sp)
+                                            Text("Type: ${item.type}", color = textSecondary, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPortDialog = false }) {
+                    Text("Tutup", color = neonCyan)
+                }
+            }
+        )
+    }
+}
+
+fun formatBytes(bytes: Long): String {
+    val kb = 1024.0
+    val mb = kb * 1024.0
+    val gb = mb * 1024.0
+    val tb = gb * 1024.0
+    
+    return when {
+        bytes >= tb -> String.format("%.2f TB", bytes / tb)
+        bytes >= gb -> String.format("%.2f GB", bytes / gb)
+        bytes >= mb -> String.format("%.2f MB", bytes / mb)
+        bytes >= kb -> String.format("%.2f KB", bytes / kb)
+        else -> "$bytes B"
     }
 }
 

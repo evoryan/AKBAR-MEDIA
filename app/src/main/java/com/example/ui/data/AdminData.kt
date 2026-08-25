@@ -3,6 +3,8 @@ package com.example.ui.data
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.common.ConnectionResult
 import android.util.Log
 
 enum class UserRole {
@@ -15,6 +17,53 @@ object UserSession {
     val currentUser = MutableStateFlow<AdminUser?>(null)
     var hasCheckedForUpdate = false
     
+    private fun isGooglePlayServicesAvailable(context: Context): Boolean {
+        return try {
+            val availability = GoogleApiAvailability.getInstance()
+            val resultCode = availability.isGooglePlayServicesAvailable(context)
+            resultCode == ConnectionResult.SUCCESS
+        } catch (e: Throwable) {
+            false
+        }
+    }
+
+    private fun safeSubscribeToTopic(context: Context, topicName: String) {
+        if (!isGooglePlayServicesAvailable(context)) {
+            Log.d("FCM", "Google Play Services tidak tersedia, melewati subscribe topik $topicName")
+            return
+        }
+        try {
+            FirebaseMessaging.getInstance().subscribeToTopic(topicName)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        Log.d("FCM", "Berhasil subscribe ke topik $topicName")
+                    } else {
+                        Log.w("FCM", "Gagal subscribe ke topik $topicName: ${task.exception?.message}")
+                    }
+                }
+        } catch (e: Throwable) {
+            Log.w("FCM", "Gagal menginisialisasi subscribe ke topik $topicName: ${e.message}")
+        }
+    }
+
+    private fun safeUnsubscribeFromTopic(context: Context, topicName: String) {
+        if (!isGooglePlayServicesAvailable(context)) {
+            return
+        }
+        try {
+            FirebaseMessaging.getInstance().unsubscribeFromTopic(topicName)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        Log.d("FCM", "Berhasil unsubscribe dari topik $topicName")
+                    } else {
+                        Log.w("FCM", "Gagal unsubscribe dari topik $topicName: ${task.exception?.message}")
+                    }
+                }
+        } catch (e: Throwable) {
+            Log.w("FCM", "Gagal menginisialisasi unsubscribe dari topik $topicName: ${e.message}")
+        }
+    }
+
     fun hasDeletePrivilege(): Boolean {
         return currentUser.value?.role == UserRole.SUPER_ADMIN
     }
@@ -37,17 +86,10 @@ object UserSession {
         user.db_name?.let { dbName ->
             val safeTopic = dbName.replace(Regex("[^a-zA-Z0-9-_~]"), "")
             val topicName = "tenant_$safeTopic"
-            FirebaseMessaging.getInstance().subscribeToTopic(topicName)
-                .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        Log.d("FCM", "Berhasil subscribe ke topik $topicName")
-                    } else {
-                        Log.e("FCM", "Gagal subscribe ke topik $topicName")
-                    }
-                }
+            safeSubscribeToTopic(context, topicName)
         }
         if (user.role == UserRole.SUPER_ADMIN) {
-            FirebaseMessaging.getInstance().subscribeToTopic("tenant_superadmin")
+            safeSubscribeToTopic(context, "tenant_superadmin")
         }
     }
     
@@ -71,10 +113,10 @@ object UserSession {
             dbName?.let {
                 val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
                 val topicName = "tenant_$safeTopic"
-                FirebaseMessaging.getInstance().subscribeToTopic(topicName)
+                safeSubscribeToTopic(context, topicName)
             }
             if (role == UserRole.SUPER_ADMIN) {
-                FirebaseMessaging.getInstance().subscribeToTopic("tenant_superadmin")
+                safeSubscribeToTopic(context, "tenant_superadmin")
             }
             return true
         }
@@ -144,10 +186,10 @@ object UserSession {
         dbName?.let {
             val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
             val topicName = "tenant_$safeTopic"
-            FirebaseMessaging.getInstance().unsubscribeFromTopic(topicName)
+            safeUnsubscribeFromTopic(context, topicName)
         }
         if (role == UserRole.SUPER_ADMIN) {
-            FirebaseMessaging.getInstance().unsubscribeFromTopic("tenant_superadmin")
+            safeUnsubscribeFromTopic(context, "tenant_superadmin")
         }
         sharedPrefs.edit().clear().apply()
     }
