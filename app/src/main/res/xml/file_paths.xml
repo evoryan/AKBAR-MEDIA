@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <external-files-path name="downloaded_apks" path="Download/" />
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-files-path name="downloaded_apks" path="." />
+    <external-path name="external_storage" path="." />
+    <cache-path name="cache_apks" path="." />
+    <external-cache-path name="external_cache_apks" path="." />
+    <files-path name="internal_apks" path="." />
 </paths>

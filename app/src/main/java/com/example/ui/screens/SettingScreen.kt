@@ -16,6 +16,9 @@ import android.widget.Toast
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.os.Build
+import android.provider.Settings
+import com.example.BuildConfig
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -451,93 +454,206 @@ fun SettingScreen(
     if (showUpdateDialog && updateInfo != null) {
         val latestVersion = updateInfo!!.tag_name.removePrefix("v")
         val currentClean = currentVersion?.removePrefix("v") ?: "0"
-        val isNewer = latestVersion > currentClean
+        val isNewer = isVersionNewer(latestVersion, currentClean)
         var isDownloading by remember { mutableStateOf(false) }
         var downloadProgress by remember { mutableStateOf(0f) }
+        var downloadError by remember { mutableStateOf<String?>(null) }
+        
+        val apkDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+        val existingApk = remember(showUpdateDialog) {
+            val f = File(apkDir, "update.apk")
+            if (f.exists() && f.length() > 500000L) f else null
+        }
+        var downloadedFile by remember { mutableStateOf<File?>(existingApk) }
+
+        val targetAsset = if (BuildConfig.DEBUG) {
+            updateInfo!!.assets.firstOrNull { it.browser_download_url.contains("debug", ignoreCase = true) }
+                ?: updateInfo!!.assets.firstOrNull { it.browser_download_url.endsWith(".apk") }
+                ?: updateInfo!!.assets.firstOrNull()
+        } else {
+            updateInfo!!.assets.firstOrNull { it.browser_download_url.contains("release", ignoreCase = true) }
+                ?: updateInfo!!.assets.firstOrNull { it.browser_download_url.endsWith(".apk") }
+                ?: updateInfo!!.assets.firstOrNull()
+        }
+        val url = targetAsset?.browser_download_url
+
+        val startDownload = {
+            if (url != null) {
+                isDownloading = true
+                downloadError = null
+                coroutineScope.launch {
+                    val file = downloadApk(context, url) { progress ->
+                        downloadProgress = progress
+                    }
+                    isDownloading = false
+                    if (file != null) {
+                        downloadedFile = file
+                        installApk(context, file)
+                    } else {
+                        downloadError = "Gagal mengunduh update. Periksa koneksi internet atau gunakan opsi browser."
+                        Toast.makeText(context, "Gagal mengunduh update", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                Toast.makeText(context, "Link download tidak ditemukan", Toast.LENGTH_SHORT).show()
+            }
+        }
         
         AlertDialog(
             onDismissRequest = { if (!isDownloading) showUpdateDialog = false },
             containerColor = cardBg,
             titleContentColor = textMain,
             textContentColor = textSecondary,
-            title = { Text(if (isNewer) "Update Tersedia" else "Sudah Versi Terbaru") },
+            title = { 
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = primaryBg)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isNewer) "Update Tersedia" else "Sudah Versi Terbaru", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+            },
             text = { 
                 Column {
-                    Text("Versi saat ini: $currentVersion")
-                    Text("Versi terbaru: $latestVersion")
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Versi saat ini: $currentVersion", fontSize = 14.sp)
+                    Text("Versi terbaru: $latestVersion", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = primaryBg)
+                    
+                    if (updateInfo!!.body?.isNotBlank() == true) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Catatan Rilis:\n${updateInfo!!.body?.take(300)}${if ((updateInfo!!.body?.length ?: 0) > 300) "..." else ""}",
+                            fontSize = 12.sp,
+                            color = textSecondary
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
                     if (isDownloading) {
-                        Text("Mengunduh update... ${(downloadProgress * 100).toInt()}%")
+                        Text("Mengunduh update... ${(downloadProgress * 100).toInt()}%", fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         androidx.compose.material3.LinearProgressIndicator(
                             progress = { downloadProgress },
                             modifier = Modifier.fillMaxWidth(),
                             color = primaryBg,
                         )
+                    } else if (downloadedFile != null && downloadedFile!!.exists()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.15f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    "✓ File update telah siap dipasang (${(downloadedFile!!.length() / (1024 * 1024))} MB)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF10B981)
+                                )
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !hasInstallPermission(context)) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        "⚠️ Izin 'Install aplikasi tidak dikenal' belum aktif pada perangkat ini.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFE11D48)
+                                    )
+                                }
+                            }
+                        }
                     } else {
+                        if (downloadError != null) {
+                            Text(
+                                text = downloadError ?: "",
+                                fontSize = 12.sp,
+                                color = Color(0xFFFF4D4F)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                         if (isNewer) {
-                            Text("Apakah Anda ingin mengunduh versi terbaru?")
+                            Text("Apakah Anda ingin mengunduh dan memasang versi terbaru sekarang?", fontSize = 13.sp)
                         } else {
-                            Text("Apakah Anda ingin mengunduh ulang versi ini sebagai update perbaikan?")
+                            Text("Aplikasi sudah di versi terbaru. Anda dapat mengunduh ulang jika diperlukan.", fontSize = 13.sp)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tips: Jika muncul 'Aplikasi tidak terinstall', pastikan izin instalasi aktif atau hapus versi lama jika berasal dari build dev/debug berbeda.",
+                        fontSize = 11.sp,
+                        color = textSecondary.copy(alpha = 0.7f),
+                        lineHeight = 14.sp
+                    )
                 }
             },
             confirmButton = {
-                val url = updateInfo!!.assets.firstOrNull()?.browser_download_url
-                val downloadAction = {
-                    if (url != null) {
-                        isDownloading = true
-                        coroutineScope.launch {
-                            val file = downloadApk(context, url) { progress ->
-                                downloadProgress = progress
-                            }
-                            isDownloading = false
-                            if (file != null) {
-                                showUpdateDialog = false
-                                installApk(context, file)
-                            } else {
-                                Toast.makeText(context, "Gagal mengunduh update", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } else {
-                        Toast.makeText(context, "Link download tidak ditemukan", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (isNewer) {
-                        TextButton(
-                            onClick = { downloadAction() },
-                            enabled = !isDownloading
+                    if (downloadedFile != null && downloadedFile!!.exists() && !isDownloading) {
+                        Button(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !hasInstallPermission(context)) {
+                                    openInstallPermissionSettings(context)
+                                } else {
+                                    installApk(context, downloadedFile!!)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = primaryBg)
                         ) {
-                            Text(if (isDownloading) "Mengunduh..." else "Download & Install", color = if (isDownloading) Color.Gray else primaryBg)
+                            Text(
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !hasInstallPermission(context)) 
+                                    "Aktifkan Izin & Pasang" 
+                                else 
+                                    "Pasang Update Sekarang"
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { startDownload() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Unduh Ulang", fontSize = 12.sp)
                         }
                     } else {
-                        TextButton(
-                            onClick = { downloadAction() },
-                            enabled = !isDownloading
+                        Button(
+                            onClick = { startDownload() },
+                            enabled = !isDownloading,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = primaryBg)
                         ) {
-                            Text(if (isDownloading) "Mengunduh..." else "Update-Fix", color = if (isDownloading) Color.Gray else primaryBg)
+                            Text(if (isDownloading) "Mengunduh..." else if (isNewer) "Download & Pasang Update" else "Unduh Ulang")
                         }
-                        if (!isDownloading) {
-                            TextButton(onClick = { showUpdateDialog = false }) {
-                                Text("Tutup", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
-                            }
+                    }
+
+                    if (url != null && !isDownloading) {
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(browserIntent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal membuka browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Unduh Langsung via Browser", fontSize = 12.sp)
+                        }
+                    }
+
+                    if (!isDownloading) {
+                        TextButton(
+                            onClick = { showUpdateDialog = false },
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        ) {
+                            Text("Tutup", color = textSecondary)
                         }
                     }
                 }
             },
-            dismissButton = {
-                if (isNewer && !isDownloading) {
-                    TextButton(onClick = { showUpdateDialog = false }) {
-                        Text("Batal", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666))
-                    }
-                }
-            }
+            dismissButton = {}
         )
     }
 
@@ -604,66 +720,194 @@ fun SettingItem(
 }
 
 
+fun isVersionNewer(latest: String, current: String): Boolean {
+    val lParts = latest.removePrefix("v").split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+    val cParts = current.removePrefix("v").split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+    val maxLen = maxOf(lParts.size, cParts.size)
+    for (i in 0 until maxLen) {
+        val l = lParts.getOrElse(i) { 0 }
+        val c = cParts.getOrElse(i) { 0 }
+        if (l > c) return true
+        if (l < c) return false
+    }
+    return false
+}
+
+fun hasInstallPermission(context: android.content.Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.packageManager.canRequestPackageInstalls()
+    } else {
+        true
+    }
+}
+
+fun openInstallPermissionSettings(context: android.content.Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        try {
+            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                data = Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            val intent = Intent(Settings.ACTION_SECURITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
+    }
+}
+
 suspend fun downloadApk(
     context: android.content.Context,
     url: String,
     onProgress: (Float) -> Unit
 ): File? {
     return withContext(Dispatchers.IO) {
+        var connection: java.net.HttpURLConnection? = null
+        var inputStream: java.io.InputStream? = null
+        var outputStream: java.io.FileOutputStream? = null
+        var tempFile: File? = null
         try {
-            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connect()
-            
-            if (connection.responseCode != java.net.HttpURLConnection.HTTP_OK) {
-                return@withContext null
+            var currentUrl = url
+            var redirectCount = 0
+
+            // Follow HTTP redirects explicitly across domains/protocols (up to 10 redirects)
+            while (true) {
+                val u = java.net.URL(currentUrl)
+                connection = (u.openConnection() as java.net.HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                    setRequestProperty("Accept", "*/*")
+                    connectTimeout = 20000
+                    readTimeout = 30000
+                }
+                connection.connect()
+
+                val code = connection.responseCode
+                if ((code == java.net.HttpURLConnection.HTTP_MOVED_PERM ||
+                     code == java.net.HttpURLConnection.HTTP_MOVED_TEMP ||
+                     code == java.net.HttpURLConnection.HTTP_SEE_OTHER ||
+                     code == 307 || code == 308) && redirectCount < 10) {
+                    val location = connection.getHeaderField("Location")
+                    connection.disconnect()
+                    if (!location.isNullOrEmpty()) {
+                        currentUrl = if (location.startsWith("http")) location else java.net.URL(u, location).toString()
+                        redirectCount++
+                        continue
+                    }
+                }
+                if (code != java.net.HttpURLConnection.HTTP_OK) {
+                    connection.disconnect()
+                    return@withContext null
+                }
+                break
             }
-            
+
             val fileLength = connection.contentLength
             val downloadDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-            if (downloadDir != null && !downloadDir.exists()) {
+                ?: context.cacheDir
+            if (!downloadDir.exists()) {
                 downloadDir.mkdirs()
             }
+            tempFile = File(downloadDir, "update_download.apk.tmp")
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
             val apkFile = File(downloadDir, "update.apk")
-            
-            val input = connection.inputStream
-            val output = java.io.FileOutputStream(apkFile)
-            
-            val data = ByteArray(4096)
+            if (apkFile.exists()) {
+                apkFile.delete()
+            }
+
+            inputStream = connection.inputStream
+            outputStream = java.io.FileOutputStream(tempFile)
+
+            val data = ByteArray(8192)
             var total: Long = 0
             var count: Int
-            
-            while (input.read(data).also { count = it } != -1) {
+
+            while (inputStream.read(data).also { count = it } != -1) {
                 total += count
                 if (fileLength > 0) {
-                    onProgress((total.toFloat() / fileLength.toFloat()))
+                    onProgress(total.toFloat() / fileLength.toFloat())
                 }
-                output.write(data, 0, count)
+                outputStream.write(data, 0, count)
             }
-            output.flush()
-            output.close()
-            input.close()
-            
-            apkFile
+            outputStream.flush()
+            outputStream.close()
+            outputStream = null
+            inputStream.close()
+            inputStream = null
+            connection.disconnect()
+
+            if (!tempFile.exists() || tempFile.length() < 100000L) {
+                tempFile.delete()
+                return@withContext null
+            }
+
+            if (tempFile.renameTo(apkFile)) {
+                apkFile
+            } else {
+                tempFile.copyTo(apkFile, overwrite = true)
+                tempFile.delete()
+                apkFile
+            }
         } catch (e: Exception) {
             e.printStackTrace()
+            try { tempFile?.delete() } catch (_: Exception) {}
             null
+        } finally {
+            try { outputStream?.close() } catch (_: Exception) {}
+            try { inputStream?.close() } catch (_: Exception) {}
+            try { connection?.disconnect() } catch (_: Exception) {}
         }
     }
 }
 
 fun installApk(context: android.content.Context, apkFile: File) {
-    val intent = Intent(Intent.ACTION_VIEW)
-    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-    val apkUri = androidx.core.content.FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        apkFile
-    )
-    intent.setDataAndType(apkUri, "application/vnd.android.package-archive")
+    if (!apkFile.exists() || apkFile.length() < 100000L) {
+        Toast.makeText(context, "File update rusak atau tidak lengkap", Toast.LENGTH_LONG).show()
+        return
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (!context.packageManager.canRequestPackageInstalls()) {
+            Toast.makeText(
+                context,
+                "Harap aktifkan izin 'Izinkan dari sumber ini' di Pengaturan",
+                Toast.LENGTH_LONG
+            ).show()
+            openInstallPermissionSettings(context)
+            return
+        }
+    }
+
     try {
-        context.startActivity(intent)
+        val apkUri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            apkFile
+        )
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+        }
+
+        val resInfoList = context.packageManager.queryIntentActivities(
+            installIntent,
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+        )
+        for (resolveInfo in resInfoList) {
+            val packageName = resolveInfo.activityInfo.packageName
+            context.grantUriPermission(packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        context.startActivity(installIntent)
     } catch (e: Exception) {
-        Toast.makeText(context, "Gagal menginstall update: ${e.message}", Toast.LENGTH_LONG).show()
+        e.printStackTrace()
+        Toast.makeText(context, "Gagal membuka installer: ${e.message}", Toast.LENGTH_LONG).show()
     }
 }
