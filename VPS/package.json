@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "postinstall": "node patch-routeros.js",
-    "manage-tenant": "bash add_tenant.sh",
+    "manage-tenant": "bash manage_tenant.sh",
     "dev": "nodemon server.js"
   },
   "dependencies": {

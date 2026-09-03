@@ -71,8 +71,26 @@ data class MikrotikStatus(val cpuLoad: String, val uptime: String, val activePpp
 
 
 data class OfflinePppoeUser(val name: String, val lastLogoff: String, val area: String)
-data class PaymentRequest(val customerId: String, val adminName: String, val totalAmount: Double)
+data class PaymentRequest(val customerId: String, val adminName: String, val totalAmount: Double, val months: List<String>? = null)
 data class DeleteBillingRequest(val customerId: String)
+
+data class MikrotikQueue(
+    val id: String = "",
+    val name: String = "",
+    val target: String = "",
+    val maxLimit: String = "",
+    val limitAt: String = "",
+    val bytes: String = "",
+    val totalBytes: String = "",
+    val packets: String = "",
+    val rate: String = "",
+    val packetRate: String = "",
+    val disabled: Boolean = false,
+    val comment: String = "",
+    val parent: String = "",
+    val priority: String = "8/8",
+    val queueType: String = "simple"
+)
 
 data class MikrotikProfile(
     val id: String? = null,
@@ -344,6 +362,9 @@ interface ApiService {
 
     @GET("api/mikrotik/secrets/{id}")
     suspend fun getMikrotikSecrets(@Path("id") id: String): List<com.example.ui.screens.PPPoESecret>
+
+    @GET("api/mikrotik/queues/{id}")
+    suspend fun getMikrotikQueues(@Path("id") id: String): List<MikrotikQueue>
 
     @GET("api/mikrotik/traffic/{id}")
     suspend fun getMikrotikTraffic(@Path("id") areaId: String, @Query("interface") interfaceName: String): List<TrafficResponse>

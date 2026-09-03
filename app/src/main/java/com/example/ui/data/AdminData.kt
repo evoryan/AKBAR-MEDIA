@@ -17,6 +17,8 @@ object UserSession {
     val currentUser = MutableStateFlow<AdminUser?>(null)
     var hasCheckedForUpdate = false
     
+    private val subscribedTopics = mutableSetOf<String>()
+
     private fun isGooglePlayServicesAvailable(context: Context): Boolean {
         return try {
             val availability = GoogleApiAvailability.getInstance()
@@ -28,37 +30,54 @@ object UserSession {
     }
 
     private fun safeSubscribeToTopic(context: Context, topicName: String) {
+        if (subscribedTopics.contains(topicName)) {
+            return
+        }
         if (!isGooglePlayServicesAvailable(context)) {
             Log.d("FCM", "Google Play Services tidak tersedia, melewati subscribe topik $topicName")
             return
         }
         try {
-            FirebaseMessaging.getInstance().subscribeToTopic(topicName)
-                .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        Log.d("FCM", "Berhasil subscribe ke topik $topicName")
-                    } else {
-                        Log.w("FCM", "Gagal subscribe ke topik $topicName: ${task.exception?.message}")
-                    }
+            val fcm = FirebaseMessaging.getInstance()
+            fcm.token.addOnCompleteListener { tokenTask ->
+                if (tokenTask.isSuccessful && !tokenTask.result.isNullOrBlank()) {
+                    fcm.subscribeToTopic(topicName)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                subscribedTopics.add(topicName)
+                                Log.d("FCM", "Berhasil subscribe ke topik $topicName")
+                            } else {
+                                Log.w("FCM", "Gagal subscribe ke topik $topicName: ${task.exception?.message}")
+                            }
+                        }
+                } else {
+                    Log.d("FCM", "FCM Token belum tersedia atau registrasi tidak aktif di lingkungan ini: ${tokenTask.exception?.message}")
                 }
+            }
         } catch (e: Throwable) {
             Log.w("FCM", "Gagal menginisialisasi subscribe ke topik $topicName: ${e.message}")
         }
     }
 
     private fun safeUnsubscribeFromTopic(context: Context, topicName: String) {
+        subscribedTopics.remove(topicName)
         if (!isGooglePlayServicesAvailable(context)) {
             return
         }
         try {
-            FirebaseMessaging.getInstance().unsubscribeFromTopic(topicName)
-                .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        Log.d("FCM", "Berhasil unsubscribe dari topik $topicName")
-                    } else {
-                        Log.w("FCM", "Gagal unsubscribe dari topik $topicName: ${task.exception?.message}")
-                    }
+            val fcm = FirebaseMessaging.getInstance()
+            fcm.token.addOnCompleteListener { tokenTask ->
+                if (tokenTask.isSuccessful && !tokenTask.result.isNullOrBlank()) {
+                    fcm.unsubscribeFromTopic(topicName)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                Log.d("FCM", "Berhasil unsubscribe dari topik $topicName")
+                            } else {
+                                Log.w("FCM", "Gagal unsubscribe dari topik $topicName: ${task.exception?.message}")
+                            }
+                        }
                 }
+            }
         } catch (e: Throwable) {
             Log.w("FCM", "Gagal menginisialisasi unsubscribe dari topik $topicName: ${e.message}")
         }

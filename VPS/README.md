@@ -58,4 +58,29 @@ Backend ini dibangun menggunakan Node.js dan MySQL (atau MariaDB).
 Server akan berjalan pada port **4500** secara default. Pastikan port 4500 telah diizinkan pada firewall (UFW/Iptables) di VPS Anda.
 
 ---
+
+## 🏢 Manajemen Tenant Interaktif (.sh)
+
+Untuk mengelola tenant (tambah tenant baru, reset password, suspend/enable, mode demo, backup DB, dan hapus tenant), jalankan script CLI interaktif berikut di dalam folder `VPS`:
+
+```bash
+# Jalankan script interaktif
+bash manage_tenant.sh
+
+# Atau melalui npm
+npm run manage-tenant
+```
+
+### Fitur yang Tersedia di Panel CLI:
+1. **📋 Lihat Semua Tenant:** Menampilkan daftar tenant terdaftar, status akun, mode demo, keberadaan database, total pelanggan, dan total user.
+2. **➕ Tambah Tenant Baru:** Otomatis membuat database tenant baru, mengimpor skema `init.sql`, dan mendaftarkan akun Super Admin ke database master & tenant.
+3. **🔑 Reset Password Superadmin:** Mengubah password login Super Admin tenant secara langsung.
+4. **🚫 Nonaktifkan Tenant (Disable):** Memblokir akses login tenant jika langganan habis atau ditangguhkan.
+5. **✅ Aktifkan Kembali Tenant (Enable):** Membuka kembali akses login tenant.
+6. **🧪 Ubah Mode Demo:** Mengaktifkan/menonaktifkan mode demo untuk tenant tertentu.
+7. **📊 Cek Statistik Tenant:** Memeriksa jumlah pelanggan, router, tagihan, transaksi, dan akun user.
+8. **💾 Backup Database Tenant:** Mengekspor dump database tenant ke folder `VPS/backups/`.
+9. **🗑️ Hapus Tenant & Database:** Menghapus database tenant dan user terkait dengan sistem konfirmasi ganda yang aman.
+
+---
 **Catatan**: IP pada aplikasi Android `ApiClient.kt` telah diset mengarah ke port 4500. Jika Anda mengganti IP VPS, pastikan juga memperbarui `BASE_URL` di `ApiClient.kt` lalu build ulang APK Android-nya.

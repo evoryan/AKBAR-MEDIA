@@ -450,7 +450,8 @@ fun SettingScreen(
 
     if (showUpdateDialog && updateInfo != null) {
         val latestVersion = updateInfo!!.tag_name.removePrefix("v")
-        val isNewer = latestVersion > (currentVersion ?: "0")
+        val currentClean = currentVersion?.removePrefix("v") ?: "0"
+        val isNewer = latestVersion > currentClean
         var isDownloading by remember { mutableStateOf(false) }
         var downloadProgress by remember { mutableStateOf(0f) }
         

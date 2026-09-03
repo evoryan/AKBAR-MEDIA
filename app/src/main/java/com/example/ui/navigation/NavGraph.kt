@@ -136,7 +136,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToPackages = { navController.navigate(PackagesRoute) },
                     onNavigateToArea = { navController.navigate(AreaRoute) },
                     onNavigateToAcs = { navController.navigate(AcsRoute()) },
-                    onNavigateToBotWa = { navController.navigate(BotWaRoute) },
+                    onNavigateToQueue = { navController.navigate(QueueRoute) },
                     onNavigateToPembukuan = { navController.navigate(PembukuanRoute) },
                     onNavigateToStockBarang = { navController.navigate(StockBarangRoute) },
                     onNavigateToSetting = { navController.navigate(SettingRoute) },
@@ -257,6 +257,9 @@ fun AkbarMediaNavGraph() {
             composable<AcsRoute> { backStackEntry ->
                 val query = backStackEntry.toRoute<AcsRoute>().searchQuery
                 AcsScreen(onBack = { navController.popBackStack() }, initialSearchQuery = query)
+            }
+            composable<QueueRoute> {
+                com.example.ui.screens.QueueScreen(onBack = { navController.popBackStack() })
             }
             composable<BotWaRoute> {
                 BotWaScreen(onBack = { navController.popBackStack() })

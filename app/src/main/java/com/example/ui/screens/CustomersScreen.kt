@@ -52,6 +52,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 
 import com.example.ui.data.local.AppDatabase
 import com.example.ui.data.local.PelangganEntity
+import com.example.ui.data.local.TagihanEntity
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.collectAsState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +68,11 @@ fun CustomersScreen(
     val coroutineScope = rememberCoroutineScope()
     val db = remember { AppDatabase.getDatabase(context) }
     val localPelangganList by db.pelangganDao().getAllPelanggan().collectAsState(initial = emptyList())
+    val localTagihanList by db.tagihanDao().getAllTagihan().collectAsState(initial = emptyList())
+
+    val months = remember {
+        listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    }
 
     val customers = remember(localPelangganList) {
         localPelangganList.map { entity ->
@@ -118,8 +125,22 @@ fun CustomersScreen(
                     additionalCost2 = item.additionalCost2
                 )
             }
+            val tagihanMapped = syncResponse.tagihan.map { item ->
+                TagihanEntity(
+                    id = item.id.toIntOrNull() ?: 0,
+                    customer_id = item.customer_id?.toIntOrNull() ?: 0,
+                    bulan = item.bulan ?: "",
+                    tahun = item.tahun ?: 0,
+                    amount = item.amount?.toDoubleOrNull() ?: 0.0,
+                    status = item.status ?: "BELUM BAYAR",
+                    admin_name = item.admin_name,
+                    created_at = item.created_at
+                )
+            }
             db.pelangganDao().deleteAll()
             db.pelangganDao().insertAll(mapped)
+            db.tagihanDao().deleteAll()
+            db.tagihanDao().insertAll(tagihanMapped)
         } catch (e: Exception) {
             // Silently fall back to cached copy
         }
@@ -344,33 +365,37 @@ fun CustomersScreen(
         )
     }
 
-        LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filteredCustomers) { customer ->
-                    
-                    CustomerItem(customer, onNavigateToCustomerDetail, onDeleteCustomer = { customerToDelete ->
-                        customerToDeleteState = customerToDelete
-                        showDeleteConfirm = true
-                    }, onIsolirCustomer = { customerToIsolir ->
-                        coroutineScope.launch {
-                            try {
-                                com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
-                                android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
-                            } catch (e: Exception) {
-                                android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                            }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(filteredCustomers) { customer ->
+            CustomerItem(
+                customer = customer, 
+                onNavigateToCustomerDetail = onNavigateToCustomerDetail, 
+                onDeleteCustomer = { customerToDelete ->
+                    customerToDeleteState = customerToDelete
+                    showDeleteConfirm = true
+                }, 
+                onIsolirCustomer = { customerToIsolir ->
+                    coroutineScope.launch {
+                        try {
+                            com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
+                            android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                    }, onEditCustomer = { id ->
-                        onNavigateToEditCustomer(id)
-                    })
-
+                    }
+                }, 
+                onEditCustomer = { id ->
+                    onNavigateToEditCustomer(id)
                 }
-            }
+            )
         }
     }
+}
+}
 }
 
 data class Customer(
@@ -395,7 +420,13 @@ data class Customer(
 )
 
 @Composable
-fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Unit, onDeleteCustomer: (Customer) -> Unit, onIsolirCustomer: (Customer) -> Unit = {}, onEditCustomer: (String) -> Unit = {}) {
+fun CustomerItem(
+    customer: Customer, 
+    onNavigateToCustomerDetail: (String) -> Unit, 
+    onDeleteCustomer: (Customer) -> Unit, 
+    onIsolirCustomer: (Customer) -> Unit = {}, 
+    onEditCustomer: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFE0E0E0)
@@ -455,9 +486,6 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
         false
     }
 
-    val displayStatus = if (isNewCustomer) "PELANGGAN BARU" else customer.status
-    val statusColor = if (isNewCustomer) Color(0xFF00FFD2) else if (displayStatus.contains("LUNAS")) neonCyan else redText
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -493,22 +521,34 @@ fun CustomerItem(customer: Customer, onNavigateToCustomerDetail: (String) -> Uni
                 
                 Text(text = "${customer.phone} • ${customer.area}", fontSize = 11.sp, color = textSecondary, maxLines = 1)
                 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = displayStatus,
-                        fontSize = 11.sp,
-                        color = statusColor,
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (!customer.discount.isNullOrEmpty() && customer.discount != "0" && !customer.discount.contains("Rp. 0") && !customer.discount.contains("Dskn : Rp. 0")) {
-                        Text(
-                            text = customer.discount.replace("- Dskn : ", "Dskn: "),
-                            fontSize = 11.sp,
-                            color = greenText
-                        )
+                val hasDiscount = !customer.discount.isNullOrEmpty() && customer.discount != "0" && !customer.discount.contains("Rp. 0") && !customer.discount.contains("Dskn : Rp. 0")
+                if (isNewCustomer || customer.status.contains("ISOLIR", ignoreCase = true) || hasDiscount) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isNewCustomer) {
+                            Text(
+                                text = "PELANGGAN BARU",
+                                fontSize = 11.sp,
+                                color = Color(0xFF00FFD2),
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else if (customer.status.contains("ISOLIR", ignoreCase = true)) {
+                            Text(
+                                text = "ISOLIR",
+                                fontSize = 11.sp,
+                                color = errorRed,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (hasDiscount) {
+                            Text(
+                                text = customer.discount.replace("- Dskn : ", "Dskn: "),
+                                fontSize = 11.sp,
+                                color = greenText
+                            )
+                        }
                     }
                 }
             }

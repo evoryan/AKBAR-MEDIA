@@ -1,6 +1,7 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
 
 const rl = readline.createInterface({
@@ -9,6 +10,38 @@ const rl = readline.createInterface({
 });
 
 const askQuestion = (query) => new Promise((resolve) => rl.question(query, resolve));
+
+async function executeSqlFile(conn, filePath, targetDb) {
+    if (!fs.existsSync(filePath)) {
+        console.log(`⚠️ Peringatan: File '${filePath}' tidak ditemukan.`);
+        return;
+    }
+    await conn.query(`USE \`${targetDb}\``);
+    const rawSql = fs.readFileSync(filePath, 'utf8');
+
+    const noComments = rawSql
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^[ \t]*--.*$/gm, '')
+        .replace(/^[ \t]*#.*$/gm, '');
+
+    const statements = noComments
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+    for (const stmt of statements) {
+        if (/^CREATE\s+DATABASE/i.test(stmt) || /^USE\s+/i.test(stmt)) {
+            continue;
+        }
+        try {
+            await conn.query(stmt);
+        } catch (err) {
+            if (!err.message.includes('already exists')) {
+                console.log(`   ⚠️ Notice SQL: ${err.message}`);
+            }
+        }
+    }
+}
 
 async function addTenantInteractive() {
     console.log("=== Setup Tenant Baru ===");
@@ -45,7 +78,6 @@ async function addTenantInteractive() {
 
         console.log("\nMemulai proses setup...");
 
-        // Koneksi tanpa spesifik DB untuk membuat DB baru
         const connection = await mysql.createConnection({
             host: process.env.DB_HOST || 'localhost',
             user: process.env.DB_USER || 'akbar',
@@ -57,12 +89,8 @@ async function addTenantInteractive() {
         await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
 
         console.log(`[2/3] Menginisialisasi tabel-tabel pada database ${dbName}...`);
-        let initSql = fs.readFileSync('init.sql', 'utf8');
-        initSql = initSql.replace(/CREATE DATABASE IF NOT EXISTS app_db;/g, '');
-        initSql = initSql.replace(/USE app_db;/g, '');
-        
-        await connection.query(`USE \`${dbName}\``);
-        await connection.query(initSql);
+        const initSqlPath = path.join(__dirname, 'init.sql');
+        await executeSqlFile(connection, initSqlPath, dbName);
 
         console.log(`[3/3] Menambahkan akun superadmin '${username}' ke master database...`);
         await connection.query(`USE akbar_media_master`);
@@ -72,13 +100,23 @@ async function addTenantInteractive() {
         if (existing.length > 0) {
             console.log(`Error: Username '${username}' sudah digunakan! Silakan ulangi dengan username lain.`);
         } else {
-            // Pastikan kolom is_demo tersedia
+            // Pastikan kolom is_demo dan status tersedia
             await connection.query(`ALTER TABLE users ADD COLUMN is_demo TINYINT(1) DEFAULT 0`).catch(e=>{});
+            await connection.query(`ALTER TABLE users ADD COLUMN status VARCHAR(20) DEFAULT 'ACTIVE'`).catch(e=>{});
 
             await connection.query(`
-                INSERT INTO users (name, username, password, role, db_name, is_demo)
-                VALUES (?, ?, ?, 'SUPER_ADMIN', ?, ?)
+                INSERT INTO users (name, username, password, role, db_name, is_demo, status)
+                VALUES (?, ?, ?, 'SUPER_ADMIN', ?, ?, 'ACTIVE')
             `, [name, username, password, dbName, isDemo]);
+
+            // Setup user di tenant DB
+            await connection.query(`USE \`${dbName}\``);
+            await connection.query(`DELETE FROM users WHERE username IN ('superadmin', 'admin', 'teknisi1', 'collector1')`).catch(e=>{});
+            await connection.query(`
+                INSERT INTO users (name, username, password, role)
+                VALUES (?, ?, ?, 'SUPER_ADMIN')
+            `, [name, username, password]).catch(e=>{});
+
             console.log(`\n✅ Berhasil! Tenant baru '${dbName}' dengan user '${username}' (Demo: ${isDemo ? 'Ya' : 'Tidak'}) berhasil ditambahkan.`);
             console.log("Anda sekarang bisa login di aplikasi menggunakan akun tersebut.");
         }

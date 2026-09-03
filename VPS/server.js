@@ -469,7 +469,7 @@ app.get('/api/dashboard/pppoe-offline', async (req, res) => {
 
 app.post('/api/billing/pay', async (req, res) => {
     try {
-        const { customerId, adminName, totalAmount } = req.body;
+        const { customerId, adminName, totalAmount, months } = req.body;
         
         // Get customer name
         const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [customerId]);
@@ -493,13 +493,42 @@ app.post('/api/billing/pay', async (req, res) => {
             FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
         )`).catch(e=>{});
 
-        // Mark tagihan as LUNAS CASH
-        const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
         let desc = `Pembayaran tagihan pelanggan ${customerName}`;
-        if (tagihan.length > 0) {
-            await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
-            await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ? WHERE id = ?', [adminName, tagihan[0].id]);
-            desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
+
+        if (Array.isArray(months) && months.length > 0) {
+            desc = `Pembayaran tagihan pelanggan ${customerName} (${months.join(', ')})`;
+            const perMonthAmount = totalAmount ? (totalAmount / months.length) : 0;
+
+            for (const monthStr of months) {
+                const parts = monthStr.trim().split(/\s+/);
+                const bulan = parts[0];
+                const tahun = parts.length > 1 ? parseInt(parts[1], 10) : new Date().getFullYear();
+
+                const [existingTagihan] = await req.pool.query(
+                    'SELECT id FROM tagihan_bulanan WHERE customer_id = ? AND LOWER(bulan) = LOWER(?) AND tahun = ?',
+                    [customerId, bulan, tahun]
+                );
+
+                if (existingTagihan.length > 0) {
+                    await req.pool.query(
+                        'UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ?, amount = ? WHERE id = ?',
+                        [adminName, perMonthAmount, existingTagihan[0].id]
+                    );
+                } else {
+                    await req.pool.query(
+                        'INSERT INTO tagihan_bulanan (customer_id, bulan, tahun, amount, status, admin_name) VALUES (?, ?, ?, ?, "LUNAS CASH", ?)',
+                        [customerId, bulan, tahun, perMonthAmount, adminName]
+                    );
+                }
+            }
+        } else {
+            // Mark tagihan as LUNAS CASH
+            const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
+            if (tagihan.length > 0) {
+                await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+                await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ? WHERE id = ?', [adminName, tagihan[0].id]);
+                desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
+            }
         }
 
         // Update customer status to LUNAS CASH
@@ -678,6 +707,11 @@ app.post('/api/login', async (req, res) => {
         
         if (rows.length > 0) {
             const user = rows[0];
+
+            if (user.status === 'DISABLED') {
+                return res.status(403).json({ error: "Akun tenant Anda sedang dinonaktifkan. Silakan hubungi Administrator." });
+            }
+
             const { password: userPassword, ...userWithoutPassword } = user;
             userWithoutPassword.id = userWithoutPassword.id.toString();
             
@@ -2601,6 +2635,47 @@ app.get('/api/mikrotik/secrets/:id', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Terjadi kesalahan server" });
+    }
+});
+
+app.get('/api/mikrotik/queues/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+        const area = rows[0];
+
+        const result = await runWithMikrotik(area, async (api) => {
+            const queueSimpleMenu = api.menu('/queue/simple');
+            const simpleQueues = await queueSimpleMenu.get();
+            
+            return simpleQueues.map(q => {
+                return {
+                    id: q['.id'] || q.name || Math.random().toString(36).substring(7),
+                    name: q.name || '-',
+                    target: q.target || q['target-addresses'] || '-',
+                    maxLimit: q['max-limit'] || '-',
+                    limitAt: q['limit-at'] || '-',
+                    bytes: q.bytes || '-',
+                    totalBytes: q['total-bytes'] || '-',
+                    packets: q.packets || '-',
+                    rate: q.rate || '-',
+                    packetRate: q['packet-rate'] || '-',
+                    disabled: q.disabled === 'true' || q.disabled === true,
+                    comment: q.comment || '',
+                    parent: q.parent || '',
+                    priority: q.priority || '8/8',
+                    queueType: 'simple'
+                };
+            });
+        }, res, "Error fetching Mikrotik queues");
+
+        if (result) {
+            res.json(result);
+        }
+    } catch (error) {
+        console.error("Queue API Error:", error);
+        res.status(500).json({ error: "Terjadi kesalahan server: " + error.message });
     }
 });
 

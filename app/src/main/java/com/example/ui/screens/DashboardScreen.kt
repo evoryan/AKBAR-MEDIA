@@ -38,7 +38,7 @@ fun DashboardScreen(
     onNavigateToPackages: () -> Unit,
     onNavigateToArea: () -> Unit,
     onNavigateToAcs: () -> Unit,
-    onNavigateToBotWa: () -> Unit,
+    onNavigateToQueue: () -> Unit,
     onNavigateToPembukuan: () -> Unit,
     onNavigateToStockBarang: () -> Unit,
     onNavigateToSetting: () -> Unit,
@@ -416,7 +416,15 @@ fun DashboardScreen(
                     Column {
                         when (val state = uiState) {
                             is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
-                            is DashboardState.Success -> Text("${state.data.unpaidCustomers}", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
+                            is DashboardState.Success -> {
+                                val paidCount = state.tagihanList
+                                    .filter { it.status.contains("LUNAS", ignoreCase = true) && it.bulan.equals(selectedMonth, ignoreCase = true) && it.tahun.toString() == selectedYear }
+                                    .map { it.customer_id }
+                                    .distinct()
+                                    .count()
+                                val unpaidCount = (state.data.totalCustomers - paidCount).coerceAtLeast(0)
+                                Text("$unpaidCount", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
+                            }
                             is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
                         }
                         Text("Belum Bayar", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = textErrorSecondary)
@@ -455,9 +463,7 @@ fun DashboardScreen(
                 menuItems.add { MenuItem(icon = Icons.Default.Map, title = "Area", tint = primaryBg, onClick = onNavigateToArea) }
                 menuItems.add { MenuItem(icon = Icons.Default.Router, title = "Mikrotik", tint = primaryBg, onClick = onNavigateToMikrotik) }
                 menuItems.add { MenuItem(icon = Icons.Default.Dns, title = "ACS", tint = primaryBg, onClick = onNavigateToAcs) }
-                if (currentUser?.role == UserRole.SUPER_ADMIN) {
-                    menuItems.add { MenuItem(icon = Icons.Default.Chat, title = "Bot WA", tint = Color(0xFF00FF4D), onClick = onNavigateToBotWa) }
-                }
+                menuItems.add { MenuItem(icon = Icons.Default.Speed, title = "Queue", tint = primaryBg, onClick = onNavigateToQueue) }
                 menuItems.add { MenuItem(icon = Icons.Default.AccountTree, title = "Jaringan", tint = primaryBg, onClick = onNavigateToJaringan) }
                 menuItems.add { MenuItem(icon = Icons.Default.Book, title = "Pembukuan", tint = primaryBg, onClick = onNavigateToPembukuan) }
                 menuItems.add { MenuItem(icon = Icons.Default.Storage, title = "Stock Barang", tint = primaryBg, onClick = onNavigateToStockBarang) }

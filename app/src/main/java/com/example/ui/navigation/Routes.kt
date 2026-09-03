@@ -48,6 +48,9 @@ object PackagesRoute
 object AreaRoute
 
 @Serializable
+object QueueRoute
+
+@Serializable
 object BotWaRoute
 
 @Serializable
