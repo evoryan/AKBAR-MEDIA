@@ -560,10 +560,17 @@ app.post('/api/billing/pay', async (req, res) => {
         try {
             await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
             
-            if (req.user && req.user.db_name) {
-                sendTenantNotification(req.user.db_name, "Pembayaran Diterima", notifMsg);
+            // Kirim notifikasi realtime terisolasi per database tenant
+            const targetDbName = (req.user && req.user.db_name) ? req.user.db_name : null;
+            if (targetDbName) {
+                sendTenantNotification(targetDbName, "Pembayaran Diterima", notifMsg, {
+                    type: "payment",
+                    customer_name: customerName,
+                    admin_name: adminName || 'Admin',
+                    total_amount: String(totalAmount || 0),
+                    db_name: targetDbName
+                });
             }
-            sendTenantNotification("superadmin", "Pembayaran Diterima", notifMsg);
         } catch (e) {
             console.error("Warning: notifications table might be missing", e.message);
         }

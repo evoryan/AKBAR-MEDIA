@@ -19,6 +19,12 @@ object UserSession {
     
     private val subscribedTopics = mutableSetOf<String>()
 
+    fun getTenantTopic(dbName: String?): String? {
+        if (dbName.isNullOrBlank()) return null
+        val safeTopic = dbName.replace(Regex("[^a-zA-Z0-9-_~]"), "")
+        return if (safeTopic.isNotBlank()) "tenant_$safeTopic" else null
+    }
+
     private fun isGooglePlayServicesAvailable(context: Context): Boolean {
         return try {
             val availability = GoogleApiAvailability.getInstance()
@@ -29,7 +35,7 @@ object UserSession {
         }
     }
 
-    private fun safeSubscribeToTopic(context: Context, topicName: String) {
+    fun safeSubscribeToTopic(context: Context, topicName: String) {
         if (subscribedTopics.contains(topicName)) {
             return
         }
@@ -45,7 +51,7 @@ object UserSession {
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
                                 subscribedTopics.add(topicName)
-                                Log.d("FCM", "Berhasil subscribe ke topik $topicName")
+                                Log.d("FCM", "Berhasil subscribe terisolasi ke topik $topicName")
                             } else {
                                 Log.w("FCM", "Gagal subscribe ke topik $topicName: ${task.exception?.message}")
                             }
@@ -59,7 +65,7 @@ object UserSession {
         }
     }
 
-    private fun safeUnsubscribeFromTopic(context: Context, topicName: String) {
+    fun safeUnsubscribeFromTopic(context: Context, topicName: String) {
         subscribedTopics.remove(topicName)
         if (!isGooglePlayServicesAvailable(context)) {
             return
@@ -83,6 +89,28 @@ object UserSession {
         }
     }
 
+    private fun updateTenantNotificationSubscription(context: Context, newDbName: String?) {
+        val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        val lastTopic = sharedPrefs.getString("last_subscribed_tenant_topic", null)
+        val newTopic = getTenantTopic(newDbName)
+
+        // Hapus sisa subscribe topik global lama agar tidak pernah bocor antar tenant
+        safeUnsubscribeFromTopic(context, "tenant_superadmin")
+
+        // Jika ada database sebelumnya yang berbeda, segera unsubscribe
+        if (!lastTopic.isNullOrBlank() && lastTopic != newTopic) {
+            safeUnsubscribeFromTopic(context, lastTopic)
+            sharedPrefs.edit().remove("last_subscribed_tenant_topic").apply()
+        }
+
+        // Daftarkan ke topik database tenant yang baru secara terisolasi
+        if (!newTopic.isNullOrBlank()) {
+            safeSubscribeToTopic(context, newTopic)
+            sharedPrefs.edit().putString("last_subscribed_tenant_topic", newTopic).apply()
+            Log.d("FCM", "Isolasi Notifikasi: Terdaftar eksklusif untuk database tenant [topik: $newTopic]")
+        }
+    }
+
     fun hasDeletePrivilege(): Boolean {
         return currentUser.value?.role == UserRole.SUPER_ADMIN
     }
@@ -102,14 +130,8 @@ object UserSession {
             apply()
         }
         
-        user.db_name?.let { dbName ->
-            val safeTopic = dbName.replace(Regex("[^a-zA-Z0-9-_~]"), "")
-            val topicName = "tenant_$safeTopic"
-            safeSubscribeToTopic(context, topicName)
-        }
-        if (user.role == UserRole.SUPER_ADMIN) {
-            safeSubscribeToTopic(context, "tenant_superadmin")
-        }
+        // Isolasi notifikasi pembayaran secara ketat per database tenant
+        updateTenantNotificationSubscription(context, user.db_name)
     }
     
     fun loadSession(context: Context): Boolean {
@@ -129,14 +151,9 @@ object UserSession {
                 UserRole.ADMIN
             }
             currentUser.value = AdminUser(id, name, username, role, token, dbName, areaId)
-            dbName?.let {
-                val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
-                val topicName = "tenant_$safeTopic"
-                safeSubscribeToTopic(context, topicName)
-            }
-            if (role == UserRole.SUPER_ADMIN) {
-                safeSubscribeToTopic(context, "tenant_superadmin")
-            }
+            
+            // Sinkronkan kembali isolasi notifikasi per database tenant saat session aktif dimuat
+            updateTenantNotificationSubscription(context, dbName)
             return true
         }
         return false
@@ -197,19 +214,22 @@ object UserSession {
     }
     
     fun clearSession(context: Context) {
-        val dbName = currentUser.value?.db_name
-        val role = currentUser.value?.role
+        val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        val lastTopic = sharedPrefs.getString("last_subscribed_tenant_topic", null)
+        val dbName = currentUser.value?.db_name ?: sharedPrefs.getString("user_db_name", null)
+        
         currentUser.value = null
         cachedAreas = emptyList() // clear cache on logout
-        val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
-        dbName?.let {
-            val safeTopic = it.replace(Regex("[^a-zA-Z0-9-_~]"), "")
-            val topicName = "tenant_$safeTopic"
-            safeUnsubscribeFromTopic(context, topicName)
+
+        // Unsubscribe dari topik tenant database aktif
+        val currentTopic = getTenantTopic(dbName) ?: lastTopic
+        if (!currentTopic.isNullOrBlank()) {
+            safeUnsubscribeFromTopic(context, currentTopic)
         }
-        if (role == UserRole.SUPER_ADMIN) {
-            safeUnsubscribeFromTopic(context, "tenant_superadmin")
+        if (!lastTopic.isNullOrBlank() && lastTopic != currentTopic) {
+            safeUnsubscribeFromTopic(context, lastTopic)
         }
+        safeUnsubscribeFromTopic(context, "tenant_superadmin")
         sharedPrefs.edit().clear().apply()
     }
 }
