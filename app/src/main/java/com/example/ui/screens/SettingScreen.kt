@@ -125,6 +125,7 @@ fun SettingScreen(
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<GithubRelease?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
+    var latestReleaseTag by remember { mutableStateOf<String?>(null) }
     
     val currentVersion = remember {
         try {
@@ -132,6 +133,17 @@ fun SettingScreen(
             pInfo.versionName
         } catch (e: Exception) {
             "1.0"
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            val api = GithubApiService.create()
+            val release = api.getLatestRelease("evoryan", "AKBAR-MEDIA")
+            updateInfo = release
+            latestReleaseTag = release.tag_name
+        } catch (_: Exception) {
+            // Silently fallback to currentVersion if offline
         }
     }
     var showThemeDialog by remember { mutableStateOf(false) }
@@ -417,10 +429,11 @@ fun SettingScreen(
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             ) {
                 Column {
+                    val displayVersion = latestReleaseTag ?: currentVersion
                     SettingItem(
                         icon = Icons.Default.SystemUpdate, 
                         title = "Cek Update", 
-                        subtitle = if (isCheckingUpdate) "Memeriksa..." else "Versi $currentVersion", 
+                        subtitle = if (isCheckingUpdate) "Memeriksa..." else "Versi $displayVersion", 
                         iconTint = textMain, 
                         onClick = {
                             if (!isCheckingUpdate) {
@@ -430,6 +443,7 @@ fun SettingScreen(
                                         val api = GithubApiService.create()
                                         val release = api.getLatestRelease("evoryan", "AKBAR-MEDIA")
                                         updateInfo = release
+                                        latestReleaseTag = release.tag_name
                                         showUpdateDialog = true
                                     } catch (e: retrofit2.HttpException) {
                                         if (e.code() == 404) {
