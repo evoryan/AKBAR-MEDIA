@@ -94,10 +94,10 @@ fun DashboardScreen(
                     val currentVersion = mContext.packageManager.getPackageInfo(mContext.packageName, 0).versionName ?: "1.0.0"
                     val api = com.example.data.GithubApiService.create()
                     val release = api.getLatestRelease("evoryan", "AKBAR-MEDIA")
-                    val latestVersion = release.tag_name.removePrefix("v")
-                    val currVerNum = currentVersion.removePrefix("v")
-                    if (latestVersion != currVerNum) {
-                        android.widget.Toast.makeText(mContext, "Update tersedia: ${release.name}", android.widget.Toast.LENGTH_LONG).show()
+                    val latestVersion = release.tag_name.trimStart('v', 'V')
+                    val currVerNum = currentVersion.trimStart('v', 'V')
+                    if (isVersionNewer(latestVersion, currVerNum)) {
+                        android.widget.Toast.makeText(mContext, "Update baru (${release.tag_name}) tersedia: ${release.name}", android.widget.Toast.LENGTH_LONG).show()
                     }
                 } catch (e: Exception) {
                     // Ignore silent fail

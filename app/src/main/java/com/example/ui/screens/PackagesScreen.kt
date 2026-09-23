@@ -224,13 +224,41 @@ fun PackageItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(pkg.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(pkg.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        if (pkg.isDedicated) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = Color(0xFFFF9800).copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9800))
+                            ) {
+                                Text(
+                                    "Dedicated",
+                                    color = Color(0xFFFF9800),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Speed, contentDescription = null, tint = neonCyan, modifier = Modifier.size(14.dp))
+                        Icon(
+                            if (pkg.isDedicated) Icons.Default.Bolt else Icons.Default.Speed,
+                            contentDescription = null,
+                            tint = if (pkg.isDedicated) Color(0xFFFF9800) else neonCyan,
+                            modifier = Modifier.size(14.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(pkg.speed, color = neonCyan, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            pkg.speed,
+                            color = if (pkg.isDedicated) Color(0xFFFF9800) else neonCyan,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
                 
@@ -265,8 +293,11 @@ fun PackageItem(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     
-
-                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Tipe Layanan", color = textSecondary, fontSize = 12.sp)
+                        Text(if (pkg.isDedicated) "Dedicated (1:1)" else "Broadband (Shared)", color = if (pkg.isDedicated) Color(0xFFFF9800) else neonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     if (pkg.description.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("Deskripsi", color = textSecondary, fontSize = 12.sp)
@@ -317,13 +348,24 @@ fun PackageFormDialog(
     neonCyan: Color,
     primaryPurple: Color
 ) {
+    val initialIsDedicated = initialPackage?.isDedicated == true
+    var selectedType by remember { mutableStateOf(if (initialIsDedicated) "Dedicated" else "Regular") }
+    var dedicatedMbpsText by remember { 
+        mutableStateOf(
+            if (initialIsDedicated) {
+                val digits = initialPackage?.speed?.filter { it.isDigit() } ?: ""
+                if (digits.isNotEmpty()) digits else "10"
+            } else "10"
+        ) 
+    }
+    var pricePerMbpsText by remember { mutableStateOf("150000") }
+
     var name by remember { mutableStateOf(initialPackage?.name ?: "") }
     var speed by remember { mutableStateOf(initialPackage?.speed ?: "") }
     var priceText by remember { mutableStateOf(initialPackage?.price?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: "") }
     var enableTax by remember { mutableStateOf((initialPackage?.taxRate ?: 0.0) > 0.0) }
     var taxRateText by remember { mutableStateOf(initialPackage?.taxRate?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: "11") }
     var description by remember { mutableStateOf(initialPackage?.description ?: "") }
-    
 
     val price = priceText.toDoubleOrNull() ?: 0.0
     val taxRate = if (enableTax) taxRateText.toDoubleOrNull() ?: 0.0 else 0.0
@@ -370,6 +412,136 @@ fun PackageFormDialog(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // Template Selection (Regular vs Dedicated)
+                    Column {
+                        Text("Tipe Paket / Template", color = textSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Regular Button
+                            OutlinedButton(
+                                onClick = { 
+                                    selectedType = "Regular"
+                                    if (initialPackage == null && name.startsWith("Dedicated 1:1")) {
+                                        name = ""
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (selectedType == "Regular") neonCyan.copy(alpha = 0.15f) else Color.Transparent,
+                                    contentColor = if (selectedType == "Regular") neonCyan else textSecondary
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (selectedType == "Regular") neonCyan else textSecondary.copy(alpha = 0.4f)
+                                )
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Paket Reguler", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            
+                            // Dedicated Button
+                            OutlinedButton(
+                                onClick = { 
+                                    selectedType = "Dedicated"
+                                    val mbps = dedicatedMbpsText.toIntOrNull() ?: 10
+                                    val rate = pricePerMbpsText.toDoubleOrNull() ?: 150000.0
+                                    if (initialPackage == null || !name.contains("Dedicated")) {
+                                        name = "Dedicated 1:1 - $mbps Mbps"
+                                    }
+                                    speed = "$mbps Mbps (1:1)"
+                                    val calcPrice = mbps * rate
+                                    priceText = if (calcPrice % 1.0 == 0.0) calcPrice.toLong().toString() else calcPrice.toString()
+                                    if (description.isEmpty()) {
+                                        description = "Paket Internet Dedicated 1:1 bandwidth simetris prioritas tinggi tanpa FUP."
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (selectedType == "Dedicated") Color(0xFFFF9800).copy(alpha = 0.15f) else Color.Transparent,
+                                    contentColor = if (selectedType == "Dedicated") Color(0xFFFF9800) else textSecondary
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (selectedType == "Dedicated") Color(0xFFFF9800) else textSecondary.copy(alpha = 0.4f)
+                                )
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Dedicated", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // Dedicated Kalkulator Per-Mbps
+                    if (selectedType == "Dedicated") {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = cardBg),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9800).copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Kalkulator Paket Dedicated", color = Color(0xFFFF9800), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                }
+                                Text("Hitung harga otomatis berdasarkan kapasitas pengambilan per-Mbps.", color = textSecondary, fontSize = 12.sp)
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = dedicatedMbpsText,
+                                        onValueChange = { 
+                                            dedicatedMbpsText = it
+                                            val mbps = it.toIntOrNull() ?: 0
+                                            val rate = pricePerMbpsText.toDoubleOrNull() ?: 0.0
+                                            val calcPrice = mbps * rate
+                                            priceText = if (calcPrice % 1.0 == 0.0) calcPrice.toLong().toString() else calcPrice.toString()
+                                            speed = "$mbps Mbps (1:1)"
+                                            if (name.startsWith("Dedicated 1:1") || name.isEmpty()) {
+                                                name = "Dedicated 1:1 - $mbps Mbps"
+                                            }
+                                        },
+                                        label = { Text("Bandwidth (Mbps)", color = textSecondary) },
+                                        modifier = Modifier.weight(1f),
+                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFFFF9800), unfocusedBorderColor = textSecondary,
+                                            focusedTextColor = textMain, unfocusedTextColor = textMain
+                                        ),
+                                        singleLine = true
+                                    )
+
+                                    OutlinedTextField(
+                                        value = pricePerMbpsText,
+                                        onValueChange = { 
+                                            pricePerMbpsText = it
+                                            val mbps = dedicatedMbpsText.toIntOrNull() ?: 0
+                                            val rate = it.toDoubleOrNull() ?: 0.0
+                                            val calcPrice = mbps * rate
+                                            priceText = if (calcPrice % 1.0 == 0.0) calcPrice.toLong().toString() else calcPrice.toString()
+                                        },
+                                        label = { Text("Harga / Mbps (Rp)", color = textSecondary) },
+                                        modifier = Modifier.weight(1f),
+                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFFFF9800), unfocusedBorderColor = textSecondary,
+                                            focusedTextColor = textMain, unfocusedTextColor = textMain
+                                        ),
+                                        singleLine = true
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
@@ -386,7 +558,7 @@ fun PackageFormDialog(
                         value = speed,
                         onValueChange = { speed = it },
                         label = { Text("Kecepatan", color = textSecondary) },
-                        placeholder = { Text("Contoh: 10 Mbps", color = textSecondary.copy(alpha = 0.5f)) },
+                        placeholder = { Text("Contoh: 10 Mbps atau 10 Mbps (1:1)", color = textSecondary.copy(alpha = 0.5f)) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary,
@@ -471,8 +643,6 @@ fun PackageFormDialog(
                         maxLines = 5
                     )
                     
-
-                    
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     Row(
@@ -493,10 +663,12 @@ fun PackageFormDialog(
                                     price = price,
                                     taxRate = taxRate,
                                     description = description
-                                    
                                 ))
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = textMain),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedType == "Dedicated") Color(0xFFFF9800) else Color(0xFF00FFFF),
+                                contentColor = textMain
+                            ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text("Simpan Paket", fontWeight = FontWeight.Bold)

@@ -452,8 +452,9 @@ fun SettingScreen(
 
 
     if (showUpdateDialog && updateInfo != null) {
-        val latestVersion = updateInfo!!.tag_name.removePrefix("v")
-        val currentClean = currentVersion?.removePrefix("v") ?: "0"
+        val latestTag = updateInfo!!.tag_name
+        val latestVersion = latestTag.trimStart('v', 'V')
+        val currentClean = (currentVersion ?: "1.0").trimStart('v', 'V')
         val isNewer = isVersionNewer(latestVersion, currentClean)
         var isDownloading by remember { mutableStateOf(false) }
         var downloadProgress by remember { mutableStateOf(0f) }
@@ -514,7 +515,7 @@ fun SettingScreen(
             text = { 
                 Column {
                     Text("Versi saat ini: $currentVersion", fontSize = 14.sp)
-                    Text("Versi terbaru: $latestVersion", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = primaryBg)
+                    Text("Versi rilis (GitHub Tag): $latestTag", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = primaryBg)
                     
                     if (updateInfo!!.body?.isNotBlank() == true) {
                         Spacer(modifier = Modifier.height(8.dp))

@@ -2388,10 +2388,25 @@ app.get('/api/mikrotik/traffic/:id', async (req, res) => {
         const api = await connectMikrotik(client, 3000);
         let traffic = [];
         try {
+            // Find matched interface name (e.g. ether1, or dynamic <pppoe-username>)
+            let targetIfName = interfaceName;
+            try {
+                const ifMenu = api.menu('/interface');
+                const allIfs = await ifMenu.get();
+                const matched = allIfs.find(i => 
+                    i.name === interfaceName || 
+                    i.name === `<pppoe-${interfaceName}>` ||
+                    (i.name && i.name.toLowerCase().includes(interfaceName.toLowerCase()))
+                );
+                if (matched) {
+                    targetIfName = matched.name;
+                }
+            } catch (_) {}
+
             await new Promise((resolve) => {
                 let resolved = false;
                 const stream = api.menu('/interface')
-                    .where({ interface: interfaceName })
+                    .where({ interface: targetIfName })
                     .stream('monitor-traffic', (err, data, s) => {
                         if (resolved) return;
                         if (err) {

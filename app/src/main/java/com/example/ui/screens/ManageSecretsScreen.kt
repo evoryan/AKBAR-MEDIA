@@ -458,14 +458,119 @@ fun SecretCard(
                 Column {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Profile: ${secret.profile}", color = textSecondary, fontSize = 14.sp)
-            if (secret.status == "Online") {
-                Text("IP: ${secret.ipAddress}", color = textSecondary, fontSize = 14.sp)
-                Text("Uptime: ${secret.uptime}", color = textSecondary, fontSize = 14.sp)
-            }
-            
+                    if (secret.status == "Online") {
+                        Text("IP: ${secret.ipAddress}", color = textSecondary, fontSize = 14.sp)
+                        Text("Uptime: ${secret.uptime}", color = textSecondary, fontSize = 14.sp)
+                    }
 
-            
-            Spacer(modifier = Modifier.height(16.dp))
+                    // Realtime Traffic Monitor Graph for this secret
+                    Spacer(modifier = Modifier.height(10.dp))
+                    var rxRateBps by remember { mutableStateOf(0L) }
+                    var txRateBps by remember { mutableStateOf(0L) }
+                    val rxHistory = remember { mutableStateListOf<Float>() }
+                    val txHistory = remember { mutableStateListOf<Float>() }
+
+                    LaunchedEffect(expanded, secret.name, areaId) {
+                        if (!expanded) return@LaunchedEffect
+                        rxHistory.clear()
+                        txHistory.clear()
+                        for (i in 0 until 20) {
+                            rxHistory.add(0f)
+                            txHistory.add(0f)
+                        }
+
+                        // Determine target interface name
+                        val targetInterface = if (secret.name.startsWith("<pppoe-")) {
+                            secret.name
+                        } else {
+                            "<pppoe-${secret.name}>"
+                        }
+
+                        while (true) {
+                            try {
+                                val trafficList = try {
+                                    com.example.ui.data.remote.ApiClient.apiService.getMikrotikTraffic(areaId, targetInterface)
+                                } catch (e: Exception) {
+                                    // Fallback query with raw secret name
+                                    try {
+                                        com.example.ui.data.remote.ApiClient.apiService.getMikrotikTraffic(areaId, secret.name)
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                }
+                                val trafficItem = trafficList?.firstOrNull()
+                                val rxVal = trafficItem?.rxBits?.toLongOrNull() ?: trafficItem?.rx ?: trafficItem?.rxByte ?: 0L
+                                val txVal = trafficItem?.txBits?.toLongOrNull() ?: trafficItem?.tx ?: trafficItem?.txByte ?: 0L
+
+                                rxRateBps = rxVal
+                                txRateBps = txVal
+
+                                if (rxHistory.size >= 25) rxHistory.removeAt(0)
+                                rxHistory.add(rxVal.toFloat())
+
+                                if (txHistory.size >= 25) txHistory.removeAt(0)
+                                txHistory.add(txVal.toFloat())
+                            } catch (e: Exception) {
+                                // Silently ignore cycle error
+                            }
+                            delay(2000L)
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF070711))
+                            .border(1.dp, neonCyan.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (secret.status == "Online") Color(0xFF00FF66) else Color(0xFFFF3366))
+                                    )
+                                    Text("Traffic Monitor: ${secret.name}", color = neonCyan, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                                }
+                                Text(if (secret.status == "Online") "Live" else "Idle", color = textSecondary, fontSize = 10.sp)
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(modifier = Modifier.size(7.dp, 7.dp).background(Color(0xFF00E5FF), RoundedCornerShape(2.dp)))
+                                    Text("RX: ", color = textSecondary, fontSize = 11.sp)
+                                    Text(formatBitrate(rxRateBps), color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Box(modifier = Modifier.size(7.dp, 7.dp).background(Color(0xFFFF3366), RoundedCornerShape(2.dp)))
+                                    Text("TX: ", color = textSecondary, fontSize = 11.sp)
+                                    Text(formatBitrate(txRateBps), color = Color(0xFFFF3366), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                            }
+
+                            RealtimeTrafficChart(
+                                rxData = rxHistory.toList(),
+                                txData = txHistory.toList(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(80.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 if (secret.status == "Disabled") {
                     Button(

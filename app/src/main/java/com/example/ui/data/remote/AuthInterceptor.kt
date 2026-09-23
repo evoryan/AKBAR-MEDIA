@@ -24,9 +24,8 @@ class AuthInterceptor(private val context: Context) : Interceptor {
         val response = chain.proceed(request)
         
         if (response.code == 401) {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                UserSession.clearSession(context)
-            }
+            // Log warning instead of forcefully wiping user session
+            android.util.Log.w("AuthInterceptor", "Received 401 Unauthorized for ${original.url}. Session preserved to prevent unexpected logout.")
         }
         
         return response
