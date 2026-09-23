@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.data.UserSession
 import com.example.ui.data.remote.ApiClient
 import com.example.ui.data.remote.MikrotikQueue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -393,6 +396,7 @@ fun QueueScreen(
                     items(filteredQueues, key = { it.id }) { queue ->
                         QueueItemCard(
                             queue = queue,
+                            areaId = selectedArea?.id ?: "",
                             cardBg = cardBg,
                             cardBorder = cardBorder,
                             textMain = textMain,
@@ -436,6 +440,7 @@ fun QueueStatCard(
 @Composable
 fun QueueItemCard(
     queue: MikrotikQueue,
+    areaId: String,
     cardBg: Color,
     cardBorder: Color,
     textMain: Color,
@@ -444,6 +449,13 @@ fun QueueItemCard(
     neonGreen: Color,
     errorRed: Color
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
+    // Parse Upload & Download Max Limit
+    val maxLimitParts = queue.maxLimit.split("/").map { it.trim() }
+    val uploadMaxLimit = if (maxLimitParts.isNotEmpty() && maxLimitParts[0].isNotBlank()) formatRateValue(maxLimitParts[0]) else "Unlimited"
+    val downloadMaxLimit = if (maxLimitParts.size > 1 && maxLimitParts[1].isNotBlank()) formatRateValue(maxLimitParts[1]) else "Unlimited"
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -454,10 +466,11 @@ fun QueueItemCard(
                 if (queue.disabled) cardBorder.copy(alpha = 0.4f) else cardBorder,
                 RoundedCornerShape(14.dp)
             )
+            .clickable { expanded = !expanded }
             .padding(14.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Header row: Name & Status Badge
+            // Header row: Name & Status Badge & Expand Icon
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -483,21 +496,31 @@ fun QueueItemCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (queue.disabled) Color.DarkGray.copy(alpha = 0.5f)
-                            else neonGreen.copy(alpha = 0.15f)
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (queue.disabled) Color.DarkGray.copy(alpha = 0.5f)
+                                else neonGreen.copy(alpha = 0.15f)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = if (queue.disabled) "DISABLED" else "AKTIF",
+                            color = if (queue.disabled) Color.LightGray else neonGreen,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = if (queue.disabled) "DISABLED" else "AKTIF",
-                        color = if (queue.disabled) Color.LightGray else neonGreen,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = "Expand",
+                        tint = textSecondary,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .rotate(if (expanded) 180f else 0f)
                     )
                 }
             }
@@ -543,63 +566,228 @@ fun QueueItemCard(
 
             HorizontalDivider(color = cardBorder.copy(alpha = 0.2f), thickness = 0.5.dp)
 
-            // Bandwidth Row (Max Limit & Rate)
+            // Upload Max Limit and Download Max Limit Cards
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Max Limit", color = textSecondary, fontSize = 11.sp)
-                    Text(
-                        formatBandwidthPair(queue.maxLimit),
-                        color = neonCyan,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                // Upload Max Limit Box
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF00E5FF).copy(alpha = 0.08f))
+                        .border(0.5.dp, Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("↑", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Upload Max", color = textSecondary, fontSize = 10.sp)
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = uploadMaxLimit,
+                            color = Color(0xFF00E5FF),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
-                if (queue.rate.isNotBlank() && queue.rate != "0/0" && queue.rate != "-") {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        Text("Current Rate", color = textSecondary, fontSize = 11.sp)
+                // Download Max Limit Box
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFFF3366).copy(alpha = 0.08f))
+                        .border(0.5.dp, Color(0xFFFF3366).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("↓", color = Color(0xFFFF3366), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Download Max", color = textSecondary, fontSize = 10.sp)
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            formatBandwidthPair(queue.rate),
-                            color = neonGreen,
+                            text = downloadMaxLimit,
+                            color = Color(0xFFFF3366),
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
 
-            // Traffic & Packets Row
-            if (queue.bytes.isNotBlank() && queue.bytes != "-") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Traffic (Bytes)", color = textSecondary, fontSize = 11.sp)
-                        Text(
-                            formatBytesPair(queue.bytes),
-                            color = textMain,
-                            fontSize = 12.sp
-                        )
+            // Realtime Traffic Monitor Section
+            Spacer(modifier = Modifier.height(2.dp))
+            var rxRateBps by remember { mutableStateOf(0L) }
+            var txRateBps by remember { mutableStateOf(0L) }
+            val rxHistory = remember { mutableStateListOf<Float>() }
+            val txHistory = remember { mutableStateListOf<Float>() }
+
+            // Initialize or clear history
+            LaunchedEffect(queue.name, areaId) {
+                rxHistory.clear()
+                txHistory.clear()
+                for (i in 0 until 20) {
+                    rxHistory.add(0f)
+                    txHistory.add(0f)
+                }
+
+                while (true) {
+                    try {
+                        var rxVal = 0L
+                        var txVal = 0L
+
+                        // 1. Try dedicated queue-traffic endpoint first
+                        try {
+                            val targetClean = queue.target.split("/").firstOrNull() ?: ""
+                            val qTraffic = ApiClient.apiService.getMikrotikQueueTraffic(areaId, queue.name, targetClean)
+                            val item = qTraffic.firstOrNull()
+                            if (item != null) {
+                                rxVal = item.rxBits?.toLongOrNull() ?: item.download ?: item.rx ?: 0L
+                                txVal = item.txBits?.toLongOrNull() ?: item.upload ?: item.tx ?: 0L
+                            }
+                        } catch (_: Exception) {}
+
+                        // 2. If zero, try interface traffic matching queue name or target
+                        if (rxVal == 0L && txVal == 0L) {
+                            try {
+                                val ifTraffic = ApiClient.apiService.getMikrotikTraffic(areaId, queue.name)
+                                val item = ifTraffic.firstOrNull()
+                                if (item != null) {
+                                    rxVal = item.rxBits?.toLongOrNull() ?: item.rx ?: item.rxByte ?: 0L
+                                    txVal = item.txBits?.toLongOrNull() ?: item.tx ?: item.txByte ?: 0L
+                                }
+                            } catch (_: Exception) {}
+                        }
+
+                        // 3. Fallback to queue.rate if available and traffic was 0
+                        if (rxVal == 0L && txVal == 0L && queue.rate.isNotBlank() && queue.rate != "0/0" && queue.rate != "-") {
+                            val rParts = queue.rate.split("/")
+                            txVal = rParts.getOrNull(0)?.trim()?.toLongOrNull() ?: 0L
+                            rxVal = rParts.getOrNull(1)?.trim()?.toLongOrNull() ?: 0L
+                        }
+
+                        rxRateBps = rxVal
+                        txRateBps = txVal
+
+                        if (rxHistory.size >= 25) rxHistory.removeAt(0)
+                        rxHistory.add(rxVal.toFloat())
+
+                        if (txHistory.size >= 25) txHistory.removeAt(0)
+                        txHistory.add(txVal.toFloat())
+                    } catch (_: Exception) {}
+                    delay(2000L)
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF070711))
+                    .border(1.dp, neonCyan.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                    .padding(10.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (queue.disabled) Color.Gray else Color(0xFF00FF66))
+                            )
+                            Text("Realtime Traffic Monitor", color = neonCyan, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                        }
+                        Text(if (queue.disabled) "Disabled" else "Live", color = textSecondary, fontSize = 10.sp)
                     }
 
-                    if (queue.packets.isNotBlank() && queue.packets != "-") {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.End
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(7.dp, 7.dp).background(Color(0xFF00E5FF), RoundedCornerShape(2.dp)))
+                            Text("Upload (TX): ", color = textSecondary, fontSize = 11.sp)
+                            Text(formatRateValue(txRateBps.toString()), color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(7.dp, 7.dp).background(Color(0xFFFF3366), RoundedCornerShape(2.dp)))
+                            Text("Download (RX): ", color = textSecondary, fontSize = 11.sp)
+                            Text(formatRateValue(rxRateBps.toString()), color = Color(0xFFFF3366), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+
+                    RealtimeTrafficChart(
+                        rxData = rxHistory.toList(),
+                        txData = txHistory.toList(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp)
+                    )
+                }
+            }
+
+            // Expanded extra details (Traffic Bytes, Packets, Current Rate)
+            AnimatedVisibility(visible = expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HorizontalDivider(color = cardBorder.copy(alpha = 0.2f), thickness = 0.5.dp)
+
+                    // Current Rate Row
+                    if (queue.rate.isNotBlank() && queue.rate != "0/0" && queue.rate != "-") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Packets", color = textSecondary, fontSize = 11.sp)
+                            Text("Current Rate (Avg):", color = textSecondary, fontSize = 11.sp)
                             Text(
-                                queue.packets,
-                                color = textSecondary,
-                                fontSize = 12.sp
+                                formatBandwidthPair(queue.rate),
+                                color = neonGreen,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
+                        }
+                    }
+
+                    // Traffic (Bytes) & Packets Row
+                    if (queue.bytes.isNotBlank() && queue.bytes != "-") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Total Traffic (Bytes)", color = textSecondary, fontSize = 11.sp)
+                                Text(
+                                    formatBytesPair(queue.bytes),
+                                    color = textMain,
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            if (queue.packets.isNotBlank() && queue.packets != "-") {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Text("Packets", color = textSecondary, fontSize = 11.sp)
+                                    Text(
+                                        queue.packets,
+                                        color = textSecondary,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
                         }
                     }
                 }

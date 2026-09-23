@@ -110,6 +110,8 @@ data class TrafficResponse(
     @com.squareup.moshi.Json(name = "tx-bits-per-second") val txBits: String? = null,
     val rx: Long? = null,
     val tx: Long? = null,
+    val download: Long? = null,
+    val upload: Long? = null,
     @com.squareup.moshi.Json(name = "rx_byte") val rxByte: Long? = null,
     @com.squareup.moshi.Json(name = "tx_byte") val txByte: Long? = null,
     @com.squareup.moshi.Json(name = "rx_string") val rxString: String? = null,
@@ -365,6 +367,13 @@ interface ApiService {
 
     @GET("api/mikrotik/queues/{id}")
     suspend fun getMikrotikQueues(@Path("id") id: String): List<MikrotikQueue>
+
+    @GET("api/mikrotik/queue-traffic/{id}")
+    suspend fun getMikrotikQueueTraffic(
+        @Path("id") areaId: String,
+        @Query("name") name: String,
+        @Query("target") target: String = ""
+    ): List<TrafficResponse>
 
     @GET("api/mikrotik/traffic/{id}")
     suspend fun getMikrotikTraffic(@Path("id") areaId: String, @Query("interface") interfaceName: String): List<TrafficResponse>

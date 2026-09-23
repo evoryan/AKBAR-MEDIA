@@ -2857,6 +2857,71 @@ app.get('/api/mikrotik/queues/:id', async (req, res) => {
     }
 });
 
+app.get('/api/mikrotik/queue-traffic/:id', async (req, res) => {
+    let client;
+    try {
+        const { id } = req.params;
+        const queueName = req.query.name || '';
+        const queueTarget = req.query.target || '';
+
+        const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
+
+        const area = rows[0];
+        if (!area.routerIp || !area.mikrotikUser || !area.mikrotikPassword) {
+            return res.status(400).json({ error: "Mikrotik credentials incomplete" });
+        }
+
+        const [host, port] = area.routerIp.split(':');
+        client = new RouterOSClient({
+            host: host,
+            user: area.mikrotikUser,
+            password: area.mikrotikPassword,
+            port: parseInt(port) || 8728,
+            timeout: 3000
+        });
+
+        const api = await connectMikrotik(client, 3000);
+        let traffic = [{ "rx-bits-per-second": 0, "tx-bits-per-second": 0, "upload": 0, "download": 0 }];
+
+        try {
+            const queueSimpleMenu = api.menu('/queue/simple');
+            let matchedQueue = null;
+
+            if (queueName) {
+                const qList = await queueSimpleMenu.where('name', queueName).get();
+                if (qList && qList.length > 0) matchedQueue = qList[0];
+            }
+            if (!matchedQueue && queueTarget) {
+                const qList = await queueSimpleMenu.get();
+                matchedQueue = qList.find(q => (q.target || q['target-addresses'] || '').includes(queueTarget));
+            }
+
+            if (matchedQueue && matchedQueue.rate) {
+                // Rate format in Mikrotik simple queue: "upload/download" (bytes per sec or bps)
+                const rateParts = (matchedQueue.rate || '').split('/');
+                const upRate = parseInt(rateParts[0]) || 0;
+                const downRate = parseInt(rateParts[1]) || 0;
+
+                traffic = [{
+                    "rx-bits-per-second": downRate,
+                    "tx-bits-per-second": upRate,
+                    "download": downRate,
+                    "upload": upRate
+                }];
+            }
+        } catch (_) {}
+
+        res.json(traffic);
+    } catch (error) {
+        handleMikrotikError(error, res, "Mikrotik queue traffic error");
+    } finally {
+        if (client) {
+            try { client.close(); } catch (_) {}
+        }
+    }
+});
+
 const PORT = 4500;
 
 cron.schedule('1 0 * * *', async () => {
