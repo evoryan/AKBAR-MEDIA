@@ -40,10 +40,85 @@ async function executeSqlFile(conn, filePath, targetDb) {
         try {
             await conn.query(stmt);
         } catch (err) {
-            if (!err.message.includes('already exists')) {
-                console.log(`   ⚠️ Notice SQL: ${err.message}`);
+            if (!err.message.includes('already exists') && !err.message.includes('Duplicate')) {
+                // Tampilkan pesan error dan cuplikan statement jika bermasalah
+                const preview = stmt.replace(/\s+/g, ' ').substring(0, 70);
+                console.log(`   ⚠️ Notice SQL: ${err.message} (di statement: "${preview}...")`);
             }
         }
+    }
+
+    // Pastikan tabel-tabel utama (odc_list, odp_list, rasio, dsb) pasti terbuat
+    const essentialTables = [
+        `CREATE TABLE IF NOT EXISTS odc_list (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            location VARCHAR(255),
+            portCount INT DEFAULT 0,
+            portInput VARCHAR(100) DEFAULT '',
+            redaman_in VARCHAR(50) DEFAULT '',
+            redaman_out VARCHAR(50) DEFAULT '',
+            area VARCHAR(100) DEFAULT ''
+        )`,
+        `CREATE TABLE IF NOT EXISTS odp_list (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            odcId INT,
+            portCount INT DEFAULT 0,
+            portInput VARCHAR(100) DEFAULT '',
+            redaman_in VARCHAR(50) DEFAULT '',
+            redaman_out VARCHAR(50) DEFAULT '',
+            area VARCHAR(100) DEFAULT ''
+        )`,
+        `CREATE TABLE IF NOT EXISTS rasio (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            location VARCHAR(255),
+            size VARCHAR(50),
+            redaman_in VARCHAR(50),
+            redaman_out_a VARCHAR(50),
+            redaman_out_b VARCHAR(50),
+            area VARCHAR(100) DEFAULT '',
+            port_input VARCHAR(100) DEFAULT ''
+        )`,
+        `CREATE TABLE IF NOT EXISTS areas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            description VARCHAR(255),
+            customerCount INT,
+            routerIp VARCHAR(50),
+            apiDomain VARCHAR(100),
+            mikrotikUser VARCHAR(255),
+            mikrotikPassword VARCHAR(255),
+            acsUser VARCHAR(255),
+            acsPassword VARCHAR(255)
+        )`,
+        `CREATE TABLE IF NOT EXISTS categories (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100)
+        )`,
+        `CREATE TABLE IF NOT EXISTS inventory (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            categoryId INT,
+            stock INT
+        )`,
+        `CREATE TABLE IF NOT EXISTS packages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            speed VARCHAR(50),
+            price DECIMAL(15,2),
+            taxRate DECIMAL(5,2),
+            pppoeProfile VARCHAR(100),
+            description TEXT,
+            qr_image_url VARCHAR(255) DEFAULT NULL
+        )`
+    ];
+
+    for (const sql of essentialTables) {
+        try {
+            await conn.query(sql);
+        } catch (e) {}
     }
 }
 
@@ -52,7 +127,7 @@ async function run() {
     const action = args[0];
 
     if (!action) {
-        console.log("Usage: node manage_tenant.js <list|add|delete|disable|enable|reset-password|toggle-demo|stats> [params...]");
+        console.log("Usage: node manage_tenant.js <list|add|delete|disable|enable|reset-password|toggle-demo|stats|restore> [params...]");
         return;
     }
 
@@ -275,6 +350,29 @@ async function run() {
                 console.log(` ⚠️ Database \`${u.db_name}\` tidak dapat diakses atau belum diinisialisasi.`);
             }
             console.log(`=======================================================\n`);
+        }
+        else if (action === 'restore') {
+            const dbName = args[1];
+            const sqlFilePath = args[2];
+
+            if (!dbName || !sqlFilePath) {
+                console.log("❌ Error: Harap masukkan parameter targetDb dan sqlFilePath.");
+                console.log("   Format: node manage_tenant.js restore <targetDb> <sqlFilePath>");
+                return;
+            }
+
+            if (!fs.existsSync(sqlFilePath)) {
+                console.log(`❌ Error: File SQL '${sqlFilePath}' tidak ditemukan.`);
+                return;
+            }
+
+            console.log(`\n[1/2] Memastikan database tenant \`${dbName}\` tersedia...`);
+            await conn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+
+            console.log(`[2/2] Mengimpor data dari file '${sqlFilePath}' ke database \`${dbName}\`...`);
+            await executeSqlFile(conn, sqlFilePath, dbName);
+
+            console.log(`\n✅ SUKSES: Database tenant \`${dbName}\` berhasil direstore dari file '${sqlFilePath}'.`);
         }
         else {
             console.log(`Aksi '${action}' tidak dikenal.`);

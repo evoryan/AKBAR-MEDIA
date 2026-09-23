@@ -163,6 +163,153 @@ async function runWithMikrotik(area, action, res, actionName = "Mikrotik operati
     }
 }
 
+// Auto-create all tenant base tables if they don't exist
+async function ensureTenantTables(pool) {
+    if (!pool) return;
+    try {
+        await pool.query(`CREATE TABLE IF NOT EXISTS odc_list (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            location VARCHAR(255),
+            portCount INT DEFAULT 0,
+            portInput VARCHAR(100) DEFAULT '',
+            redaman_in VARCHAR(50) DEFAULT '',
+            redaman_out VARCHAR(50) DEFAULT '',
+            area VARCHAR(100) DEFAULT ''
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS odp_list (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            odcId INT,
+            portCount INT DEFAULT 0,
+            portInput VARCHAR(100) DEFAULT '',
+            redaman_in VARCHAR(50) DEFAULT '',
+            redaman_out VARCHAR(50) DEFAULT '',
+            area VARCHAR(100) DEFAULT ''
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS rasio (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            location VARCHAR(255),
+            size VARCHAR(50),
+            redaman_in VARCHAR(50),
+            redaman_out_a VARCHAR(50),
+            redaman_out_b VARCHAR(50),
+            area VARCHAR(100) DEFAULT '',
+            port_input VARCHAR(100) DEFAULT ''
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS customers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            phone VARCHAR(20),
+            area VARCHAR(50),
+            address TEXT,
+            username VARCHAR(50),
+            billingDate VARCHAR(10),
+            status VARCHAR(20),
+            price VARCHAR(50),
+            discount VARCHAR(50),
+            register_date VARCHAR(50) DEFAULT "",
+            isolate_date VARCHAR(50) DEFAULT "",
+            package_name VARCHAR(100) DEFAULT "",
+            pppoe_secret VARCHAR(100) DEFAULT "",
+            odp_id INT DEFAULT NULL,
+            odp_port VARCHAR(10) DEFAULT "",
+            additionalCost1 VARCHAR(50) DEFAULT "",
+            additionalCost2 VARCHAR(50) DEFAULT ""
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_id INT,
+            bulan VARCHAR(50),
+            tahun INT,
+            amount DECIMAL(15, 2),
+            status VARCHAR(50) DEFAULT 'BELUM BAYAR',
+            admin_name VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS pembukuan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            type VARCHAR(50),
+            amount DECIMAL(15,2),
+            description TEXT,
+            category VARCHAR(100) DEFAULT 'Lain-lain',
+            admin_name VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS pemasukan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            category VARCHAR(100) UNIQUE,
+            amount DECIMAL(15,2) DEFAULT 0,
+            description TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS pengeluaran (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            category VARCHAR(100) UNIQUE,
+            amount DECIMAL(15,2) DEFAULT 0,
+            description TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS areas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            description VARCHAR(255),
+            customerCount INT,
+            routerIp VARCHAR(50),
+            apiDomain VARCHAR(100),
+            mikrotikUser VARCHAR(255),
+            mikrotikPassword VARCHAR(255),
+            acsUser VARCHAR(255),
+            acsPassword VARCHAR(255)
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS categories (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100)
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS inventory (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            categoryId INT,
+            stock INT
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS stock_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            type VARCHAR(50),
+            itemName VARCHAR(100),
+            quantity INT,
+            adminName VARCHAR(100),
+            timestamp BIGINT
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS packages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100),
+            speed VARCHAR(50),
+            price DECIMAL(15,2),
+            taxRate DECIMAL(5,2),
+            pppoeProfile VARCHAR(100),
+            description TEXT,
+            qr_image_url VARCHAR(255) DEFAULT NULL
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS notifications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            message VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+        await pool.query(`CREATE TABLE IF NOT EXISTS wa_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customer_name VARCHAR(100),
+            phone VARCHAR(20),
+            message TEXT,
+            media_url VARCHAR(255),
+            status VARCHAR(50),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+    } catch (err) {
+        console.error("ensureTenantTables error:", err.message);
+    }
+}
+
 // Dynamic Tenant Pools Map
 const tenantPools = {};
 
@@ -179,19 +326,20 @@ function getTenantPool(dbName) {
             queueLimit: 0
         });
         
-        // Auto-update schema for tenant database
-        tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
-        tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{}); tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
-        tenantPools[dbName].query(`ALTER TABLE packages ADD COLUMN qr_image_url VARCHAR(255) DEFAULT NULL`).catch(e=>{});
-        tenantPools[dbName].query(`CREATE TABLE IF NOT EXISTS wa_history (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            customer_name VARCHAR(100),
-            phone VARCHAR(20),
-            message TEXT,
-            media_url VARCHAR(255),
-            status VARCHAR(50),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`).catch(e=>{});
+        // Auto-create missing tables and auto-update schema for tenant database
+        ensureTenantTables(tenantPools[dbName]).then(() => {
+            tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odc_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN redaman_in VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE odp_list ADD COLUMN area VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            tenantPools[dbName].query(`ALTER TABLE packages ADD COLUMN qr_image_url VARCHAR(255) DEFAULT NULL`).catch(e=>{});
+        }).catch(err => console.error("Auto-init tenant tables err:", err.message));
     }
     return tenantPools[dbName];
 }
@@ -363,14 +511,22 @@ async function initAllDatabases() {
         await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
         
-        // 2. Find all tenant databases
+        // 2. Find all tenant databases (baik yang berawalan akbar_ maupun nama kustom seperti ion_network)
+        const [usersWithDb] = await masterPool.query("SELECT DISTINCT db_name FROM users WHERE db_name IS NOT NULL AND db_name != 'akbar_media_master' AND db_name != ''").catch(e => [[]]);
+        const tenantDbSet = new Set(usersWithDb.map(u => u.db_name));
+        
         const [dbs] = await masterPool.query("SHOW DATABASES LIKE 'akbar_%'");
         for (const row of dbs) {
             const dbName = Object.values(row)[0];
-            if (dbName === 'akbar_media_master') continue;
-            
+            if (dbName !== 'akbar_media_master') {
+                tenantDbSet.add(dbName);
+            }
+        }
+
+        for (const dbName of tenantDbSet) {
             console.log(`Updating schema for tenant: ${dbName}`);
             const tPool = getTenantPool(dbName);
+            await ensureTenantTables(tPool);
             
             await tPool.query(`CREATE TABLE IF NOT EXISTS pembukuan (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -729,7 +885,7 @@ app.post('/api/login', async (req, res) => {
             const token = jwt.sign(
                 { id: user.id, username: user.username, role: user.role, db_name: db_name, is_demo: is_demo }, 
                 JWT_SECRET, 
-                { expiresIn: '24h' }
+                { expiresIn: '365d' }
             );
             
             res.json({ ...userWithoutPassword, token, db_name });

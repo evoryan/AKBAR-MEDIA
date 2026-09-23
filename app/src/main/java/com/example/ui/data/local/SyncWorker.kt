@@ -98,10 +98,7 @@ class SyncWorker(
             Result.success()
         } catch (e: retrofit2.HttpException) {
             if (e.code() == 401 || e.code() == 403) {
-                Log.w("SyncWorker", "Data sync unauthorized (HTTP ${e.code()}). Session might be expired.")
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    com.example.ui.data.UserSession.clearSession(applicationContext)
-                }
+                Log.w("SyncWorker", "Data sync unauthorized (HTTP ${e.code()}). Retrying later without clearing session.")
                 Result.failure()
             } else {
                 Log.e("SyncWorker", "Data sync failed with HTTP ${e.code()}", e)

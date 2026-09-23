@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
@@ -55,6 +57,9 @@ data class InternetPackage(
 ) {
     val finalPrice: Double
         get() = price * (1 + taxRate / 100)
+
+    val isDedicated: Boolean
+        get() = name.contains("Dedicated", ignoreCase = true) || description.contains("Dedicated", ignoreCase = true)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

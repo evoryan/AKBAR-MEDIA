@@ -193,6 +193,12 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
     var showDiscountDialog by remember { mutableStateOf(false) }
     var discountInputText by remember { mutableStateOf("") }
     
+    var isPpnEnabled by remember { mutableStateOf(false) }
+    var isProrataEnabled by remember { mutableStateOf(false) }
+    var prorataDaysInputText by remember { mutableStateOf("") }
+    var showProrataDialog by remember { mutableStateOf(false) }
+    var prorataCustomDays by remember { mutableStateOf<Int?>(null) }
+    
     var dropdownExpanded by remember { mutableStateOf(false) }
     
     val availableMonths by remember(customer, localTagihanList) {
@@ -227,10 +233,57 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
         }
     }
     
-    val totalAmount = remember(monthsToPay.toList(), customer, localTagihanList) {
+    val baseTotalAmount = remember(monthsToPay.toList(), customer, localTagihanList) {
         monthsToPay.sumOf { getAmountForMonth(it, customer, localTagihanList, monthsList) }
     }
-    val finalAmount = (totalAmount - customDiscount).coerceAtLeast(0L)
+
+    val prorataDaysCount by remember(isProrataEnabled, prorataCustomDays, customer) {
+        derivedStateOf {
+            if (!isProrataEnabled) null
+            else {
+                prorataCustomDays ?: run {
+                    val regCal = parseCustomerRegistrationDate(customer?.registerDate)
+                    if (regCal != null) {
+                        val maxD = regCal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                        val regD = regCal.get(java.util.Calendar.DAY_OF_MONTH)
+                        (maxD - regD + 1).coerceAtLeast(1)
+                    } else {
+                        15
+                    }
+                }
+            }
+        }
+    }
+
+    val prorataTotalDaysInMonth by remember(customer) {
+        derivedStateOf {
+            val regCal = parseCustomerRegistrationDate(customer?.registerDate) ?: java.util.Calendar.getInstance()
+            regCal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+        }
+    }
+
+    val amountAfterProrata = remember(baseTotalAmount, isProrataEnabled, prorataDaysCount, prorataTotalDaysInMonth) {
+        if (isProrataEnabled && prorataDaysCount != null && prorataTotalDaysInMonth > 0) {
+            val days = prorataDaysCount!!
+            kotlin.math.round((baseTotalAmount.toDouble() * days) / prorataTotalDaysInMonth).toLong()
+        } else {
+            baseTotalAmount
+        }
+    }
+
+    val totalAmount = amountAfterProrata
+
+    val amountAfterDiscount = (totalAmount - customDiscount).coerceAtLeast(0L)
+
+    val ppnAmount = remember(isPpnEnabled, amountAfterDiscount) {
+        if (isPpnEnabled) {
+            kotlin.math.round(amountAfterDiscount * 0.11).toLong()
+        } else {
+            0L
+        }
+    }
+
+    val finalAmount = amountAfterDiscount + ppnAmount
     
     androidx.compose.runtime.LaunchedEffect(customerId) {
         try {
@@ -826,9 +879,21 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Total Tagihan", color = textSecondary, fontSize = 14.sp)
-                    Text(totalFormatted, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text("Tagihan Dasar (${monthsToPay.size} Bulan)", color = textSecondary, fontSize = 14.sp)
+                    Text("Rp. ${formatter.format(baseTotalAmount)}", color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
+
+                if (isProrataEnabled && prorataDaysCount != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Prorata ($prorataDaysCount/$prorataTotalDaysInMonth hari)", color = neonCyan, fontSize = 14.sp)
+                        Text(totalFormatted, color = neonCyan, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+
                 if (customDiscount > 0) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -836,9 +901,21 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Potongan Diskon", color = successGreen, fontSize = 14.sp)
-                        Text("- Rp. ${formatter.format(customDiscount)}", color = successGreen, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        Text("- Rp. ${formatter.format(customDiscount)}", color = successGreen, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     }
                 }
+
+                if (isPpnEnabled) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("PPN 11%", color = Color(0xFFFFB74D), fontSize = 14.sp)
+                        Text("+ Rp. ${formatter.format(ppnAmount)}", color = Color(0xFFFFB74D), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+
                 HorizontalDivider(color = cardBorder.copy(alpha = 0.1f), thickness = 0.5.dp)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -847,6 +924,95 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 ) {
                     Text("Hasil Akhir", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Text(finalFormatted, color = neonCyan, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Pilihan Tambahan: Prorata & PPN 11% Card
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cardBg)
+                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                // Opsi Prorata
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            isProrataEnabled = !isProrataEnabled
+                        }
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Checkbox(
+                            checked = isProrataEnabled,
+                            onCheckedChange = { isProrataEnabled = it },
+                            colors = CheckboxDefaults.colors(checkedColor = neonCyan, checkmarkColor = Color.Black)
+                        )
+                        Column {
+                            Text("Hitung Prorata", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                if (isProrataEnabled && prorataDaysCount != null)
+                                    "Aktif: $prorataDaysCount hari (dari $prorataTotalDaysInMonth hari)"
+                                else "Hitung proporsional hari pemakaian",
+                                color = if (isProrataEnabled) neonCyan else textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    if (isProrataEnabled) {
+                        IconButton(
+                            onClick = {
+                                prorataDaysInputText = (prorataDaysCount ?: 15).toString()
+                                showProrataDialog = true
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Ubah Hari Prorata", tint = neonCyan, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = cardBorder.copy(alpha = 0.1f), thickness = 0.5.dp)
+
+                // Opsi PPN 11%
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            isPpnEnabled = !isPpnEnabled
+                        }
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Checkbox(
+                            checked = isPpnEnabled,
+                            onCheckedChange = { isPpnEnabled = it },
+                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFFFFB74D), checkmarkColor = Color.Black)
+                        )
+                        Column {
+                            Text("PPN 11%", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                if (isPpnEnabled) "Ditambahkan (+ Rp. ${formatter.format(ppnAmount)})"
+                                else "Tambahkan pajak PPN 11%",
+                                color = if (isPpnEnabled) Color(0xFFFFB74D) else textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1079,6 +1245,63 @@ $monthsDetailText
                 },
                 dismissButton = {
                     TextButton(onClick = { showDiscountDialog = false }) {
+                        Text("Batal", color = textMain)
+                    }
+                }
+            )
+        }
+
+        if (showProrataDialog) {
+            AlertDialog(
+                onDismissRequest = { showProrataDialog = false },
+                containerColor = bgMain,
+                title = { Text("Atur Jumlah Hari Prorata", color = textMain, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Masukkan jumlah hari pemakaian aktif pelanggan dalam 1 bulan (Total bulan ini: $prorataTotalDaysInMonth hari):", color = textSecondary, fontSize = 14.sp)
+                        OutlinedTextField(
+                            value = prorataDaysInputText,
+                            onValueChange = { input ->
+                                if (input.all { it.isDigit() }) {
+                                    prorataDaysInputText = input
+                                }
+                            },
+                            label = { Text("Jumlah Hari", color = textMain.copy(alpha = 0.7f)) },
+                            placeholder = { Text("Contoh: 15", color = textSecondary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = neonCyan,
+                                unfocusedBorderColor = textMain.copy(alpha = 0.5f),
+                                focusedTextColor = textMain,
+                                unfocusedTextColor = textMain,
+                                focusedLabelColor = neonCyan,
+                                unfocusedLabelColor = textMain.copy(alpha = 0.7f)
+                            ),
+                            singleLine = true
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val days = prorataDaysInputText.toIntOrNull() ?: 0
+                            if (days <= 0 || days > 31) {
+                                Toast.makeText(context, "Jumlah hari harus antara 1 dan 31 hari", Toast.LENGTH_SHORT).show()
+                            } else {
+                                prorataCustomDays = days
+                                showProrataDialog = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black)
+                    ) {
+                        Text("Simpan", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showProrataDialog = false }) {
                         Text("Batal", color = textMain)
                     }
                 }

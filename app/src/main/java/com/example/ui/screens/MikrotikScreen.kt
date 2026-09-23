@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,11 +17,14 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -194,9 +198,89 @@ fun MikrotikCard(
     var currentTxBytes by remember { mutableStateOf(0L) }
     var accumulatedRxBytes by remember { mutableStateOf(0L) }
     var accumulatedTxBytes by remember { mutableStateOf(0L) }
+    var currentRxRateBps by remember { mutableStateOf(0L) }
+    var currentTxRateBps by remember { mutableStateOf(0L) }
+    val rxHistory = remember { mutableStateListOf<Float>() }
+    val txHistory = remember { mutableStateListOf<Float>() }
     var trafficErrorMsg by remember { mutableStateOf<String?>(null) }
     
     var showPortDialog by remember { mutableStateOf(false) }
+
+    // Realtime background polling for traffic rate and graph
+    LaunchedEffect(area.id, selectedPort) {
+        rxHistory.clear()
+        txHistory.clear()
+        for (i in 0 until 20) {
+            rxHistory.add(0f)
+            txHistory.add(0f)
+        }
+        var prevRx: Long? = null
+        var prevTx: Long? = null
+        var prevTime: Long = System.currentTimeMillis()
+
+        while (true) {
+            try {
+                val trafficList = try {
+                    com.example.ui.data.remote.ApiClient.apiService.getMikrotikTraffic(area.id, selectedPort)
+                } catch (e: Exception) {
+                    null
+                }
+                val trafficItem = trafficList?.firstOrNull()
+
+                val rxBpsVal = trafficItem?.rxBits?.toLongOrNull() 
+                    ?: trafficItem?.rx 
+                    ?: trafficItem?.rxByte
+                val txBpsVal = trafficItem?.txBits?.toLongOrNull() 
+                    ?: trafficItem?.tx 
+                    ?: trafficItem?.txByte
+
+                if (rxBpsVal != null && txBpsVal != null) {
+                    currentRxRateBps = rxBpsVal
+                    currentTxRateBps = txBpsVal
+
+                    if (rxHistory.size >= 25) rxHistory.removeAt(0)
+                    rxHistory.add(rxBpsVal.toFloat())
+
+                    if (txHistory.size >= 25) txHistory.removeAt(0)
+                    txHistory.add(txBpsVal.toFloat())
+                } else {
+                    // Fallback using interface byte difference
+                    val interfaces = com.example.ui.data.remote.ApiClient.apiService.getMikrotikInterfaces(area.id)
+                    val matchedPort = interfaces.find { it.name == selectedPort }
+                    if (matchedPort != null) {
+                        val now = System.currentTimeMillis()
+                        val dt = (now - prevTime).coerceAtLeast(500L) / 1000.0
+
+                        if (prevRx != null && prevTx != null) {
+                            val curRx = matchedPort.rxByte
+                            val curTx = matchedPort.txByte
+                            val dRx = if (curRx >= prevRx!!) curRx - prevRx!! else curRx
+                            val dTx = if (curTx >= prevTx!!) curTx - prevTx!! else curTx
+
+                            val rxBps = (dRx * 8.0 / dt).toLong().coerceAtLeast(0L)
+                            val txBps = (dTx * 8.0 / dt).toLong().coerceAtLeast(0L)
+
+                            currentRxRateBps = rxBps
+                            currentTxRateBps = txBps
+
+                            if (rxHistory.size >= 25) rxHistory.removeAt(0)
+                            rxHistory.add(rxBps.toFloat())
+
+                            if (txHistory.size >= 25) txHistory.removeAt(0)
+                            txHistory.add(txBps.toFloat())
+                        }
+
+                        prevRx = matchedPort.rxByte
+                        prevTx = matchedPort.txByte
+                        prevTime = now
+                    }
+                }
+            } catch (e: Exception) {
+                // Silently ignore single cycle network hiccups in graph
+            }
+            delay(2000L)
+        }
+    }
 
     LaunchedEffect(area.id, preloadedStatus, preloadedIsLoading, preloadedErrorMsg, selectedPortChangedTrigger) {
         // Initial setup of accumulated bytes from SharedPreferences
@@ -355,7 +439,7 @@ fun MikrotikCard(
                     MikrotikStatCard("PPPoE Offline", if (isLoading) "..." else (mikrotikStatus?.offlinePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f))
                 }
                 
-                // Traffic Counter Section
+                // Realtime Traffic Monitoring Graph Section
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -370,34 +454,53 @@ fun MikrotikCard(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Port Terpilih: $selectedPort", color = neonCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                            Text("Traffic Counter", color = textSecondary, fontSize = 11.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFF00FF66))
+                                )
+                                Text("Port: $selectedPort", color = neonCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                            }
+                            Text("Realtime Traffic Graph", color = textSecondary, fontSize = 11.sp)
                         }
                         
-                        Spacer(modifier = Modifier.height(1.dp).fillMaxWidth().background(neonCyan.copy(alpha = 0.15f)))
-                        
-                        if (trafficErrorMsg != null) {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Text("Data Traffic Offline", color = Color(0xFFFFB300), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(trafficErrorMsg!!, color = textSecondary, fontSize = 11.sp)
+                        // Realtime Speed Stats
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(8.dp, 8.dp).background(Color(0xFF00E5FF), RoundedCornerShape(2.dp)))
+                                Text("RX: ", color = textSecondary, fontSize = 12.sp)
+                                Text(formatBitrate(currentRxRateBps), color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
-                        } else {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("RX (Download)", color = textSecondary, fontSize = 11.sp)
-                                    Text(if (isLoading) "..." else formatBytes(accumulatedRxBytes), color = textMain, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    Text("Live: ${formatBytes(currentRxBytes)}", color = textSecondary, fontSize = 11.sp)
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("TX (Upload)", color = textSecondary, fontSize = 11.sp)
-                                    Text(if (isLoading) "..." else formatBytes(accumulatedTxBytes), color = textMain, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    Text("Live: ${formatBytes(currentTxBytes)}", color = textSecondary, fontSize = 11.sp)
-                                }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(8.dp, 8.dp).background(Color(0xFFFF3366), RoundedCornerShape(2.dp)))
+                                Text("TX: ", color = textSecondary, fontSize = 12.sp)
+                                Text(formatBitrate(currentTxRateBps), color = Color(0xFFFF3366), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
+                        }
+
+                        // Realtime Canvas Graph
+                        RealtimeTrafficChart(
+                            rxData = rxHistory.toList(),
+                            txData = txHistory.toList(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(95.dp)
+                        )
+
+                        // Total Accumulated Counter Summary
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Total RX: ${formatBytes(accumulatedRxBytes)}", color = textSecondary, fontSize = 11.sp)
+                            Text("Total TX: ${formatBytes(accumulatedTxBytes)}", color = textSecondary, fontSize = 11.sp)
                         }
                     }
                 }
@@ -520,6 +623,131 @@ fun formatBytes(bytes: Long): String {
         bytes >= mb -> String.format("%.2f MB", bytes / mb)
         bytes >= kb -> String.format("%.2f KB", bytes / kb)
         else -> "$bytes B"
+    }
+}
+
+fun formatBitrate(bps: Long): String {
+    val kbps = 1000.0
+    val mbps = kbps * 1000.0
+    val gbps = mbps * 1000.0
+
+    return when {
+        bps >= gbps -> String.format("%.2f Gbps", bps / gbps)
+        bps >= mbps -> String.format("%.2f Mbps", bps / mbps)
+        bps >= kbps -> String.format("%.1f Kbps", bps / kbps)
+        else -> "$bps bps"
+    }
+}
+
+@Composable
+fun RealtimeTrafficChart(
+    rxData: List<Float>,
+    txData: List<Float>,
+    modifier: Modifier = Modifier
+) {
+    val rxColor = Color(0xFF00E5FF)
+    val txColor = Color(0xFFFF3366)
+    val gridColor = Color(0xFF222233)
+    val peakLabelColor = Color(0xFF888899)
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF0A0A14))
+            .border(0.5.dp, Color(0xFF1E1E2E), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 6.dp)
+    ) {
+        val maxRx = rxData.maxOrNull() ?: 0f
+        val maxTx = txData.maxOrNull() ?: 0f
+        val maxVal = (maxOf(maxRx, maxTx).coerceAtLeast(100_000f)) * 1.15f
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+
+            // 1. Draw horizontal grid lines (3 lines)
+            val gridLines = 3
+            for (i in 0..gridLines) {
+                val y = height * (i.toFloat() / gridLines)
+                drawLine(
+                    color = gridColor,
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(width, y),
+                    strokeWidth = 1f
+                )
+            }
+
+            // Helper to generate path
+            fun buildPath(data: List<Float>): Path {
+                val path = Path()
+                if (data.isEmpty()) return path
+
+                val stepX = if (data.size > 1) width / (data.size - 1) else width
+                data.forEachIndexed { index, value ->
+                    val x = index * stepX
+                    val normalizedY = ((value / maxVal).coerceIn(0f, 1f))
+                    val y = height - (normalizedY * height)
+                    if (index == 0) {
+                        path.moveTo(x, y)
+                    } else {
+                        path.lineTo(x, y)
+                    }
+                }
+                return path
+            }
+
+            fun buildAreaPath(linePath: Path, data: List<Float>): Path {
+                val areaPath = Path()
+                if (data.isEmpty()) return areaPath
+                areaPath.addPath(linePath)
+                val stepX = if (data.size > 1) width / (data.size - 1) else width
+                val lastX = (data.size - 1) * stepX
+                areaPath.lineTo(lastX, height)
+                areaPath.lineTo(0f, height)
+                areaPath.close()
+                return areaPath
+            }
+
+            // Draw RX area & line
+            if (rxData.size >= 2) {
+                val rxLinePath = buildPath(rxData)
+                val rxAreaPath = buildAreaPath(rxLinePath, rxData)
+                drawPath(
+                    path = rxAreaPath,
+                    color = rxColor.copy(alpha = 0.22f)
+                )
+                drawPath(
+                    path = rxLinePath,
+                    color = rxColor,
+                    style = Stroke(width = 2.5f)
+                )
+            }
+
+            // Draw TX area & line
+            if (txData.size >= 2) {
+                val txLinePath = buildPath(txData)
+                val txAreaPath = buildAreaPath(txLinePath, txData)
+                drawPath(
+                    path = txAreaPath,
+                    color = txColor.copy(alpha = 0.20f)
+                )
+                drawPath(
+                    path = txLinePath,
+                    color = txColor,
+                    style = Stroke(width = 2.5f)
+                )
+            }
+        }
+
+        // Peak scale indicator in upper right corner
+        Text(
+            text = "Peak: ${formatBitrate(maxVal.toLong())}",
+            color = peakLabelColor,
+            fontSize = 9.sp,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(2.dp)
+        )
     }
 }
 

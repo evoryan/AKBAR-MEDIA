@@ -70,11 +70,12 @@ while true; do
     echo -e " ${COLOR_GREEN}6.${COLOR_RESET} 🧪 Ubah Mode Demo (Toggle Status Mode Demo / Produksi)"
     echo -e " ${COLOR_GREEN}7.${COLOR_RESET} 📊 Lihat Statistik & Detail Tenant (Pelanggan, Router, Tagihan)"
     echo -e " ${COLOR_GREEN}8.${COLOR_RESET} 💾 Backup Database Tenant (Export SQL Dump)"
-    echo -e " ${COLOR_RED}9.${COLOR_RESET} 🗑️  Hapus Tenant & Databasenya (Permanent Delete)"
+    echo -e " ${COLOR_GREEN}9.${COLOR_RESET} 🔄 Restore Database Tenant (Import SQL Dump)"
+    echo -e " ${COLOR_RED}10.${COLOR_RESET} 🗑️  Hapus Tenant & Databasenya (Permanent Delete)"
     echo -e " ${COLOR_WHITE}0.${COLOR_RESET} 🚪 Keluar"
     print_divider
 
-    read -rp "👉 Masukkan pilihan Anda [0-9]: " CHOICE
+    read -rp "👉 Masukkan pilihan Anda [0-10]: " CHOICE
     echo ""
 
     case "$CHOICE" in
@@ -298,8 +299,86 @@ while true; do
             ;;
 
         9)
-            # 9. HAPUS TENANT
-            echo -e "${COLOR_RED}${COLOR_BOLD}=== [9] HAPUS TENANT & DATABASE PERMANEN ===${COLOR_RESET}"
+            # 9. RESTORE DATABASE TENANT
+            echo -e "${COLOR_GREEN}${COLOR_BOLD}=== [9] RESTORE DATABASE TENANT ===${COLOR_RESET}"
+            echo -e "${COLOR_WHITE}Restore data dari file dump (.sql) ke database tenant.${COLOR_RESET}"
+            echo ""
+            node manage_tenant.js list
+            
+            read -rp "Masukkan Nama Database tujuan restore (contoh: ion_network): " TARGET_DB
+            TARGET_DB="$(echo "$TARGET_DB" | tr -d ' ')"
+            
+            if [ -n "$TARGET_DB" ]; then
+                BACKUP_DIR="$SCRIPT_DIR/backups"
+                
+                # Tampilkan daftar file backup yang ada jika folder backups ada
+                if [ -d "$BACKUP_DIR" ] && [ "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+                    echo -e "\n${COLOR_YELLOW}File backup yang tersedia di folder backups/:${COLOR_RESET}"
+                    ls -lh "$BACKUP_DIR"/*.sql 2>/dev/null | awk '{print " - " $9 " (" $5 ")"}'
+                    echo ""
+                fi
+
+                read -rp "Masukkan path file SQL (contoh: backups/ion_network_backup.sql): " SQL_PATH
+                # Hapus spasi dan tanda petik jika pengguna copy-paste path
+                SQL_PATH="$(echo "$SQL_PATH" | tr -d "'" | tr -d '"' | xargs)"
+
+                if [ -z "$SQL_PATH" ]; then
+                    echo -e "${COLOR_YELLOW}Path file SQL tidak boleh kosong. Operasi dibatalkan.${COLOR_RESET}"
+                elif [ ! -f "$SQL_PATH" ] && [ -f "$BACKUP_DIR/$SQL_PATH" ]; then
+                    SQL_PATH="$BACKUP_DIR/$SQL_PATH"
+                fi
+
+                if [ -f "$SQL_PATH" ]; then
+                    echo -e "\n${COLOR_RED}${COLOR_BOLD}⚠️  PERINGATAN:${COLOR_RESET}"
+                    echo -e "Data pada database ${COLOR_CYAN}'$TARGET_DB'${COLOR_RESET} akan ditimpa/diperbarui dengan data dari:"
+                    echo -e "${COLOR_YELLOW}$SQL_PATH${COLOR_RESET}"
+                    read -rp "Lanjutkan proses restore? [y/N]: " CONFIRM_RESTORE
+
+                    if [[ "$CONFIRM_RESTORE" =~ ^[yY]$ ]]; then
+                        echo -e "\n${COLOR_CYAN}Sedang merestore database...${COLOR_RESET}"
+                        
+                        # Coba gunakan mysql client CLI jika ada, atau fallback ke node manage_tenant.js restore
+                        DB_USER="akbar"
+                        DB_PASS="08Delapan"
+                        DB_HOST="localhost"
+                        if [ -f ".env" ]; then
+                            ENV_USER=$(grep -E "^DB_USER=" .env | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+                            ENV_PASS=$(grep -E "^DB_PASSWORD=" .env | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+                            ENV_HOST=$(grep -E "^DB_HOST=" .env | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+                            [ -n "$ENV_USER" ] && DB_USER="$ENV_USER"
+                            [ -n "$ENV_PASS" ] && DB_PASS="$ENV_PASS"
+                            [ -n "$ENV_HOST" ] && DB_HOST="$ENV_HOST"
+                        fi
+
+                        if command -v mysql &> /dev/null; then
+                            mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" -e "CREATE DATABASE IF NOT EXISTS \`$TARGET_DB\`;" 2>/dev/null
+                            mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$TARGET_DB" < "$SQL_PATH" 2>/dev/null
+                            if [ $? -eq 0 ]; then
+                                echo -e "${COLOR_GREEN}✅ SUKSES: Database '$TARGET_DB' berhasil direstore menggunakan mysql client.${COLOR_RESET}"
+                                # Jalankan pengecekan skema tabel penting
+                                node manage_tenant.js restore "$TARGET_DB" "$SQL_PATH" > /dev/null 2>&1
+                            else
+                                echo -e "${COLOR_YELLOW}Menjalankan restore melalui script Node.js...${COLOR_RESET}"
+                                node manage_tenant.js restore "$TARGET_DB" "$SQL_PATH"
+                            fi
+                        else
+                            node manage_tenant.js restore "$TARGET_DB" "$SQL_PATH"
+                        fi
+                    else
+                        echo -e "${COLOR_YELLOW}Proses restore dibatalkan.${COLOR_RESET}"
+                    fi
+                else
+                    echo -e "${COLOR_RED}❌ Error: File '$SQL_PATH' tidak ditemukan!${COLOR_RESET}"
+                fi
+            else
+                echo -e "${COLOR_YELLOW}Operasi dibatalkan.${COLOR_RESET}"
+            fi
+            pause_screen
+            ;;
+
+        10)
+            # 10. HAPUS TENANT
+            echo -e "${COLOR_RED}${COLOR_BOLD}=== [10] HAPUS TENANT & DATABASE PERMANEN ===${COLOR_RESET}"
             echo -e "${COLOR_RED}⚠️ PERINGATAN: Tindakan ini akan menghapus database tenant beserta seluruh data pelanggan, tagihan, transaksi, dan akun superadmin!${COLOR_RESET}"
             echo ""
             node manage_tenant.js list
@@ -327,7 +406,7 @@ while true; do
             ;;
 
         *)
-            echo -e "${COLOR_RED}Pilihan tidak valid! Silakan masukkan angka 0 sampai 9.${COLOR_RESET}"
+            echo -e "${COLOR_RED}Pilihan tidak valid! Silakan masukkan angka 0 sampai 10.${COLOR_RESET}"
             pause_screen
             ;;
     esac
