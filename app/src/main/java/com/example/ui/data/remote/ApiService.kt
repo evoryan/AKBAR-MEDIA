@@ -355,7 +355,10 @@ interface ApiService {
     suspend fun getMikrotikInterfaces(@Path("id") id: String): List<MikrotikInterface>
 
     @GET("api/mikrotik/logs/{id}")
-    suspend fun getMikrotikLogs(@Path("id") id: String): List<MikrotikLog>
+    suspend fun getMikrotikLogs(
+        @Path("id") id: String,
+        @Query("filter") filter: String? = null
+    ): List<MikrotikLog>
 
     
 

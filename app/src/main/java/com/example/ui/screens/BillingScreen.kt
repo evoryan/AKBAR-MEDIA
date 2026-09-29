@@ -809,14 +809,32 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
 
                                         Mohon segera melakukan pembayaran. Terima kasih.
                                     """.trimIndent()
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                        val url = "https://api.whatsapp.com/send?phone=$formattedPhone&text=${android.net.Uri.encode(message)}"
-                                        data = android.net.Uri.parse(url)
-                                    }
-                                    try {
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "Gagal membuka WhatsApp: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+
+                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        try {
+                                            val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
+                                                context = context,
+                                                customerName = customer.name,
+                                                customerPhone = customer.phone,
+                                                customerArea = customer.area,
+                                                packageName = customer.packageName,
+                                                months = "$selectedMonth $selectedYear",
+                                                totalAmount = customer.price,
+                                                status = "BELUM BAYAR"
+                                            )
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(
+                                                    context = context,
+                                                    phone = formattedPhone,
+                                                    message = message,
+                                                    pngFile = pngFile
+                                                )
+                                            }
+                                        } catch (e: Exception) {
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                android.widget.Toast.makeText(context, "Gagal menyiapkan invoice: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     }
                                 }
                             )

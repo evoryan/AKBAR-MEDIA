@@ -1099,14 +1099,34 @@ $monthsDetailText
 
                                 Mohon segera melakukan pembayaran. Terima kasih.
                             """.trimIndent()
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                val url = "https://api.whatsapp.com/send?phone=$formattedPhone&text=${android.net.Uri.encode(message)}"
-                                data = android.net.Uri.parse(url)
-                            }
-                            try {
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                android.widget.Toast.makeText(context, "Gagal membuka WhatsApp: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+
+                            val monthsLabel = if (monthsToPay.isNotEmpty()) monthsToPay.joinToString(", ") else "Bulan Berjalan"
+
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
+                                        context = context,
+                                        customerName = cust.name,
+                                        customerPhone = cust.phone,
+                                        customerArea = cust.area,
+                                        packageName = cust.packageName,
+                                        months = monthsLabel,
+                                        totalAmount = finalFormatted,
+                                        status = "BELUM BAYAR"
+                                    )
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(
+                                            context = context,
+                                            phone = formattedPhone,
+                                            message = message,
+                                            pngFile = pngFile
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        android.widget.Toast.makeText(context, "Gagal menyiapkan invoice PNG: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             }
                         }
                     },

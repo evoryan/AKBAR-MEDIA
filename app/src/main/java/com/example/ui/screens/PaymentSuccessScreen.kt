@@ -164,26 +164,42 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
             ActionIconBtn(Icons.AutoMirrored.Filled.Message, "Kirim WA", cardBg, neonCyan) {
                 val phone = customer?.phone
                 if (!phone.isNullOrBlank()) {
-                    try {
-                        var formattedPhone = phone
-                        if (formattedPhone.startsWith("0")) {
-                            formattedPhone = "62" + formattedPhone.substring(1)
+                    val rawTemplate = if (com.example.ui.data.SettingsManager.waGatewayEnabled && com.example.ui.data.SettingsManager.waNotifyPaymentSuccess) {
+                        com.example.ui.data.SettingsManager.waTemplatePaymentSuccess
+                    } else {
+                        "Halo {nama},\nTerima kasih, pembayaran tagihan internet untuk bulan {bulan} sejumlah {nominal} telah kami terima dan lunas.\n\nSalam,\n{perusahaan}"
+                    }
+                    val text = rawTemplate
+                        .replace("{nama}", customer?.name ?: "")
+                        .replace("{bulan}", months)
+                        .replace("{nominal}", formattedAmount)
+                        .replace("{perusahaan}", com.example.ui.data.SettingsManager.companyName)
+
+                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        try {
+                            val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
+                                context = context,
+                                customerName = customer?.name ?: "-",
+                                customerPhone = phone,
+                                customerArea = customer?.area ?: "-",
+                                packageName = customer?.packageName,
+                                months = months,
+                                totalAmount = formattedAmount,
+                                status = "LUNAS"
+                            )
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(
+                                    context = context,
+                                    phone = phone,
+                                    message = text,
+                                    pngFile = pngFile
+                                )
+                            }
+                        } catch (e: Exception) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                Toast.makeText(context, "Gagal membuat invoice: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                        val rawTemplate = if (com.example.ui.data.SettingsManager.waGatewayEnabled && com.example.ui.data.SettingsManager.waNotifyPaymentSuccess) {
-                            com.example.ui.data.SettingsManager.waTemplatePaymentSuccess
-                        } else {
-                            "Halo {nama},\nTerima kasih, pembayaran tagihan internet untuk bulan {bulan} sejumlah {nominal} telah kami terima dan lunas.\n\nSalam,\n{perusahaan}"
-                        }
-                        val text = rawTemplate
-                            .replace("{nama}", customer?.name ?: "")
-                            .replace("{bulan}", months)
-                            .replace("{nominal}", formattedAmount)
-                            .replace("{perusahaan}", com.example.ui.data.SettingsManager.companyName)
-                        val intent = Intent(Intent.ACTION_VIEW)
-                        intent.data = Uri.parse("https://api.whatsapp.com/send?phone=$formattedPhone&text=${Uri.encode(text)}")
-                        context.startActivity(intent)
-                    } catch(e: Exception) {
-                        Toast.makeText(context, "Tidak dapat membuka WhatsApp", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     Toast.makeText(context, "Nomor pelanggan tidak tersedia", Toast.LENGTH_SHORT).show()

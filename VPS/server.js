@@ -2505,6 +2505,7 @@ app.get('/api/mikrotik/interfaces/:id', async (req, res) => {
 app.get('/api/mikrotik/logs/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const filterType = (req.query.filter || 'all').toLowerCase();
         const [rows] = await req.pool.query('SELECT * FROM areas WHERE id = ?', [id]);
         if (rows.length === 0) return res.status(404).json({ error: "Area not found" });
         const area = rows[0];
@@ -2516,8 +2517,17 @@ app.get('/api/mikrotik/logs/:id', async (req, res) => {
             const filteredLogs = rawLogs.filter(log => {
                 const msg = (log.message || '').toLowerCase();
                 const tps = (log.topics || '').toLowerCase();
-                return msg.includes('pppoe') || tps.includes('pppoe') || msg.includes('ppp') || tps.includes('ppp');
-            }).reverse().slice(0, 50);
+                const isPpp = msg.includes('pppoe') || tps.includes('pppoe') || msg.includes('ppp') || tps.includes('ppp');
+                const isWarn = tps.includes('warning') || msg.includes('warning') || msg.includes('warn');
+                const isErr = tps.includes('error') || msg.includes('error') || msg.includes('fail') || 
+                              msg.includes('err') || msg.includes('disconnect') || msg.includes('timeout') || 
+                              msg.includes('down') || msg.includes('terminate') || msg.includes('critical');
+
+                if (filterType === 'warning') return isWarn;
+                if (filterType === 'error') return isErr;
+                if (filterType === 'pppoe') return isPpp;
+                return isPpp || isWarn || isErr;
+            }).reverse().slice(0, 100);
 
             return filteredLogs.map(l => ({
                 id: l['.id'] || '',

@@ -544,7 +544,7 @@ fun DashboardScreen(
                 HorizontalPager(state = logsPagerState) { page ->
                     if (allowedAreas.isEmpty()) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            Text("Log Mikrotik (pppoe)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                            Text("Log Mikrotik (PPPoE, Warning, Error)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("Tidak ada area terkonfigurasi atau diizinkan", color = textSecondary, fontSize = 14.sp)
                         }
@@ -918,7 +918,7 @@ fun DashboardAreaLogsPage(
                         color = if (isDark) Color.White else Color(0xFF1A1A1A)
                     )
                     Text(
-                        "Log Mikrotik (pppoe)",
+                        "Log Mikrotik (PPPoE, Warning & Error)",
                         fontSize = 11.sp,
                         color = textSecondary
                     )
@@ -933,7 +933,79 @@ fun DashboardAreaLogsPage(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        var selectedFilter by remember { mutableStateOf("Semua") }
+
+        val allLogs = logs ?: emptyList()
+        val isWarningLog: (com.example.ui.data.remote.MikrotikLog) -> Boolean = { l ->
+            l.topics.contains("warning", ignoreCase = true) ||
+            l.message.contains("warning", ignoreCase = true) ||
+            l.message.contains("warn", ignoreCase = true)
+        }
+        val isErrorLog: (com.example.ui.data.remote.MikrotikLog) -> Boolean = { l ->
+            l.topics.contains("error", ignoreCase = true) ||
+            l.message.contains("fail", ignoreCase = true) ||
+            l.message.contains("err", ignoreCase = true) ||
+            l.message.contains("down", ignoreCase = true) ||
+            l.message.contains("disconnect", ignoreCase = true) ||
+            l.message.contains("timeout", ignoreCase = true) ||
+            l.message.contains("terminate", ignoreCase = true) ||
+            l.message.contains("critical", ignoreCase = true)
+        }
+        val isPppoeLog: (com.example.ui.data.remote.MikrotikLog) -> Boolean = { l ->
+            l.topics.contains("pppoe", ignoreCase = true) ||
+            l.topics.contains("ppp", ignoreCase = true) ||
+            l.message.contains("pppoe", ignoreCase = true) ||
+            l.message.contains("ppp", ignoreCase = true)
+        }
+
+        val warningCount = remember(allLogs) { allLogs.count { isWarningLog(it) } }
+        val errorCount = remember(allLogs) { allLogs.count { isErrorLog(it) } }
+        val pppoeCount = remember(allLogs) { allLogs.count { isPppoeLog(it) } }
+
+        // Filter chips row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filters = listOf(
+                "Semua" to allLogs.size,
+                "Warning" to warningCount,
+                "Error" to errorCount,
+                "PPPoE" to pppoeCount
+            )
+            filters.forEach { (filterName, count) ->
+                val isSelected = selectedFilter == filterName
+                val chipColor = when (filterName) {
+                    "Warning" -> Color(0xFFFF9800)
+                    "Error" -> Color(0xFFFF3B30)
+                    "PPPoE" -> primaryBg
+                    else -> primaryBg
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) chipColor.copy(alpha = 0.2f) else Color.Transparent)
+                        .border(
+                            1.dp,
+                            if (isSelected) chipColor else Color.Gray.copy(alpha = 0.3f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable { selectedFilter = filterName }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "$filterName ($count)",
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) chipColor else textSecondary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         if (isLoading) {
             Box(
@@ -974,19 +1046,30 @@ fun DashboardAreaLogsPage(
                 }
             }
         } else {
-            val list = logs ?: emptyList()
-            if (list.isEmpty()) {
+            val filteredList = when (selectedFilter) {
+                "Warning" -> allLogs.filter { isWarningLog(it) }
+                "Error" -> allLogs.filter { isErrorLog(it) }
+                "PPPoE" -> allLogs.filter { isPppoeLog(it) }
+                else -> allLogs
+            }
+
+            if (filteredList.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
+                        .height(100.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Tidak ada log PPPoE", color = textSecondary, fontSize = 14.sp)
+                    Text("Tidak ada log $selectedFilter", color = textSecondary, fontSize = 13.sp)
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    list.take(5).forEach { log ->
+                    filteredList.take(6).forEach { log ->
+                        val isErr = isErrorLog(log)
+                        val isWarn = isWarningLog(log)
+                        val badgeColor = if (isErr) Color(0xFFFF3B30) else if (isWarn) Color(0xFFFF9800) else primaryBg
+                        val badgeLabel = if (isErr) "ERROR" else if (isWarn) "WARNING" else "PPPOE"
+
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -997,12 +1080,27 @@ fun DashboardAreaLogsPage(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    log.time,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = primaryBg
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        color = badgeColor.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            badgeLabel,
+                                            color = badgeColor,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        log.time,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = primaryBg
+                                    )
+                                }
                                 Text(
                                     log.topics,
                                     fontSize = 10.sp,
@@ -1011,25 +1109,17 @@ fun DashboardAreaLogsPage(
                                 )
                             }
                             Spacer(modifier = Modifier.height(2.dp))
-                            val isError = log.message.contains("fail", ignoreCase = true) ||
-                                          log.message.contains("err", ignoreCase = true) ||
-                                          log.message.contains("disconnect", ignoreCase = true) ||
-                                          log.message.contains("timeout", ignoreCase = true) ||
-                                          log.message.contains("down", ignoreCase = true) ||
-                                          log.message.contains("terminate", ignoreCase = true) ||
-                                          log.topics.contains("error", ignoreCase = true) ||
-                                          log.topics.contains("warning", ignoreCase = true)
                             Text(
                                 log.message,
                                 fontSize = 13.sp,
-                                color = if (isError) Color(0xFFFF5252) else if (isDark) Color.White else Color(0xFF1A1A1A),
-                                fontWeight = if (isError) FontWeight.Medium else FontWeight.Normal
+                                color = if (isErr) Color(0xFFFF5252) else if (isWarn) Color(0xFFFFB74D) else if (isDark) Color.White else Color(0xFF1A1A1A),
+                                fontWeight = if (isErr || isWarn) FontWeight.Medium else FontWeight.Normal
                             )
                         }
                     }
-                    if (list.size > 5) {
+                    if (filteredList.size > 6) {
                         Text(
-                            "dan ${list.size - 5} log lainnya...",
+                            "dan ${filteredList.size - 6} log lainnya...",
                             fontSize = 12.sp,
                             color = primaryBg,
                             modifier = Modifier

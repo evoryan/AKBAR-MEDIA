@@ -75,6 +75,18 @@ object SettingsManager {
         get() = prefs.getString(KEY_INVOICE_FOOTER, "L U N A S") ?: "L U N A S"
         set(value) = prefs.edit().putString(KEY_INVOICE_FOOTER, value).apply()
 
+    var useCustomInvoiceTemplate: Boolean
+        get() = prefs.getBoolean("use_custom_invoice_template", false)
+        set(value) = prefs.edit().putBoolean("use_custom_invoice_template", value).apply()
+
+    var customInvoiceTemplatePath: String?
+        get() = prefs.getString("custom_invoice_template_path", null)
+        set(value) = prefs.edit().putString("custom_invoice_template_path", value).apply()
+
+    var customInvoiceOverlayData: Boolean
+        get() = prefs.getBoolean("custom_invoice_overlay_data", true)
+        set(value) = prefs.edit().putBoolean("custom_invoice_overlay_data", value).apply()
+
     var supportByText: String
         get() = prefs.getString(KEY_SUPPORT_BY, "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit") ?: "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit"
         set(value) = prefs.edit().putString(KEY_SUPPORT_BY, value).apply()
