@@ -623,20 +623,28 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                         customerId = cust.id,
                                         adminName = adminName,
                                         totalAmount = amountVal,
-                                        months = listOf(periodStr)
+                                        months = listOf(periodStr),
+                                        skipNotification = true,
+                                        isBulk = true
                                     )
                                 }
 
-                                // 1. Kirim bulk request ke backend
+                                // 1. Kirim bulk request ke backend tanpa notifikasi realtime
                                 try {
                                     com.example.ui.data.remote.ApiClient.apiService.payBillingBulk(
-                                        com.example.ui.data.remote.BulkPaymentRequest(paymentsList)
+                                        com.example.ui.data.remote.BulkPaymentRequest(
+                                            payments = paymentsList,
+                                            skipNotification = true,
+                                            isBulk = true
+                                        )
                                     )
                                 } catch (apiErr: Exception) {
-                                    // Fallback: proses individual jika endpoint bulk ada kendala
+                                    // Fallback: proses individual dengan skipNotification = true
                                     for (req in paymentsList) {
                                         try {
-                                            com.example.ui.data.remote.ApiClient.apiService.payBilling(req)
+                                            com.example.ui.data.remote.ApiClient.apiService.payBilling(
+                                                req.copy(skipNotification = true, isBulk = true)
+                                            )
                                         } catch (_: Exception) {}
                                     }
                                 }

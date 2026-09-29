@@ -54,9 +54,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
 
     var headerText by remember { mutableStateOf(SettingsManager.invoiceHeader) }
     var footerText by remember { mutableStateOf(SettingsManager.invoiceFooterText) }
-    var useCustomTemplate by remember { mutableStateOf(SettingsManager.useCustomInvoiceTemplate) }
-    var customTemplatePath by remember { mutableStateOf(SettingsManager.customInvoiceTemplatePath) }
-    var overlayData by remember { mutableStateOf(SettingsManager.customInvoiceOverlayData) }
+    var logoPath by remember { mutableStateOf(SettingsManager.invoiceLogoPath) }
 
     var previewRefreshKey by remember { mutableStateOf(0) }
 
@@ -65,20 +63,19 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
     ) { uri: Uri? ->
         uri?.let { selectedUri ->
             try {
-                val destinationFile = File(context.filesDir, "custom_invoice_template.png")
+                val destinationFile = File(context.filesDir, "invoice_kop_logo.png")
                 context.contentResolver.openInputStream(selectedUri)?.use { input ->
                     FileOutputStream(destinationFile).use { output ->
                         input.copyTo(output)
                     }
                 }
-                customTemplatePath = destinationFile.absolutePath
-                useCustomTemplate = true
-                SettingsManager.customInvoiceTemplatePath = destinationFile.absolutePath
-                SettingsManager.useCustomInvoiceTemplate = true
+                logoPath = destinationFile.absolutePath
+                SettingsManager.invoiceLogoPath = destinationFile.absolutePath
+                SettingsManager.useInvoiceLogo = true
                 previewRefreshKey++
-                Toast.makeText(context, "Template kustom (.png) berhasil diunggah", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Logo kop invoice berhasil diunggah", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                Toast.makeText(context, "Gagal mengunggah gambar: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Gagal mengunggah logo: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -87,7 +84,22 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
         containerColor = bgMain,
         topBar = {
             TopAppBar(
-                title = { Text("Pengaturan Invoice", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 18.sp) },
+                title = {
+                    Column {
+                        Text(
+                            "Pengaturan Invoice",
+                            color = textMain,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp
+                        )
+                        Text(
+                            "Ukuran 200mm x 140mm (Kop Berlogo)",
+                            color = neonCyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
@@ -106,7 +118,188 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Template Mode Selection Card
+            // Card 1: Upload Logo Kop Surat
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "Logo Kop Surat Invoice",
+                            color = textMain,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Surface(
+                            color = neonCyan.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                "200mm x 140mm",
+                                color = neonCyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Upload logo perusahaan Anda untuk ditampilkan di sebelah kiri kop surat invoice resmi.",
+                        color = textSecondary,
+                        fontSize = 12.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    val currentLogoFile = logoPath?.let { File(it) }
+                    val isLogoReady = currentLogoFile != null && currentLogoFile.exists()
+
+                    if (isLogoReady) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                                .border(1.dp, neonCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val logoBitmap = remember(currentLogoFile, previewRefreshKey) {
+                                try {
+                                    BitmapFactory.decodeFile(currentLogoFile!!.absolutePath)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFF8FAFC))
+                                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (logoBitmap != null) {
+                                    Image(
+                                        bitmap = logoBitmap.asImageBitmap(),
+                                        contentDescription = "Logo Kop",
+                                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                } else {
+                                    Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color.Gray)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Logo Terpasang pada Kop",
+                                    color = Color(0xFF0F2C59),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    "Dimensi invoice: 200mm x 140mm",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 11.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            photoPickerLauncher.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                            )
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan)
+                                    ) {
+                                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Ganti", fontSize = 11.sp)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            try {
+                                                currentLogoFile?.delete()
+                                            } catch (_: Exception) {}
+                                            logoPath = null
+                                            SettingsManager.invoiceLogoPath = null
+                                            previewRefreshKey++
+                                            Toast.makeText(context, "Logo kop dihapus", Toast.LENGTH_SHORT).show()
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252))
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Hapus", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Upload Logo Action Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(neonCyan.copy(alpha = 0.05f))
+                                .border(1.dp, neonCyan.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                                .padding(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.AddPhotoAlternate,
+                                    contentDescription = "Upload Logo Kop",
+                                    tint = neonCyan,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "Ketuk untuk Upload Logo Perusahaan (.png / .jpg)",
+                                    color = textMain,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "Logo akan diposisikan di sisi kiri kop surat invoice 200mm x 140mm",
+                                    color = textSecondary,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Card 2: Informasi Kop Surat & Faktur
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = cardBg),
@@ -115,357 +308,87 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "Tipe Desain Invoice",
+                        "Informasi Kop Surat & Perusahaan",
                         color = textMain,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Pilih format invoice yang dikirim saat kirim WA tagihan (.png) dan struk",
+                        "Teks ini akan muncul berdampingan dengan logo pada kop surat atas faktur.",
                         color = textSecondary,
                         fontSize = 12.sp
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // Option 1: Standar Thermal
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (!useCustomTemplate) neonCyan.copy(alpha = 0.12f) else Color.Transparent)
-                            .border(
-                                1.dp,
-                                if (!useCustomTemplate) neonCyan else cardBorder,
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable {
-                                useCustomTemplate = false
-                                previewRefreshKey++
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = !useCustomTemplate,
-                            onClick = {
-                                useCustomTemplate = false
-                                previewRefreshKey++
-                            },
-                            colors = RadioButtonDefaults.colors(selectedColor = neonCyan)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                "Template Standar (Thermal)",
-                                color = textMain,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                "Format struk kasir/thermal digital otomatis",
-                                color = textSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
+                    Text("Header / Alamat Kop Surat", color = textSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = headerText,
+                        onValueChange = {
+                            headerText = it
+                            previewRefreshKey++
+                        },
+                        modifier = Modifier.fillMaxWidth().height(120.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textSecondary,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        ),
+                        placeholder = { Text("Nama Perusahaan\nAlamat Lengkap\nNo. Kontak / WA", color = textSecondary) }
+                    )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // Option 2: Custom Template Upload
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (useCustomTemplate) neonCyan.copy(alpha = 0.12f) else Color.Transparent)
-                            .border(
-                                1.dp,
-                                if (useCustomTemplate) neonCyan else cardBorder,
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable {
-                                useCustomTemplate = true
-                                previewRefreshKey++
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = useCustomTemplate,
-                            onClick = {
-                                useCustomTemplate = true
-                                previewRefreshKey++
-                            },
-                            colors = RadioButtonDefaults.colors(selectedColor = neonCyan)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "Template Kustom Sendiri",
-                                    color = textMain,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    color = neonCyan.copy(alpha = 0.2f),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        "UPLOAD PNG",
-                                        color = neonCyan,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            Text(
-                                "Upload gambar kop surat/desain invoice sendiri",
-                                color = textSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
+                    Text("Catatan Pembayaran / Footer", color = textSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = footerText,
+                        onValueChange = {
+                            footerText = it
+                            previewRefreshKey++
+                        },
+                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textSecondary,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        ),
+                        placeholder = { Text("Contoh: Pembayaran melalui transfer bank atau cash...", color = textSecondary) }
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            if (useCustomTemplate) {
-                // Custom Template Upload Section
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = cardBg),
-                    shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "Upload File Template (.png / .jpg)",
-                            color = textMain,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Gambar ini akan digunakan sebagai background/desain invoice saat dikirim via WhatsApp (.png)",
-                            color = textSecondary,
-                            fontSize = 12.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        val templateFile = customTemplatePath?.let { File(it) }
-                        val fileExists = templateFile != null && templateFile.exists()
-
-                        if (fileExists) {
-                            // File is uploaded
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(180.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.Black.copy(alpha = 0.05f))
-                                    .border(1.dp, neonCyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                val bitmap = remember(templateFile, previewRefreshKey) {
-                                    try {
-                                        BitmapFactory.decodeFile(templateFile!!.absolutePath)
-                                    } catch (e: Exception) {
-                                        null
-                                    }
-                                }
-
-                                if (bitmap != null) {
-                                    Image(
-                                        bitmap = bitmap.asImageBitmap(),
-                                        contentDescription = "Custom Template Preview",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Fit
-                                    )
-                                } else {
-                                    Text("Gagal memuat pratinjau gambar", color = textSecondary, fontSize = 12.sp)
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        photoPickerLauncher.launch(
-                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                        )
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan)
-                                ) {
-                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Ganti File", fontSize = 12.sp)
-                                }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        try {
-                                            templateFile?.delete()
-                                        } catch (_: Exception) {}
-                                        customTemplatePath = null
-                                        SettingsManager.customInvoiceTemplatePath = null
-                                        useCustomTemplate = false
-                                        SettingsManager.useCustomInvoiceTemplate = false
-                                        previewRefreshKey++
-                                        Toast.makeText(context, "Template kustom dihapus", Toast.LENGTH_SHORT).show()
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252))
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Hapus", fontSize = 12.sp)
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Switch to overlay invoice data automatically
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Tuliskan Data Tagihan di Atas Gambar",
-                                        color = textMain,
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 13.sp
-                                    )
-                                    Text(
-                                        "Otomatis menambahkan nama, paket, rincian bulan, total & status pada gambar template",
-                                        color = textSecondary,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                                Switch(
-                                    checked = overlayData,
-                                    onCheckedChange = {
-                                        overlayData = it
-                                        previewRefreshKey++
-                                    },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = neonCyan
-                                    )
-                                )
-                            }
-                        } else {
-                            // No file uploaded yet, show upload banner
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(neonCyan.copy(alpha = 0.05f))
-                                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        photoPickerLauncher.launch(
-                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                        )
-                                    }
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        Icons.Default.AddPhotoAlternate,
-                                        contentDescription = "Upload Template",
-                                        tint = neonCyan,
-                                        modifier = Modifier.size(44.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        "Ketuk untuk Upload Template Invoice (.png / .jpg)",
-                                        color = textMain,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        "Mendukung format gambar PNG atau JPG dari penyimpanan perangkat",
-                                        color = textSecondary,
-                                        fontSize = 11.sp,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Standard Thermal Settings (Header and Footer)
-                Text("Header Invoice (Thermal)", color = textSecondary, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = headerText,
-                    onValueChange = { headerText = it },
-                    modifier = Modifier.fillMaxWidth().height(140.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = neonCyan,
-                        unfocusedBorderColor = textSecondary,
-                        focusedTextColor = textMain,
-                        unfocusedTextColor = textMain
-                    ),
-                    placeholder = { Text("Masukkan text header invoice...", color = textSecondary) }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text("Footer Invoice (Thermal)", color = textSecondary, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = footerText,
-                    onValueChange = { footerText = it },
-                    modifier = Modifier.fillMaxWidth().height(120.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = neonCyan,
-                        unfocusedBorderColor = textSecondary,
-                        focusedTextColor = textMain,
-                        unfocusedTextColor = textMain
-                    ),
-                    placeholder = { Text("Masukkan text footer invoice...", color = textSecondary) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Preview Section
+            // Card 3: Pratinjau Invoice Ukuran 200mm x 140mm
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    "Pratinjau Invoice Saat Dikirim WA",
-                    color = textMain,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Column {
+                    Text(
+                        "Pratinjau Invoice (200mm x 140mm)",
+                        color = textMain,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Kop Berlogo • Format Continuous / Faktur .PNG",
+                        color = textSecondary,
+                        fontSize = 11.sp
+                    )
+                }
                 Surface(
                     color = neonCyan.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        "FORMAT .PNG",
+                        "200 x 140 mm",
                         color = neonCyan,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -473,82 +396,86 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             val currentMonthName = remember {
                 SimpleDateFormat("MMMM yyyy", Locale("id", "ID")).format(Date())
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(cardBg)
-                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = cardBg),
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder)
             ) {
-                // Generate and display bitmap preview matching current selection
-                val previewBitmap = remember(useCustomTemplate, customTemplatePath, overlayData, headerText, footerText, previewRefreshKey) {
-                    try {
-                        // Temporarily mock settings for preview rendering
-                        SettingsManager.invoiceHeader = headerText
-                        SettingsManager.invoiceFooterText = footerText
-                        SettingsManager.useCustomInvoiceTemplate = useCustomTemplate
-                        SettingsManager.customInvoiceOverlayData = overlayData
-                        InvoiceGenerator.generateInvoiceBitmap(
-                            context = context,
-                            customerName = "Budi Santoso",
-                            customerPhone = "081234567890",
-                            customerArea = "Area Timur",
-                            packageName = "Paket Family 20M",
-                            months = currentMonthName,
-                            totalAmount = "Rp 150.000",
-                            status = "BELUM BAYAR",
-                            invoiceNo = "INV-SAMPLE"
-                        )
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Generate 200mm x 140mm preview bitmap
+                    val previewBitmap = remember(logoPath, headerText, footerText, previewRefreshKey) {
+                        try {
+                            SettingsManager.invoiceHeader = headerText
+                            SettingsManager.invoiceFooterText = footerText
+                            SettingsManager.invoiceLogoPath = logoPath
 
-                if (previewBitmap != null) {
-                    Image(
-                        bitmap = previewBitmap.asImageBitmap(),
-                        contentDescription = "Invoice Preview",
-                        modifier = Modifier
-                            .widthIn(max = 320.dp)
-                            .heightIn(max = 480.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.LightGray, RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Fit
-                    )
-                } else {
-                    com.example.ui.components.ThermalInvoiceView(
-                        headerText = headerText,
-                        footerText = footerText,
-                        customer = null,
-                        months = currentMonthName,
-                        totalAmount = "Rp 150.000"
-                    )
+                            InvoiceGenerator.generateInvoiceBitmap(
+                                context = context,
+                                customerName = "Budi Santoso",
+                                customerPhone = "0812-3456-7890",
+                                customerArea = "Area Timur",
+                                packageName = "Paket Family 20 Mbps",
+                                months = currentMonthName,
+                                totalAmount = "Rp 150.000",
+                                status = "BELUM BAYAR",
+                                invoiceNo = "INV-SAMPLE"
+                            )
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+
+                    if (previewBitmap != null) {
+                        Image(
+                            bitmap = previewBitmap.asImageBitmap(),
+                            contentDescription = "Invoice 200mm x 140mm Preview",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(200f / 140f) // Exact 200mm x 140mm ratio
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = neonCyan)
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
                 onClick = {
                     SettingsManager.invoiceHeader = headerText
                     SettingsManager.invoiceFooterText = footerText
-                    SettingsManager.useCustomInvoiceTemplate = useCustomTemplate
-                    SettingsManager.customInvoiceTemplatePath = customTemplatePath
-                    SettingsManager.customInvoiceOverlayData = overlayData
-                    Toast.makeText(context, "Pengaturan invoice berhasil disimpan", Toast.LENGTH_SHORT).show()
+                    SettingsManager.invoiceLogoPath = logoPath
+                    SettingsManager.useInvoiceLogo = true
+                    Toast.makeText(context, "Pengaturan invoice 200mm x 140mm berhasil disimpan", Toast.LENGTH_SHORT).show()
                     onBack()
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
+                    .height(52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -557,7 +484,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                 Text("SIMPAN PENGATURAN", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 }

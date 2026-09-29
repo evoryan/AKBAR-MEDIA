@@ -75,13 +75,26 @@ object SettingsManager {
         get() = prefs.getString(KEY_INVOICE_FOOTER, "L U N A S") ?: "L U N A S"
         set(value) = prefs.edit().putString(KEY_INVOICE_FOOTER, value).apply()
 
+    var invoiceLogoPath: String?
+        get() = prefs.getString("invoice_logo_path", prefs.getString("custom_invoice_template_path", null))
+        set(value) {
+            prefs.edit().putString("invoice_logo_path", value).apply()
+            prefs.edit().putString("custom_invoice_template_path", value).apply()
+        }
+
+    var useInvoiceLogo: Boolean
+        get() = prefs.getBoolean("use_invoice_logo", true)
+        set(value) = prefs.edit().putBoolean("use_invoice_logo", value).apply()
+
     var useCustomInvoiceTemplate: Boolean
-        get() = prefs.getBoolean("use_custom_invoice_template", false)
+        get() = prefs.getBoolean("use_custom_invoice_template", true)
         set(value) = prefs.edit().putBoolean("use_custom_invoice_template", value).apply()
 
     var customInvoiceTemplatePath: String?
-        get() = prefs.getString("custom_invoice_template_path", null)
-        set(value) = prefs.edit().putString("custom_invoice_template_path", value).apply()
+        get() = invoiceLogoPath
+        set(value) {
+            invoiceLogoPath = value
+        }
 
     var customInvoiceOverlayData: Boolean
         get() = prefs.getBoolean("custom_invoice_overlay_data", true)

@@ -71,8 +71,8 @@ data class MikrotikStatus(val cpuLoad: String, val uptime: String, val activePpp
 
 
 data class OfflinePppoeUser(val name: String, val lastLogoff: String, val area: String)
-data class PaymentRequest(val customerId: String, val adminName: String, val totalAmount: Double, val months: List<String>? = null)
-data class BulkPaymentRequest(val payments: List<PaymentRequest>)
+data class PaymentRequest(val customerId: String, val adminName: String, val totalAmount: Double, val months: List<String>? = null, val skipNotification: Boolean? = null, val isBulk: Boolean? = null)
+data class BulkPaymentRequest(val payments: List<PaymentRequest>, val skipNotification: Boolean = true, val isBulk: Boolean = true)
 data class DeleteBillingRequest(val customerId: String)
 
 data class MikrotikQueue(

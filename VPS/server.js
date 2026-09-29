@@ -625,7 +625,7 @@ app.get('/api/dashboard/pppoe-offline', async (req, res) => {
 
 app.post('/api/billing/pay', async (req, res) => {
     try {
-        const { customerId, adminName, totalAmount, months } = req.body;
+        const { customerId, adminName, totalAmount, months, skipNotification, isBulk } = req.body;
         
         // Get customer name
         const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [customerId]);
@@ -711,24 +711,27 @@ app.post('/api/billing/pay', async (req, res) => {
             console.error("Warning: failed to insert to pemasukan table", e.message);
         }
 
-        // Add notification
-        const notifMsg = `Pembayaran "${customerName}" di terima oleh "${adminName}"`;
-        try {
-            await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
-            
-            // Kirim notifikasi realtime terisolasi per database tenant
-            const targetDbName = (req.user && req.user.db_name) ? req.user.db_name : null;
-            if (targetDbName) {
-                sendTenantNotification(targetDbName, "Pembayaran Diterima", notifMsg, {
-                    type: "payment",
-                    customer_name: customerName,
-                    admin_name: adminName || 'Admin',
-                    total_amount: String(totalAmount || 0),
-                    db_name: targetDbName
-                });
+        // Add notification (lewati jika pembayaran masal / skipNotification)
+        const isBulkOperation = Boolean(skipNotification) || Boolean(isBulk) || String(skipNotification).toLowerCase() === 'true' || String(isBulk).toLowerCase() === 'true';
+        if (!isBulkOperation) {
+            const notifMsg = `Pembayaran "${customerName}" di terima oleh "${adminName}"`;
+            try {
+                await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
+                
+                // Kirim notifikasi realtime terisolasi per database tenant
+                const targetDbName = (req.user && req.user.db_name) ? req.user.db_name : null;
+                if (targetDbName) {
+                    sendTenantNotification(targetDbName, "Pembayaran Diterima", notifMsg, {
+                        type: "payment",
+                        customer_name: customerName,
+                        admin_name: adminName || 'Admin',
+                        total_amount: String(totalAmount || 0),
+                        db_name: targetDbName
+                    });
+                }
+            } catch (e) {
+                console.error("Warning: notifications table might be missing", e.message);
             }
-        } catch (e) {
-            console.error("Warning: notifications table might be missing", e.message);
         }
 
         res.json({ message: "Pembayaran berhasil dicatat" });
@@ -811,11 +814,7 @@ app.post('/api/billing/pay-bulk', async (req, res) => {
             totalProcessedAmount += (totalAmount || 0);
         }
 
-        // Add bulk notification
-        try {
-            const notifMsg = `Pembayaran masal berhasil diproses untuk ${successCount} pelanggan`;
-            await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
-        } catch (e) {}
+        // Pembayaran masal tidak mengirimkan realtime notification
 
         res.json({ message: `Berhasil memproses pembayaran masal untuk ${successCount} pelanggan`, successCount, totalAmount: totalProcessedAmount });
     } catch (error) {
