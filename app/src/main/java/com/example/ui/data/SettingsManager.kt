@@ -67,8 +67,23 @@ object SettingsManager {
         get() = prefs.getString(KEY_DASHBOARD_INFO_2, "Tersedia update router firmware") ?: "Tersedia update router firmware"
         set(value) = prefs.edit().putString(KEY_DASHBOARD_INFO_2, value).apply()
 
+    private const val KEY_COMPANY_SLOGAN = "company_slogan"
+    var companySlogan: String
+        get() = prefs.getString(KEY_COMPANY_SLOGAN, "PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS") ?: "PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS"
+        set(value) = prefs.edit().putString(KEY_COMPANY_SLOGAN, value).apply()
+
+    private const val KEY_COMPANY_ADDRESS = "company_address"
+    var companyAddress: String
+        get() = prefs.getString(KEY_COMPANY_ADDRESS, "Jln. Raya Akbar Media, Indonesia") ?: "Jln. Raya Akbar Media, Indonesia"
+        set(value) = prefs.edit().putString(KEY_COMPANY_ADDRESS, value).apply()
+
+    private const val KEY_COMPANY_CONTACT = "company_contact"
+    var companyContact: String
+        get() = prefs.getString(KEY_COMPANY_CONTACT, "WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id") ?: "WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id"
+        set(value) = prefs.edit().putString(KEY_COMPANY_CONTACT, value).apply()
+
     var invoiceHeader: String
-        get() = prefs.getString("invoice_header", "AKBAR MEDIA\nJln.Raya Akbar Media") ?: "AKBAR MEDIA\nJln.Raya Akbar Media"
+        get() = prefs.getString("invoice_header", "$companyName\n$companySlogan\n$companyAddress\n$companyContact") ?: "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
         set(value) = prefs.edit().putString("invoice_header", value).apply()
 
     var invoiceFooterText: String

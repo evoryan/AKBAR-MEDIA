@@ -177,6 +177,7 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
 
                     coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {
+                            val isDedicatedPkg = customer?.packageName?.contains("dedicated", ignoreCase = true) == true || customer?.packageName?.contains("1:1") == true
                             val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
                                 context = context,
                                 customerName = customer?.name ?: "-",
@@ -185,7 +186,9 @@ fun PaymentSuccessScreen(customerId: String, totalAmount: String, months: String
                                 packageName = customer?.packageName,
                                 months = months,
                                 totalAmount = formattedAmount,
-                                status = "LUNAS"
+                                status = "LUNAS",
+                                isDedicated = isDedicatedPkg,
+                                serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
                             )
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(

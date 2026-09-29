@@ -52,10 +52,15 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
     val neonCyan = if (isDark) Color(0xFF00FFFF) else Color(0xFF0066FF)
     val textSecondary = if (isDark) Color(0xFFAAAAAA) else Color(0xFF666666)
 
-    var headerText by remember { mutableStateOf(SettingsManager.invoiceHeader) }
+    var companyName by remember { mutableStateOf(SettingsManager.companyName) }
+    var companySlogan by remember { mutableStateOf(SettingsManager.companySlogan) }
+    var companyAddress by remember { mutableStateOf(SettingsManager.companyAddress) }
+    var companyContact by remember { mutableStateOf(SettingsManager.companyContact) }
     var footerText by remember { mutableStateOf(SettingsManager.invoiceFooterText) }
     var logoPath by remember { mutableStateOf(SettingsManager.invoiceLogoPath) }
 
+    // Toggle for live preview between Reguler & Dedicated package types
+    var previewPackageType by remember { mutableStateOf("Reguler") }
     var previewRefreshKey by remember { mutableStateOf(0) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -93,7 +98,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                             fontSize = 18.sp
                         )
                         Text(
-                            "Ukuran 200mm x 140mm (Kop Berlogo)",
+                            "Kop Berlogo & Identitas Perusahaan",
                             color = neonCyan,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
@@ -116,7 +121,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Card 1: Upload Logo Kop Surat
             Card(
@@ -126,34 +131,16 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                 border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            "Logo Kop Surat Invoice",
-                            color = textMain,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Surface(
-                            color = neonCyan.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                "200mm x 140mm",
-                                color = neonCyan,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
+                    Text(
+                        "Logo Kop Surat",
+                        color = textMain,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
 
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Upload logo perusahaan Anda untuk ditampilkan di sebelah kiri kop surat invoice resmi.",
+                        "Upload logo perusahaan untuk ditampilkan di sisi kiri kop invoice dengan alignment presisi sejajar teks identitas.",
                         color = textSecondary,
                         fontSize = 12.sp
                     )
@@ -183,7 +170,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
 
                             Box(
                                 modifier = Modifier
-                                    .size(80.dp)
+                                    .size(76.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Color(0xFFF8FAFC))
                                     .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)),
@@ -193,7 +180,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                     Image(
                                         bitmap = logoBitmap.asImageBitmap(),
                                         contentDescription = "Logo Kop",
-                                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                                        modifier = Modifier.fillMaxSize().padding(6.dp),
                                         contentScale = ContentScale.Fit
                                     )
                                 } else {
@@ -211,7 +198,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                     fontSize = 14.sp
                                 )
                                 Text(
-                                    "Dimensi invoice: 200mm x 140mm",
+                                    "Siap dicetak pada kop surat faktur",
                                     color = Color(0xFF64748B),
                                     fontSize = 11.sp
                                 )
@@ -266,7 +253,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
                                 }
-                                .padding(20.dp),
+                                .padding(18.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -274,19 +261,19 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                     Icons.Default.AddPhotoAlternate,
                                     contentDescription = "Upload Logo Kop",
                                     tint = neonCyan,
-                                    modifier = Modifier.size(44.dp)
+                                    modifier = Modifier.size(40.dp)
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    "Ketuk untuk Upload Logo Perusahaan (.png / .jpg)",
+                                    "Upload Logo Perusahaan (.png / .jpg)",
                                     color = textMain,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                     textAlign = TextAlign.Center
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    "Logo akan diposisikan di sisi kiri kop surat invoice 200mm x 140mm",
+                                    "Akan disejajarkan di sisi kiri kop surat faktur",
                                     color = textSecondary,
                                     fontSize = 11.sp,
                                     textAlign = TextAlign.Center
@@ -297,9 +284,9 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Card 2: Informasi Kop Surat & Faktur
+            // Card 2: Kustomisasi Identitas Perusahaan
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = cardBg),
@@ -308,52 +295,126 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "Informasi Kop Surat & Perusahaan",
+                        "Kustomisasi Kop & Identitas Perusahaan",
                         color = textMain,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Teks ini akan muncul berdampingan dengan logo pada kop surat atas faktur.",
+                        "Informasi ini akan tercetak rapi berdampingan dengan logo pada kop surat atas faktur.",
                         color = textSecondary,
                         fontSize = 12.sp
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    Text("Header / Alamat Kop Surat", color = textSecondary, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
+                    // 1. Nama Perusahaan
+                    Text("Nama Perusahaan", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
-                        value = headerText,
+                        value = companyName,
                         onValueChange = {
-                            headerText = it
+                            companyName = it
                             previewRefreshKey++
                         },
-                        modifier = Modifier.fillMaxWidth().height(120.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Default.Business, contentDescription = null, tint = neonCyan) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan,
-                            unfocusedBorderColor = textSecondary,
+                            unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
                             focusedTextColor = textMain,
                             unfocusedTextColor = textMain
                         ),
-                        placeholder = { Text("Nama Perusahaan\nAlamat Lengkap\nNo. Kontak / WA", color = textSecondary) }
+                        placeholder = { Text("Contoh: Akbar Media", color = textSecondary) },
+                        singleLine = true
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    Text("Catatan Pembayaran / Footer", color = textSecondary, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
+                    // 2. Slogan Perusahaan
+                    Text("Slogan Perusahaan", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = companySlogan,
+                        onValueChange = {
+                            companySlogan = it
+                            previewRefreshKey++
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Default.Stars, contentDescription = null, tint = neonCyan) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        ),
+                        placeholder = { Text("Contoh: Penyedia Layanan Internet Broadband & RT/RW Net Berkualitas", color = textSecondary) },
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 3. Alamat Perusahaan
+                    Text("Alamat Perusahaan", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = companyAddress,
+                        onValueChange = {
+                            companyAddress = it
+                            previewRefreshKey++
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = neonCyan) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        ),
+                        placeholder = { Text("Contoh: Jln. Raya Akbar Media, Indonesia", color = textSecondary) },
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 4. Kontak Perusahaan
+                    Text("Kontak Perusahaan (Telepon / WhatsApp / Email)", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = companyContact,
+                        onValueChange = {
+                            companyContact = it
+                            previewRefreshKey++
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = neonCyan) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        ),
+                        placeholder = { Text("Contoh: WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id", color = textSecondary) },
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 5. Catatan Pembayaran / Footer
+                    Text("Catatan Pembayaran / Footer", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
                         value = footerText,
                         onValueChange = {
                             footerText = it
                             previewRefreshKey++
                         },
-                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                        modifier = Modifier.fillMaxWidth().height(96.dp),
+                        leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null, tint = neonCyan) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan,
-                            unfocusedBorderColor = textSecondary,
+                            unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
                             focusedTextColor = textMain,
                             unfocusedTextColor = textMain
                         ),
@@ -362,115 +423,219 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Card 3: Pratinjau Invoice Ukuran 200mm x 140mm
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text(
-                        "Pratinjau Invoice (200mm x 140mm)",
-                        color = textMain,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Kop Berlogo • Format Continuous / Faktur .PNG",
-                        color = textSecondary,
-                        fontSize = 11.sp
-                    )
-                }
-                Surface(
-                    color = neonCyan.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        "200 x 140 mm",
-                        color = neonCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            val currentMonthName = remember {
-                SimpleDateFormat("MMMM yyyy", Locale("id", "ID")).format(Date())
-            }
-
+            // Card 3: Pratinjau Invoice Live
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = cardBg),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(16.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Generate 200mm x 140mm preview bitmap
-                    val previewBitmap = remember(logoPath, headerText, footerText, previewRefreshKey) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                "Pratinjau Faktur Invoice",
+                                color = textMain,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Live preview kop & form jenis layanan",
+                                color = textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        Surface(
+                            color = neonCyan.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                "Live Preview",
+                                color = neonCyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Segmented Button to test both "Reguler" and "Dedicated"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isDark) Color(0xFF1F1F1F) else Color(0xFFF1F5F9))
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Option 1: Paket Reguler
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    previewPackageType = "Reguler"
+                                    previewRefreshKey++
+                                },
+                            color = if (previewPackageType == "Reguler") neonCyan else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Speed,
+                                    contentDescription = null,
+                                    tint = if (previewPackageType == "Reguler") Color.Black else textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Paket Reguler",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (previewPackageType == "Reguler") Color.Black else textSecondary
+                                )
+                            }
+                        }
+
+                        // Option 2: Paket Dedicated
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    previewPackageType = "Dedicated"
+                                    previewRefreshKey++
+                                },
+                            color = if (previewPackageType == "Dedicated") Color(0xFFFF9800) else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = if (previewPackageType == "Dedicated") Color.Black else textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Paket Dedicated",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (previewPackageType == "Dedicated") Color.Black else textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val currentMonthName = remember {
+                        SimpleDateFormat("MMMM yyyy", Locale("id", "ID")).format(Date())
+                    }
+
+                    // Generate preview bitmap
+                    val isDedicatedPreview = previewPackageType == "Dedicated"
+                    val samplePkgName = if (isDedicatedPreview) "Dedicated 1:1 - 20 Mbps" else "Paket Family 20 Mbps"
+                    val sampleAmount = if (isDedicatedPreview) "Rp 3.000.000" else "Rp 150.000"
+                    val sampleCustName = if (isDedicatedPreview) "PT. Maju Bersama" else "Budi Santoso"
+                    val sampleCustArea = if (isDedicatedPreview) "Kawasan Industri" else "Area Timur"
+
+                    val previewBitmap = remember(
+                        logoPath,
+                        companyName,
+                        companySlogan,
+                        companyAddress,
+                        companyContact,
+                        footerText,
+                        previewPackageType,
+                        previewRefreshKey
+                    ) {
                         try {
-                            SettingsManager.invoiceHeader = headerText
+                            SettingsManager.companyName = companyName
+                            SettingsManager.companySlogan = companySlogan
+                            SettingsManager.companyAddress = companyAddress
+                            SettingsManager.companyContact = companyContact
+                            SettingsManager.invoiceHeader = "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
                             SettingsManager.invoiceFooterText = footerText
                             SettingsManager.invoiceLogoPath = logoPath
 
                             InvoiceGenerator.generateInvoiceBitmap(
                                 context = context,
-                                customerName = "Budi Santoso",
+                                customerName = sampleCustName,
                                 customerPhone = "0812-3456-7890",
-                                customerArea = "Area Timur",
-                                packageName = "Paket Family 20 Mbps",
+                                customerArea = sampleCustArea,
+                                packageName = samplePkgName,
                                 months = currentMonthName,
-                                totalAmount = "Rp 150.000",
+                                totalAmount = sampleAmount,
                                 status = "BELUM BAYAR",
-                                invoiceNo = "INV-SAMPLE"
+                                invoiceNo = "INV-SAMPLE",
+                                isDedicated = isDedicatedPreview,
+                                serviceType = if (isDedicatedPreview) "Dedicated" else "Reguler"
                             )
                         } catch (_: Exception) {
                             null
                         }
                     }
 
-                    if (previewBitmap != null) {
-                        Image(
-                            bitmap = previewBitmap.asImageBitmap(),
-                            contentDescription = "Invoice 200mm x 140mm Preview",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(200f / 140f) // Exact 200mm x 140mm ratio
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Fit
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = neonCyan)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (previewBitmap != null) {
+                            Image(
+                                bitmap = previewBitmap.asImageBitmap(),
+                                contentDescription = "Invoice Preview",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(200f / 140f),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = neonCyan)
+                            }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
+            // Save Button
             Button(
                 onClick = {
-                    SettingsManager.invoiceHeader = headerText
+                    SettingsManager.companyName = companyName
+                    SettingsManager.companySlogan = companySlogan
+                    SettingsManager.companyAddress = companyAddress
+                    SettingsManager.companyContact = companyContact
+                    SettingsManager.invoiceHeader = "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
                     SettingsManager.invoiceFooterText = footerText
                     SettingsManager.invoiceLogoPath = logoPath
                     SettingsManager.useInvoiceLogo = true
-                    Toast.makeText(context, "Pengaturan invoice 200mm x 140mm berhasil disimpan", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Pengaturan invoice berhasil disimpan", Toast.LENGTH_SHORT).show()
                     onBack()
                 },
                 modifier = Modifier

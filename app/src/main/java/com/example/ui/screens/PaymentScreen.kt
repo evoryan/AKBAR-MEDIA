@@ -1104,6 +1104,7 @@ $monthsDetailText
 
                             coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                 try {
+                                    val isDedicatedPkg = cust.packageName?.contains("dedicated", ignoreCase = true) == true || cust.packageName?.contains("1:1") == true
                                     val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
                                         context = context,
                                         customerName = cust.name,
@@ -1112,7 +1113,9 @@ $monthsDetailText
                                         packageName = cust.packageName,
                                         months = monthsLabel,
                                         totalAmount = finalFormatted,
-                                        status = "BELUM BAYAR"
+                                        status = "BELUM BAYAR",
+                                        isDedicated = isDedicatedPkg,
+                                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
                                     )
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                         com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(

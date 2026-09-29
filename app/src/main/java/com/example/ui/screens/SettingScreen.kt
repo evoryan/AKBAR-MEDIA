@@ -312,7 +312,7 @@ fun SettingScreen(
                             SettingItem(icon = Icons.Default.Backup, title = "Backup & Restore", subtitle = "Database Pelanggan", iconTint = textMain, onClick = onNavigateToBackupRestore)
                             shownItems++
                             HorizontalDivider(color = cardBorder)
-                            SettingItem(icon = Icons.Default.Receipt, title = "Pengaturan Invoice", subtitle = "Upload logo kop & faktur 200mm x 140mm", iconTint = textMain, onClick = onNavigateToInvoiceSettings)
+                            SettingItem(icon = Icons.Default.Receipt, title = "Pengaturan Invoice", subtitle = "Kop logo & identitas faktur", iconTint = textMain, onClick = onNavigateToInvoiceSettings)
                             shownItems++
                         }
                         

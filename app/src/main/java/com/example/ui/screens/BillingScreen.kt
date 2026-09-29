@@ -1179,6 +1179,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
 
                                     coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
+                                            val isDedicatedPkg = customer.packageName?.contains("dedicated", ignoreCase = true) == true || customer.packageName?.contains("1:1") == true
                                             val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
                                                 context = context,
                                                 customerName = customer.name,
@@ -1187,7 +1188,9 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                                 packageName = customer.packageName,
                                                 months = "$selectedMonth $selectedYear",
                                                 totalAmount = customer.price,
-                                                status = "BELUM BAYAR"
+                                                status = "BELUM BAYAR",
+                                                isDedicated = isDedicatedPkg,
+                                                serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
                                             )
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                                 com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(
