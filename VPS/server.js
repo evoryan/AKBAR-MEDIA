@@ -738,6 +738,92 @@ app.post('/api/billing/pay', async (req, res) => {
     }
 });
 
+app.post('/api/billing/pay-bulk', async (req, res) => {
+    try {
+        const { payments } = req.body;
+        if (!Array.isArray(payments) || payments.length === 0) {
+            return res.status(400).json({ error: "Array payments diperlukan" });
+        }
+
+        let successCount = 0;
+        let totalProcessedAmount = 0;
+
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+
+        for (const item of payments) {
+            const { customerId, adminName, totalAmount, months } = item;
+            const [customers] = await req.pool.query('SELECT name FROM customers WHERE id = ?', [customerId]);
+            if (customers.length === 0) continue;
+            const customerName = customers[0].name;
+
+            let desc = `Pembayaran tagihan pelanggan ${customerName}`;
+            if (Array.isArray(months) && months.length > 0) {
+                desc = `Pembayaran tagihan pelanggan ${customerName} (${months.join(', ')})`;
+                const perMonthAmount = totalAmount ? (totalAmount / months.length) : 0;
+
+                for (const monthStr of months) {
+                    const parts = monthStr.trim().split(/\s+/);
+                    const bulan = parts[0];
+                    const tahun = parts.length > 1 ? parseInt(parts[1], 10) : new Date().getFullYear();
+
+                    const [existingTagihan] = await req.pool.query(
+                        'SELECT id FROM tagihan_bulanan WHERE customer_id = ? AND LOWER(bulan) = LOWER(?) AND tahun = ?',
+                        [customerId, bulan, tahun]
+                    );
+
+                    if (existingTagihan.length > 0) {
+                        await req.pool.query(
+                            'UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ?, amount = ? WHERE id = ?',
+                            [adminName || 'Admin', perMonthAmount, existingTagihan[0].id]
+                        );
+                    } else {
+                        await req.pool.query(
+                            'INSERT INTO tagihan_bulanan (customer_id, bulan, tahun, amount, status, admin_name) VALUES (?, ?, ?, ?, "LUNAS CASH", ?)',
+                            [customerId, bulan, tahun, perMonthAmount, adminName || 'Admin']
+                        );
+                    }
+                }
+            } else {
+                const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
+                if (tagihan.length > 0) {
+                    await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ? WHERE id = ?', [adminName || 'Admin', tagihan[0].id]);
+                    desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
+                }
+            }
+
+            await req.pool.query('UPDATE customers SET status = "LUNAS CASH" WHERE id = ?', [customerId]);
+
+            try {
+                await req.pool.query('INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)', 
+                    ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash', adminName || 'Admin']);
+            } catch (e) {}
+
+            try {
+                await req.pool.query(
+                    'INSERT INTO pemasukan (category, amount, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE amount = amount + VALUES(amount), description = VALUES(description)',
+                    ['Transaksi Cash', totalAmount || 0, desc]
+                );
+            } catch (e) {}
+
+            successCount++;
+            totalProcessedAmount += (totalAmount || 0);
+        }
+
+        // Add bulk notification
+        try {
+            const notifMsg = `Pembayaran masal berhasil diproses untuk ${successCount} pelanggan`;
+            await req.pool.query('INSERT INTO notifications (message) VALUES (?)', [notifMsg]);
+        } catch (e) {}
+
+        res.json({ message: `Berhasil memproses pembayaran masal untuk ${successCount} pelanggan`, successCount, totalAmount: totalProcessedAmount });
+    } catch (error) {
+        console.error("Bulk Payment API Error:", error);
+        res.status(500).json({ error: "Terjadi kesalahan server saat bayar masal: " + error.message });
+    }
+});
+
 app.get('/api/notifications', async (req, res) => {
     try {
         const [rows] = await req.pool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50');

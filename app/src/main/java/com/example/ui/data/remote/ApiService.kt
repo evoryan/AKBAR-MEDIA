@@ -72,6 +72,7 @@ data class MikrotikStatus(val cpuLoad: String, val uptime: String, val activePpp
 
 data class OfflinePppoeUser(val name: String, val lastLogoff: String, val area: String)
 data class PaymentRequest(val customerId: String, val adminName: String, val totalAmount: Double, val months: List<String>? = null)
+data class BulkPaymentRequest(val payments: List<PaymentRequest>)
 data class DeleteBillingRequest(val customerId: String)
 
 data class MikrotikQueue(
@@ -183,6 +184,9 @@ interface ApiService {
 
     @POST("api/billing/pay")
     suspend fun payBilling(@Body request: PaymentRequest): ApiResponse
+
+    @POST("api/billing/pay-bulk")
+    suspend fun payBillingBulk(@Body request: BulkPaymentRequest): ApiResponse
 
     @POST("api/billing/delete")
     suspend fun deleteBilling(@Body request: DeleteBillingRequest): ApiResponse

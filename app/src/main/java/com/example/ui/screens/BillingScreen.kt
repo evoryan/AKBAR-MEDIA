@@ -24,6 +24,9 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -337,6 +340,11 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     var showCancelDialog by remember { mutableStateOf(false) }
     var customerToCancel by remember { mutableStateOf<Customer?>(null) }
     var cancelPassword by remember { mutableStateOf("") }
+    var isBulkPayMode by remember { mutableStateOf(false) }
+    var selectedCustomerIdsForBulk by remember { mutableStateOf(setOf<String>()) }
+    var showBulkConfirmDialog by remember { mutableStateOf(false) }
+    var isProcessingBulkPay by remember { mutableStateOf(false) }
+    var bulkProgressText by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
     
     fun fetchCustomers() {
@@ -396,6 +404,11 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     var searchQuery by remember { mutableStateOf("") }
     
     var selectedTabIndex by remember { mutableIntStateOf(initialTab) }
+
+    LaunchedEffect(selectedMonth, selectedYear, selectedArea, selectedTabIndex) {
+        isBulkPayMode = false
+        selectedCustomerIdsForBulk = emptySet()
+    }
     
     val localFocusManager = LocalFocusManager.current
 
@@ -446,6 +459,24 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     }
     val totalUnpaid = "Rp. ${formatter.format(unpaidSum)}"
     val totalPaid = "Rp. ${formatter.format(paidSum)}"
+
+    val selectedCustomersList = unpaidCustomers.filter { selectedCustomerIdsForBulk.contains(it.id) }
+    val selectedBulkTotal = selectedCustomersList.sumOf { customer ->
+        val custId = customer.id.toIntOrNull()
+        val tagihanRecord = if (custId != null) {
+            localTagihanList.firstOrNull { t ->
+                t.customer_id == custId && isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)
+            }
+        } else null
+
+        val tagihanAmount = tagihanRecord?.amount?.toLong()
+        if (tagihanAmount != null && tagihanAmount > 0L) {
+            tagihanAmount
+        } else {
+            customer.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+        }
+    }
+    val selectedBulkTotalFormatted = "Rp. ${formatter.format(selectedBulkTotal)}"
 
     if (showCancelDialog && customerToCancel != null) {
         AlertDialog(
@@ -516,20 +547,267 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
         )
     }
 
+    if (showBulkConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isProcessingBulkPay) showBulkConfirmDialog = false },
+            containerColor = cardBg,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Payments, contentDescription = null, tint = neonCyan)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Konfirmasi Bayar Masal", color = textMain, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Apakah Anda yakin ingin memproses pembayaran lunas untuk ${selectedCustomerIdsForBulk.size} pelanggan pada periode $selectedMonth $selectedYear?",
+                        color = textSecondary,
+                        fontSize = 13.sp
+                    )
+
+                    Surface(
+                        color = neonCyan.copy(alpha = 0.1f),
+                        border = BorderStroke(1.dp, neonCyan.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Pelanggan Dipilih:", color = textSecondary, fontSize = 12.sp)
+                                Text("${selectedCustomerIdsForBulk.size} Orang", color = textMain, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Total Tagihan:", color = textSecondary, fontSize = 12.sp)
+                                Text(selectedBulkTotalFormatted, color = neonCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                        }
+                    }
+
+                    if (isProcessingBulkPay) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(bulkProgressText, color = neonCyan, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                            color = neonCyan
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isProcessingBulkPay = true
+                        bulkProgressText = "Memproses ${selectedCustomerIdsForBulk.size} pelanggan..."
+                        coroutineScope.launch {
+                            try {
+                                val currentUser = com.example.ui.data.UserSession.currentUser.value
+                                val adminName = currentUser?.name ?: "Admin"
+                                val periodStr = "$selectedMonth $selectedYear"
+
+                                val paymentsList = selectedCustomersList.map { cust ->
+                                    val custId = cust.id.toIntOrNull()
+                                    val tagihanRecord = if (custId != null) {
+                                        localTagihanList.firstOrNull { t ->
+                                            t.customer_id == custId && isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)
+                                        }
+                                    } else null
+
+                                    val amountVal = tagihanRecord?.amount
+                                        ?: cust.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toDoubleOrNull()
+                                        ?: 0.0
+
+                                    com.example.ui.data.remote.PaymentRequest(
+                                        customerId = cust.id,
+                                        adminName = adminName,
+                                        totalAmount = amountVal,
+                                        months = listOf(periodStr)
+                                    )
+                                }
+
+                                // 1. Kirim bulk request ke backend
+                                try {
+                                    com.example.ui.data.remote.ApiClient.apiService.payBillingBulk(
+                                        com.example.ui.data.remote.BulkPaymentRequest(paymentsList)
+                                    )
+                                } catch (apiErr: Exception) {
+                                    // Fallback: proses individual jika endpoint bulk ada kendala
+                                    for (req in paymentsList) {
+                                        try {
+                                            com.example.ui.data.remote.ApiClient.apiService.payBilling(req)
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+
+                                // 2. Perbarui Room DB seketika untuk sinkronisasi lokal instant
+                                val selectedSet = selectedCustomerIdsForBulk
+                                val updatedTagihans = localTagihanList.map { t ->
+                                    if (selectedSet.contains(t.customer_id.toString()) &&
+                                        isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)) {
+                                        t.copy(status = "LUNAS CASH", admin_name = adminName)
+                                    } else {
+                                        t
+                                    }
+                                }
+                                db.tagihanDao().insertAll(updatedTagihans)
+
+                                for (custIdStr in selectedSet) {
+                                    custIdStr.toIntOrNull()?.let { custIdInt ->
+                                        db.pelangganDao().updateStatus(custIdInt, "LUNAS CASH")
+                                    }
+                                }
+
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Sukses! ${selectedSet.size} tagihan berhasil dibayar masal.",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+
+                                showBulkConfirmDialog = false
+                                isProcessingBulkPay = false
+                                isBulkPayMode = false
+                                selectedCustomerIdsForBulk = emptySet()
+                                fetchCustomers()
+                            } catch (e: Exception) {
+                                isProcessingBulkPay = false
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Gagal bayar masal: ${e.message}",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    enabled = !isProcessingBulkPay,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = Color.Black)
+                ) {
+                    Text(if (isProcessingBulkPay) "Memproses..." else "Ya, Bayar Masal Sekarang", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                if (!isProcessingBulkPay) {
+                    TextButton(onClick = { showBulkConfirmDialog = false }) {
+                        Text("Batal", color = textSecondary)
+                    }
+                }
+            }
+        )
+    }
+
     Scaffold(
         containerColor = bgMain,
         topBar = {
             TopAppBar(
-                title = { Text("Tagihan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                title = { 
+                    Text(
+                        if (isBulkPayMode) "Bayar Masal (${selectedCustomerIdsForBulk.size})" else "Tagihan", 
+                        color = textMain, 
+                        fontSize = 18.sp, 
+                        fontWeight = FontWeight.SemiBold
+                    ) 
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        if (isBulkPayMode) {
+                            isBulkPayMode = false
+                            selectedCustomerIdsForBulk = emptySet()
+                        } else {
+                            onBack()
+                        }
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
+                    }
+                },
+                actions = {
+                    if (selectedTabIndex == 0 && unpaidCustomers.isNotEmpty()) {
+                        if (!isBulkPayMode) {
+                            Button(
+                                onClick = {
+                                    isBulkPayMode = true
+                                    selectedCustomerIdsForBulk = unpaidCustomers.map { it.id }.toSet()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = neonCyan.copy(alpha = 0.2f),
+                                    contentColor = neonCyan
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(34.dp).padding(end = 8.dp)
+                            ) {
+                                Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Bayar Masal", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            TextButton(
+                                onClick = {
+                                    isBulkPayMode = false
+                                    selectedCustomerIdsForBulk = emptySet()
+                                }
+                            ) {
+                                Text("Batal", color = errorRed, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = headerBg
                 )
             )
+        },
+        bottomBar = {
+            if (isBulkPayMode && selectedTabIndex == 0 && unpaidCustomers.isNotEmpty()) {
+                Surface(
+                    color = cardBg,
+                    shadowElevation = 8.dp,
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                "${selectedCustomerIdsForBulk.size} Pelanggan Dipilih",
+                                color = textSecondary,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                selectedBulkTotalFormatted,
+                                color = neonCyan,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Button(
+                            onClick = { showBulkConfirmDialog = true },
+                            enabled = selectedCustomerIdsForBulk.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00FFFF),
+                                contentColor = Color.Black,
+                                disabledContainerColor = Color.DarkGray,
+                                disabledContentColor = Color.LightGray
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.height(44.dp)
+                        ) {
+                            Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "BAYAR SEKARANG (${selectedCustomerIdsForBulk.size})",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -760,13 +1038,85 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                         }
                     }
                     
-                    Text(
-                        "Daftar Pelanggan Belum Bayar (${unpaidCustomers.size})", 
-                        color = textMain, 
-                        fontWeight = FontWeight.Bold, 
-                        fontSize = 15.sp, 
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Daftar Pelanggan Belum Bayar (${unpaidCustomers.size})", 
+                            color = textMain, 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 15.sp
+                        )
+                        if (unpaidCustomers.isNotEmpty() && !isBulkPayMode) {
+                            FilledTonalButton(
+                                onClick = {
+                                    isBulkPayMode = true
+                                    selectedCustomerIdsForBulk = unpaidCustomers.map { it.id }.toSet()
+                                },
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = neonCyan.copy(alpha = 0.15f),
+                                    contentColor = neonCyan
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Bayar Masal", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    if (isBulkPayMode && unpaidCustomers.isNotEmpty()) {
+                        val allSelected = selectedCustomerIdsForBulk.size == unpaidCustomers.size
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = neonCyan.copy(alpha = 0.08f)),
+                            border = BorderStroke(1.dp, neonCyan.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.clickable {
+                                        selectedCustomerIdsForBulk = if (allSelected) emptySet() else unpaidCustomers.map { it.id }.toSet()
+                                    }
+                                ) {
+                                    Checkbox(
+                                        checked = allSelected,
+                                        onCheckedChange = { checked ->
+                                            selectedCustomerIdsForBulk = if (checked) unpaidCustomers.map { it.id }.toSet() else emptySet()
+                                        },
+                                        colors = CheckboxDefaults.colors(checkedColor = neonCyan)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        if (allSelected) "Batal Pilih Semua" else "Pilih Semua (${unpaidCustomers.size})",
+                                        color = textMain,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                Text(
+                                    "${selectedCustomerIdsForBulk.size} dari ${unpaidCustomers.size} dipilih",
+                                    color = neonCyan,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
                     
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
@@ -776,6 +1126,15 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                             BillingCustomerItem(
                                 customer = customer, 
                                 isPaid = false,
+                                isSelectionMode = isBulkPayMode,
+                                isSelected = selectedCustomerIdsForBulk.contains(customer.id),
+                                onToggleSelect = {
+                                    selectedCustomerIdsForBulk = if (selectedCustomerIdsForBulk.contains(customer.id)) {
+                                        selectedCustomerIdsForBulk - customer.id
+                                    } else {
+                                        selectedCustomerIdsForBulk + customer.id
+                                    }
+                                },
                                 cardBg = cardBg, 
                                 cardBorder = cardBorder, 
                                 textMain = textMain, 
@@ -924,20 +1283,40 @@ fun BillingCustomerItem(
     onDeleteClick: () -> Unit = {},
     onLongPress: () -> Unit = {},
     onIsolirClick: () -> Unit = {},
-    onWaClick: () -> Unit = {}
+    onWaClick: () -> Unit = {},
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelect: () -> Unit = {}
 ) {
+    val itemBg = if (isSelectionMode && isSelected) neonCyan.copy(alpha = 0.12f) else cardBg
+    val itemBorderColor = if (isSelectionMode && isSelected) neonCyan else cardBorder
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(cardBg)
-            .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+            .background(itemBg)
+            .border(if (isSelectionMode && isSelected) 1.5.dp else 1.dp, itemBorderColor, RoundedCornerShape(16.dp))
+            .then(
+                if (isSelectionMode) Modifier.clickable { onToggleSelect() }
+                else Modifier
+            )
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            if (isSelectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggleSelect() },
+                    colors = CheckboxDefaults.colors(checkedColor = neonCyan),
+                    modifier = Modifier.padding(end = 6.dp)
+                )
+            }
+
             // Left content: Info and Price
             Column(
                 modifier = Modifier.weight(1f),
@@ -1021,7 +1400,9 @@ fun BillingCustomerItem(
                     }
                     Button(
                         onClick = {
-                            if (!isPaid) {
+                            if (isSelectionMode) {
+                                onToggleSelect()
+                            } else if (!isPaid) {
                                 onPayClick()
                             } else {
                                 onDetailClick()
@@ -1030,13 +1411,19 @@ fun BillingCustomerItem(
                         modifier = Modifier.width(110.dp).height(32.dp),
                         contentPadding = PaddingValues(horizontal = 4.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (!isPaid) neonCyan else Color.Transparent,
+                            containerColor = if (isSelectionMode && isSelected) neonCyan.copy(alpha = 0.3f) else if (!isPaid) neonCyan else Color.Transparent,
                             contentColor = if (!isPaid) Color.Black else neonCyan
                         ),
                         border = if (isPaid) androidx.compose.foundation.BorderStroke(1.dp, neonCyan) else null,
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(if (!isPaid) "BAYAR" else "DETAIL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (isSelectionMode) (if (isSelected) "DIPILIH" else "PILIH")
+                            else if (!isPaid) "BAYAR" 
+                            else "DETAIL", 
+                            fontSize = 11.sp, 
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
