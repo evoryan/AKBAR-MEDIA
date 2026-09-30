@@ -35,9 +35,22 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.asAndroidBitmap
 import android.provider.MediaStore
 import android.content.ContentValues
-import android.graphics.Bitmap
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.core.content.FileProvider
+import androidx.print.PrintHelper
+import com.example.ui.util.InvoiceGenerator
+import com.example.ui.data.SettingsManager
+
+data class CustomerInvoicePreview(
+    val title: String,
+    val months: String,
+    val amount: String,
+    val status: String // "LUNAS" or "BELUM BAYAR"
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,7 +85,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     
     val graphicsLayer = rememberGraphicsLayer()
-    var selectedHistoryForPreview by remember { mutableStateOf<com.example.ui.data.remote.PaymentHistory?>(null) }
+    var activeInvoicePreview by remember { mutableStateOf<CustomerInvoicePreview?>(null) }
 
     LaunchedEffect(customerId) {
         isBackgroundLoading = true
@@ -176,97 +189,158 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
         )
     }
 
-    if (selectedHistoryForPreview != null) {
+    if (activeInvoicePreview != null) {
+        val previewData = activeInvoicePreview!!
+        val isLunas = previewData.status.equals("LUNAS", ignoreCase = true)
+        val isDedicatedPkg = customer?.packageName?.contains("dedicated", ignoreCase = true) == true ||
+                customer?.packageName?.contains("1:1") == true
+
+        val invoiceBitmap = remember(previewData, customer) {
+            customer?.let { cust ->
+                try {
+                    InvoiceGenerator.generateInvoiceBitmap(
+                        context = context,
+                        customerName = cust.name,
+                        customerPhone = cust.phone,
+                        customerArea = cust.area,
+                        packageName = cust.packageName,
+                        months = previewData.months,
+                        totalAmount = previewData.amount,
+                        status = previewData.status,
+                        isDedicated = isDedicatedPkg,
+                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                    )
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+
         AlertDialog(
-            onDismissRequest = { selectedHistoryForPreview = null },
+            onDismissRequest = { activeInvoicePreview = null },
             title = {
-                Text(
-                    "Preview Nota",
-                    color = textMain,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        previewData.title,
+                        color = textMain,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Surface(
+                        color = if (isLunas) Color(0xFF059669).copy(alpha = 0.15f) else Color(0xFFDC2626).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            previewData.status,
+                            color = if (isLunas) Color(0xFF059669) else Color(0xFFDC2626),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
             },
             text = {
-                val previewHistory = selectedHistoryForPreview!!
-                val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
-                val amountDouble = previewHistory.amount.toDoubleOrNull() ?: 0.0
-                val formattedAmount = "Rp. ${formatter.format(amountDouble)}"
-                
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 400.dp)
+                        .heightIn(max = 420.dp)
                         .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.White)
-                            .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
-                            .padding(16.dp)
-                            .drawWithContent {
-                                graphicsLayer.record {
-                                    this@drawWithContent.drawContent()
-                                }
-                                drawLayer(graphicsLayer)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        com.example.ui.components.ThermalInvoiceView(
-                            headerText = com.example.ui.data.SettingsManager.invoiceHeader,
-                            footerText = com.example.ui.data.SettingsManager.invoiceFooterText,
-                            customer = customer,
-                            months = previewHistory.description,
-                            totalAmount = formattedAmount
+                    if (invoiceBitmap != null) {
+                        Image(
+                            bitmap = invoiceBitmap.asImageBitmap(),
+                            contentDescription = "Faktur Invoice Resmi",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(200f / 140f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, cardBorder, RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Fit
                         )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = neonCyan)
+                        }
                     }
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         ActionItemCol(Icons.Default.Print, "Cetak", neonCyan, textSecondary) {
-                            Toast.makeText(context, "Fitur cetak belum tersedia", Toast.LENGTH_SHORT).show()
+                            if (invoiceBitmap != null) {
+                                try {
+                                    val printHelper = PrintHelper(context).apply {
+                                        scaleMode = PrintHelper.SCALE_MODE_FIT
+                                    }
+                                    printHelper.printBitmap("Invoice_${customer?.name ?: "Customer"}_${previewData.status}", invoiceBitmap)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Gagal mencetak invoice: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "Invoice sedang dipersiapkan...", Toast.LENGTH_SHORT).show()
+                            }
                         }
+
                         ActionItemCol(Icons.AutoMirrored.Filled.Message, "Kirim WA", neonCyan, textSecondary) {
                             val phone = customer?.phone
                             if (!phone.isNullOrBlank()) {
-                                val rawTemplate = if (com.example.ui.data.SettingsManager.waGatewayEnabled && com.example.ui.data.SettingsManager.waNotifyPaymentSuccess) {
-                                    com.example.ui.data.SettingsManager.waTemplatePaymentSuccess
+                                val message = if (isLunas) {
+                                    val rawTemplate = if (SettingsManager.waGatewayEnabled && SettingsManager.waNotifyPaymentSuccess) {
+                                        SettingsManager.waTemplatePaymentSuccess
+                                    } else {
+                                        "Halo {nama},\nTerima kasih, pembayaran tagihan internet untuk bulan {bulan} sejumlah {nominal} telah kami terima dan lunas.\n\nSalam,\n{perusahaan}"
+                                    }
+                                    rawTemplate
+                                        .replace("{nama}", customer?.name ?: "")
+                                        .replace("{bulan}", previewData.months)
+                                        .replace("{nominal}", previewData.amount)
+                                        .replace("{perusahaan}", SettingsManager.companyName)
                                 } else {
-                                    "Halo {nama},\nTerima kasih, pembayaran tagihan internet untuk bulan {bulan} sejumlah {nominal} telah kami terima dan lunas.\n\nSalam,\n{perusahaan}"
+                                    val rawTemplate = if (SettingsManager.waGatewayEnabled && SettingsManager.waNotifyNewBilling) {
+                                        SettingsManager.waTemplateNewBilling
+                                    } else {
+                                        "Halo {nama},\nTagihan internet Anda untuk bulan {bulan} telah terbit sebesar {nominal}.\n\nMohon segera melakukan pembayaran. Terima kasih.\n\nSalam,\n{perusahaan}"
+                                    }
+                                    rawTemplate
+                                        .replace("{nama}", customer?.name ?: "")
+                                        .replace("{bulan}", previewData.months)
+                                        .replace("{nominal}", previewData.amount)
+                                        .replace("{perusahaan}", SettingsManager.companyName)
                                 }
-                                val text = rawTemplate
-                                    .replace("{nama}", customer?.name ?: "")
-                                    .replace("{bulan}", previewHistory.description)
-                                    .replace("{nominal}", formattedAmount)
-                                    .replace("{perusahaan}", com.example.ui.data.SettingsManager.companyName)
 
                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
-                                        val isDedicatedPkg = customer?.packageName?.contains("dedicated", ignoreCase = true) == true || customer?.packageName?.contains("1:1") == true
-                                        val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
+                                        val pngFile = InvoiceGenerator.generateInvoicePngFile(
                                             context = context,
                                             customerName = customer?.name ?: "-",
                                             customerPhone = phone,
                                             customerArea = customer?.area ?: "-",
                                             packageName = customer?.packageName,
-                                            months = previewHistory.description,
-                                            totalAmount = formattedAmount,
-                                            status = "LUNAS",
+                                            months = previewData.months,
+                                            totalAmount = previewData.amount,
+                                            status = previewData.status,
                                             isDedicated = isDedicatedPkg,
                                             serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
                                         )
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(
+                                            InvoiceGenerator.sendWhatsappInvoiceWithPng(
                                                 context = context,
                                                 phone = phone,
-                                                message = text,
+                                                message = message,
                                                 pngFile = pngFile
                                             )
                                         }
@@ -280,32 +354,43 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                 Toast.makeText(context, "Nomor pelanggan tidak tersedia", Toast.LENGTH_SHORT).show()
                             }
                         }
+
                         ActionItemCol(Icons.Default.Share, "Bagikan", neonCyan, textSecondary) {
-                            coroutineScope.launch {
+                            val phone = customer?.phone ?: "628"
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                 try {
-                                    val bitmap = graphicsLayer.toImageBitmap().asAndroidBitmap()
-                                    val contentValues = ContentValues().apply {
-                                        put(MediaStore.Images.Media.DISPLAY_NAME, "Invoice_${customer?.name}_${previewHistory.id}.jpg")
-                                        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                                    val pngFile = InvoiceGenerator.generateInvoicePngFile(
+                                        context = context,
+                                        customerName = customer?.name ?: "-",
+                                        customerPhone = phone,
+                                        customerArea = customer?.area ?: "-",
+                                        packageName = customer?.packageName,
+                                        months = previewData.months,
+                                        totalAmount = previewData.amount,
+                                        status = previewData.status,
+                                        isDedicated = isDedicatedPkg,
+                                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                                    )
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        pngFile
+                                    )
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "image/png"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_TEXT, "Faktur Tagihan (${previewData.status}) - ${customer?.name ?: ""} (${previewData.months})")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
-                                    val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                                    if (uri != null) {
-                                        context.contentResolver.openOutputStream(uri)?.use { out ->
-                                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-                                        }
-                                        val sendIntent = Intent().apply {
-                                            action = Intent.ACTION_SEND
-                                            putExtra(Intent.EXTRA_STREAM, uri)
-                                            type = "image/jpeg"
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        val shareIntent = Intent.createChooser(sendIntent, "Bagikan Invoice")
-                                        context.startActivity(shareIntent)
-                                    } else {
-                                        Toast.makeText(context, "Gagal menyiapkan gambar", Toast.LENGTH_SHORT).show()
+                                    val chooser = Intent.createChooser(shareIntent, "Bagikan Faktur Invoice")
+                                    chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        context.startActivity(chooser)
                                     }
                                 } catch (e: Exception) {
-                                    Toast.makeText(context, "Gagal membagikan gambar", Toast.LENGTH_SHORT).show()
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context, "Gagal membagikan invoice: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         }
@@ -313,7 +398,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                 }
             },
             confirmButton = {
-                TextButton(onClick = { selectedHistoryForPreview = null }) {
+                TextButton(onClick = { activeInvoicePreview = null }) {
                     Text("Tutup", color = neonCyan, fontWeight = FontWeight.Bold)
                 }
             }
@@ -526,6 +611,39 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                 Text("Total Biaya Perbulan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 14.sp)
                                 Text(customer?.price ?: "Rp. 0", color = lightBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
+
+                            val isCustomerPaid = customer?.status?.contains("belum", ignoreCase = true) != true &&
+                                    customer?.status?.contains("isolir", ignoreCase = true) != true
+                            val currentBillStatus = if (isCustomerPaid) "LUNAS" else "BELUM BAYAR"
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    activeInvoicePreview = CustomerInvoicePreview(
+                                        title = if (isCustomerPaid) "Faktur Tagihan (Lunas)" else "Faktur Tagihan (Belum Bayar)",
+                                        months = "Bulan Berjalan",
+                                        amount = customer?.price ?: "Rp. 0",
+                                        status = currentBillStatus
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (isCustomerPaid) Color(0xFF00FF00) else neonCyan
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isCustomerPaid) Color(0xFF00FF00).copy(alpha = 0.5f) else neonCyan.copy(alpha = 0.5f)
+                                )
+                            ) {
+                                Icon(Icons.Default.Receipt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    if (isCustomerPaid) "Lihat Faktur Tagihan (Lunas)" else "Lihat Faktur Tagihan (Belum Bayar)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
 
                     } else if (selectedTabIndex == 1) {
@@ -537,7 +655,17 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                             textSecondary = textSecondary,
                             neonCyan = neonCyan,
                             neonPink = neonPink,
-                            onItemClick = { selectedHistoryForPreview = it }
+                            onItemClick = { historyItem ->
+                                val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                                val amountDouble = historyItem.amount.toDoubleOrNull() ?: 0.0
+                                val formattedAmount = "Rp. ${formatter.format(amountDouble)}"
+                                activeInvoicePreview = CustomerInvoicePreview(
+                                    title = "Faktur Pembayaran (Lunas)",
+                                    months = historyItem.description,
+                                    amount = formattedAmount,
+                                    status = "LUNAS"
+                                )
+                            }
                         )
                     }
 

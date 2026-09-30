@@ -38,6 +38,12 @@ import com.example.ui.data.remote.ApiClient
 import com.example.ui.data.remote.DeleteBillingRequest
 import kotlinx.coroutines.launch
 import com.example.ui.data.UserSession
+import android.content.Intent
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.core.content.FileProvider
+import androidx.print.PrintHelper
 
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -272,7 +278,7 @@ fun getCustomerUnpaidPastMonths(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit, onNavigateToSuccess: (String, String, String) -> Unit) {
+fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit, onNavigateToSuccess: (String, String, String, String) -> Unit) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
@@ -1150,7 +1156,10 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 neonCyan = neonCyan, 
                                 neonPink = neonPink, 
                                 onPayClick = { onNavigateToPayment(customer.id) },
-                                onDetailClick = {},
+                                onDetailClick = {
+                                    val amount = customer.price.replace(Regex("[^0-9]"), "")
+                                    onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", "BELUM BAYAR")
+                                },
                                 onIsolirClick = {
                                     coroutineScope.launch {
                                         try {
@@ -1262,7 +1271,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                     } else null
                                     val amount = tagihanRecord?.amount?.toLong()?.toString()
                                         ?: customer.price.replace(Regex("[^0-9]"), "")
-                                    onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear")
+                                    onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", "LUNAS")
                                 },
                                 onLongPress = {
                                     customerToCancel = customer
@@ -1310,7 +1319,7 @@ fun BillingCustomerItem(
             .border(if (isSelectionMode && isSelected) 1.5.dp else 1.dp, itemBorderColor, RoundedCornerShape(16.dp))
             .then(
                 if (isSelectionMode) Modifier.clickable { onToggleSelect() }
-                else Modifier
+                else Modifier.clickable { onDetailClick() }
             )
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
@@ -1391,6 +1400,9 @@ fun BillingCustomerItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (!isPaid) {
+                        IconButton(onClick = onDetailClick, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Receipt, contentDescription = "Lihat Faktur Invoice", tint = neonCyan)
+                        }
                         IconButton(onClick = onIsolirClick, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = Color(0xFFD4AF37))
                         }

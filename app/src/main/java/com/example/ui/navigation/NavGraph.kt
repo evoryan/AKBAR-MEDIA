@@ -204,8 +204,8 @@ fun AkbarMediaNavGraph() {
                     onNavigateToPayment = { customerId ->
                         navController.navigate(PaymentRoute(customerId))
                     },
-                    onNavigateToSuccess = { customerId, totalAmount, months ->
-                        navController.navigate(PaymentSuccessRoute(customerId, totalAmount, months))
+                    onNavigateToSuccess = { customerId, totalAmount, months, status ->
+                        navController.navigate(PaymentSuccessRoute(customerId, totalAmount, months, status))
                     }
                 )
             }
@@ -217,7 +217,7 @@ fun AkbarMediaNavGraph() {
                     onBack = { navController.popBackStack() },
                     onNavigateToDetail = { navController.navigate(CustomerDetailRoute(route.customerId)) },
                     onNavigateToSuccess = { customerId, totalAmount, months -> 
-                        navController.navigate(PaymentSuccessRoute(customerId, totalAmount, months)) {
+                        navController.navigate(PaymentSuccessRoute(customerId, totalAmount, months, "LUNAS")) {
                             popUpTo(PaymentRoute(customerId)) { inclusive = true }
                         }
                     }
@@ -230,6 +230,7 @@ fun AkbarMediaNavGraph() {
                     customerId = route.customerId,
                     totalAmount = route.totalAmount,
                     months = route.months,
+                    status = route.status,
                     onFinish = { 
                         navController.navigate(BillingRoute()) {
                             popUpTo(BillingRoute::class) { inclusive = true }

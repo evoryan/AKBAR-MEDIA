@@ -61,6 +61,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
 
     // Toggle for live preview between Reguler & Dedicated package types
     var previewPackageType by remember { mutableStateOf("Reguler") }
+    var previewStatus by remember { mutableStateOf("BELUM BAYAR") }
     var previewRefreshKey by remember { mutableStateOf(0) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -122,6 +123,42 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(8.dp))
+
+            // Default Status Banner
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0F1E36) else Color(0xFFEFF6FF)),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (isDark) Color(0xFF1E3A8A) else Color(0xFF93C5FD))
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Receipt,
+                        contentDescription = null,
+                        tint = if (isDark) neonCyan else Color(0xFF1D4ED8),
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            "Model Invoice: Faktur Resmi (Default)",
+                            color = textMain,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "Format faktur resmi dengan kop logo aktif sebagai default menggantikan struk model awal/thermal untuk seluruh tagihan (Belum Bayar & Lunas).",
+                            color = textSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Card 1: Upload Logo Kop Surat
             Card(
@@ -542,6 +579,82 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Segmented Button to test status "BELUM BAYAR" and "LUNAS"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isDark) Color(0xFF1F1F1F) else Color(0xFFF1F5F9))
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Option 1: Status Belum Bayar
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    previewStatus = "BELUM BAYAR"
+                                    previewRefreshKey++
+                                },
+                            color = if (previewStatus == "BELUM BAYAR") Color(0xFFDC2626) else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.HourglassTop,
+                                    contentDescription = null,
+                                    tint = if (previewStatus == "BELUM BAYAR") Color.White else textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Status: Belum Bayar",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (previewStatus == "BELUM BAYAR") Color.White else textSecondary
+                                )
+                            }
+                        }
+
+                        // Option 2: Status Lunas
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    previewStatus = "LUNAS"
+                                    previewRefreshKey++
+                                },
+                            color = if (previewStatus == "LUNAS") Color(0xFF059669) else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = if (previewStatus == "LUNAS") Color.White else textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Status: Lunas",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (previewStatus == "LUNAS") Color.White else textSecondary
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
 
                     val currentMonthName = remember {
@@ -563,6 +676,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                         companyContact,
                         footerText,
                         previewPackageType,
+                        previewStatus,
                         previewRefreshKey
                     ) {
                         try {
@@ -582,7 +696,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                 packageName = samplePkgName,
                                 months = currentMonthName,
                                 totalAmount = sampleAmount,
-                                status = "BELUM BAYAR",
+                                status = previewStatus,
                                 invoiceNo = "INV-SAMPLE",
                                 isDedicated = isDedicatedPreview,
                                 serviceType = if (isDedicatedPreview) "Dedicated" else "Reguler"

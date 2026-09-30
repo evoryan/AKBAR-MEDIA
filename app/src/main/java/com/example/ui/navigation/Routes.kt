@@ -39,7 +39,12 @@ data class CustomerDetailRoute(val customerId: String)
 data class PaymentRoute(val customerId: String)
 
 @Serializable
-data class PaymentSuccessRoute(val customerId: String, val totalAmount: String, val months: String)
+data class PaymentSuccessRoute(
+    val customerId: String, 
+    val totalAmount: String, 
+    val months: String,
+    val status: String = "LUNAS"
+)
 
 @Serializable
 object PackagesRoute
