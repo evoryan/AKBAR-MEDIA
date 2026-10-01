@@ -320,12 +320,14 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
 
     val customers = remember(localPelangganList) {
         localPelangganList.map { entity ->
+            val resolvedAddress = entity.address?.takeIf { it.isNotBlank() } ?: entity.alamat
             Customer(
                 id = entity.id.toString(),
                 name = entity.name,
                 phone = entity.phone,
                 area = entity.area,
-                address = entity.address,
+                address = resolvedAddress,
+                alamat = resolvedAddress,
                 username = entity.username,
                 billingDate = entity.billingDate,
                 status = entity.status,
@@ -359,12 +361,14 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                 com.example.ui.data.UserSession.getOrFetchAreas()
                 val syncResponse = ApiClient.apiService.syncData()
                 val mapped = syncResponse.customers.map { item ->
+                    val resolvedAddress = item.address?.takeIf { it.isNotBlank() } ?: item.alamat
                     com.example.ui.data.local.PelangganEntity(
                         id = item.id.toIntOrNull() ?: 0,
                         name = item.name ?: "",
                         phone = item.phone ?: "",
                         area = item.area ?: "",
-                        address = item.address,
+                        address = resolvedAddress,
+                        alamat = resolvedAddress,
                         username = item.username ?: "",
                         billingDate = item.billingDate ?: "",
                         status = item.status ?: "",
@@ -1172,6 +1176,12 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 },
                                 onWaClick = {
                                     val formattedPhone = formatPhoneForWhatsapp(customer.phone)
+                                    val currencyFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                                    val add1 = customer.getAdditionalCost1Amount()
+                                    val add2 = customer.getAdditionalCost2Amount()
+                                    val add1Text = if (add1 > 0) "- Biaya Tambahan 1: Rp ${currencyFmt.format(add1)}" + (if (!customer.additionalCostDesc1.isNullOrBlank()) " (${customer.additionalCostDesc1})" else "") + "\n" else ""
+                                    val add2Text = if (add2 > 0) "- Biaya Tambahan 2: Rp ${currencyFmt.format(add2)}" + (if (!customer.additionalCostDesc2.isNullOrBlank()) " (${customer.additionalCostDesc2})" else "") + "\n" else ""
+
                                     val message = """
                                         Halo *${customer.name}*,
 
@@ -1179,8 +1189,8 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                         - Nama: ${customer.name}
                                         - No HP: ${customer.phone}
                                         - Area: ${customer.area}
-                                        - Paket: ${customer.packageName ?: "-"}
-                                        - Total Tagihan: ${customer.price}
+                                        - Paket: ${customer.packageName ?: "-"} (${customer.price})
+                                        $add1Text$add2Text- Total Tagihan: ${customer.getFormattedTotalBill()}
                                         - Status: *BELUM BAYAR*
 
                                         Mohon segera melakukan pembayaran. Terima kasih.
@@ -1196,10 +1206,16 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                                 customerArea = customer.area,
                                                 packageName = customer.packageName,
                                                 months = "$selectedMonth $selectedYear",
-                                                totalAmount = customer.price,
+                                                totalAmount = customer.getFormattedTotalBill(),
                                                 status = "BELUM BAYAR",
                                                 isDedicated = isDedicatedPkg,
-                                                serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                                                serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                                                packagePrice = customer.price,
+                                                additionalCost1 = customer.additionalCost1,
+                                                additionalCostDesc1 = customer.additionalCostDesc1,
+                                                additionalCost2 = customer.additionalCost2,
+                                                additionalCostDesc2 = customer.additionalCostDesc2,
+                                                discount = customer.discount
                                             )
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                                 com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(

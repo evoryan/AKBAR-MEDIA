@@ -33,12 +33,14 @@ class SyncWorker(
             val db = AppDatabase.getDatabase(applicationContext)
 
             val pelangganList = syncResponse.customers.map { item ->
+                val resolvedAddress = item.address?.takeIf { it.isNotBlank() } ?: item.alamat
                 PelangganEntity(
                     id = item.id.toIntOrNull() ?: 0,
                     name = item.name ?: "",
                     phone = item.phone ?: "",
                     area = item.area ?: "",
-                    address = item.address,
+                    address = resolvedAddress,
+                    alamat = resolvedAddress,
                     username = item.username ?: "",
                     billingDate = item.billingDate ?: "",
                     status = item.status ?: "",
@@ -51,7 +53,9 @@ class SyncWorker(
                     odp_id = item.odp_id?.toIntOrNull(),
                     odp_port = item.odp_port,
                     additionalCost1 = item.additionalCost1,
-                    additionalCost2 = item.additionalCost2
+                    additionalCost2 = item.additionalCost2,
+                    additionalCostDesc1 = item.additionalCostDesc1 ?: item.additional_cost_desc1,
+                    additionalCostDesc2 = item.additionalCostDesc2 ?: item.additional_cost_desc2
                 )
             }
 

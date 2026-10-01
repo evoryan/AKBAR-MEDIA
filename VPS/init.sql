@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS customers (
     odp_port VARCHAR(10) DEFAULT "",
     additionalCost1 VARCHAR(50) DEFAULT "",
     additionalCost2 VARCHAR(50) DEFAULT "",
+    additionalCostDesc1 VARCHAR(255) DEFAULT "",
+    additionalCostDesc2 VARCHAR(255) DEFAULT "",
     FOREIGN KEY (odp_id) REFERENCES odp_list(id) ON DELETE SET NULL
 );
 

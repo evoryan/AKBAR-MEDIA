@@ -134,7 +134,7 @@ fun getAmountForMonth(
     return if (amt != null && amt > 0L) {
         amt
     } else {
-        customer?.price?.replace(Regex("\\.0$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+        customer?.getTotalBillAmount() ?: 0L
     }
 }
 
@@ -308,12 +308,14 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
             if (customer == null) {
                 val found = syncData.customers.find { it.id == customerId }
                 if (found != null) {
+                    val resolvedAddress = found.address?.takeIf { it.isNotBlank() } ?: found.alamat
                     customer = Customer(
                         id = found.id,
                         name = found.name ?: "",
                         phone = found.phone ?: "",
                         area = found.area ?: "",
-                        address = found.address,
+                        address = resolvedAddress,
+                        alamat = resolvedAddress,
                         username = found.username ?: "",
                         billingDate = found.billingDate ?: "",
                         status = found.status ?: "",
@@ -324,6 +326,8 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                         packageName = found.package_name,
                         additionalCost1 = found.additionalCost1,
                         additionalCost2 = found.additionalCost2,
+                        additionalCostDesc1 = found.additionalCostDesc1 ?: found.additional_cost_desc1,
+                        additionalCostDesc2 = found.additionalCostDesc2 ?: found.additional_cost_desc2,
                         pppoeSecret = found.pppoe_secret,
                         odpId = found.odp_id,
                         odpPort = found.odp_port
@@ -333,12 +337,14 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
         } catch(e: Exception) {
             val localCust = localPelangganList.find { it.id.toString() == customerId }
             if (localCust != null && customer == null) {
+                val resolvedAddress = localCust.address?.takeIf { it.isNotBlank() } ?: localCust.alamat
                 customer = Customer(
                     id = localCust.id.toString(),
                     name = localCust.name,
                     phone = localCust.phone,
                     area = localCust.area,
-                    address = localCust.address,
+                    address = resolvedAddress,
+                    alamat = resolvedAddress,
                     username = localCust.username,
                     billingDate = localCust.billingDate,
                     status = localCust.status,
@@ -349,6 +355,8 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     packageName = localCust.package_name,
                     additionalCost1 = localCust.additionalCost1,
                     additionalCost2 = localCust.additionalCost2,
+                    additionalCostDesc1 = localCust.additionalCostDesc1,
+                    additionalCostDesc2 = localCust.additionalCostDesc2,
                     pppoeSecret = localCust.pppoe_secret,
                     odpId = localCust.odp_id?.toString(),
                     odpPort = localCust.odp_port
@@ -363,12 +371,14 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
         if (customer == null) {
             val localCust = localPelangganList.find { it.id.toString() == customerId }
             if (localCust != null) {
+                val resolvedAddress = localCust.address?.takeIf { it.isNotBlank() } ?: localCust.alamat
                 customer = Customer(
                     id = localCust.id.toString(),
                     name = localCust.name,
                     phone = localCust.phone,
                     area = localCust.area,
-                    address = localCust.address,
+                    address = resolvedAddress,
+                    alamat = resolvedAddress,
                     username = localCust.username,
                     billingDate = localCust.billingDate,
                     status = localCust.status,
@@ -525,6 +535,24 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     Text(customer?.packageName ?: "Reguler", color = textMain, fontSize = 14.sp)
                     Text(customer?.price ?: "Rp. 0", color = textMain, fontSize = 14.sp)
                 }
+                val add1 = customer?.getAdditionalCost1Amount() ?: 0L
+                val desc1 = customer?.additionalCostDesc1
+                if (add1 > 0L) {
+                    val lbl1 = if (!desc1.isNullOrBlank()) "Biaya Tambahan 1 ($desc1)" else "Biaya Tambahan 1"
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(lbl1, color = textMain, fontSize = 14.sp)
+                        Text("+ Rp. ${formatter.format(add1)}", color = neonCyan, fontSize = 14.sp)
+                    }
+                }
+                val add2 = customer?.getAdditionalCost2Amount() ?: 0L
+                val desc2 = customer?.additionalCostDesc2
+                if (add2 > 0L) {
+                    val lbl2 = if (!desc2.isNullOrBlank()) "Biaya Tambahan 2 ($desc2)" else "Biaya Tambahan 2"
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(lbl2, color = textMain, fontSize = 14.sp)
+                        Text("+ Rp. ${formatter.format(add2)}", color = neonCyan, fontSize = 14.sp)
+                    }
+                }
                 if (customDiscount > 0) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Diskon", color = textMain, fontSize = 14.sp)
@@ -535,7 +563,7 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Biaya Perbulannya", color = textSecondary, fontSize = 14.sp)
-                    val basePrice = customer?.price ?: "Rp. 0"
+                    val basePrice = customer?.getFormattedTotalBill() ?: customer?.price ?: "Rp. 0"
                     Text(basePrice, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
@@ -1115,7 +1143,13 @@ $monthsDetailText
                                         totalAmount = finalFormatted,
                                         status = "BELUM BAYAR",
                                         isDedicated = isDedicatedPkg,
-                                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                                        packagePrice = cust.price,
+                                        additionalCost1 = cust.additionalCost1,
+                                        additionalCostDesc1 = cust.additionalCostDesc1,
+                                        additionalCost2 = cust.additionalCost2,
+                                        additionalCostDesc2 = cust.additionalCostDesc2,
+                                        discount = cust.discount
                                     )
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                         com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(

@@ -55,17 +55,24 @@ fun ThermalInvoiceView(
 
         LaunchedEffect(customer, months, totalAmount, currentStatus) {
             try {
+                val effectiveTotal = customer?.getFormattedTotalBill() ?: totalAmount
                 invoiceBitmap = InvoiceGenerator.generateInvoiceBitmap(
                     context = context,
                     customerName = customer?.name ?: "-",
                     customerPhone = customer?.phone ?: "-",
-                    customerArea = customer?.area ?: "-",
+                    customerArea = customer?.let { if (it.getEffectiveAddress().isNotBlank()) "${it.area} / ${it.getEffectiveAddress()}" else it.area } ?: "-",
                     packageName = customer?.packageName,
                     months = months,
-                    totalAmount = totalAmount,
+                    totalAmount = effectiveTotal,
                     status = currentStatus,
                     isDedicated = isDedicatedPkg,
-                    serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                    serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                    packagePrice = customer?.price,
+                    additionalCost1 = customer?.additionalCost1,
+                    additionalCostDesc1 = customer?.additionalCostDesc1,
+                    additionalCost2 = customer?.additionalCost2,
+                    additionalCostDesc2 = customer?.additionalCostDesc2,
+                    discount = customer?.discount
                 )
             } catch (_: Exception) {
                 invoiceBitmap = null
@@ -102,6 +109,12 @@ fun ThermalInvoiceView(
     } else {
         // Fallback Monospace Format with Dynamic Status
         val currentDate = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale("id", "ID")).format(Date())
+        val currencyFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+        val add1 = customer?.getAdditionalCost1Amount() ?: 0L
+        val add2 = customer?.getAdditionalCost2Amount() ?: 0L
+        val disc = customer?.getDiscountAmount() ?: 0L
+        val effectiveTotal = customer?.getFormattedTotalBill() ?: totalAmount
+
         Column(
             modifier = modifier
                 .width(300.dp)
@@ -126,7 +139,7 @@ fun ThermalInvoiceView(
             ThermalRow("Tanggal", currentDate)
             ThermalRow("Admin", "Akbar Media")
             ThermalRow("Pelanggan", customer?.name ?: "-")
-            ThermalRow("Area/Alamat", customer?.area ?: "-")
+            ThermalRow("Area/Alamat", customer?.let { if (it.getEffectiveAddress().isNotBlank()) "${it.area} / ${it.getEffectiveAddress()}" else it.area } ?: "-")
             ThermalRow("Bulan", months)
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -143,15 +156,27 @@ fun ThermalInvoiceView(
                 textAlign = TextAlign.Start
             )
             Spacer(modifier = Modifier.height(8.dp))
-            ThermalRow("Iuran Internet", totalAmount)
-            ThermalRow("Biaya Tambahan", "Rp. 0")
-            ThermalRow("Diskon", "Rp. 0")
+            ThermalRow("Iuran Internet", customer?.price ?: totalAmount)
+            if (add1 > 0L) {
+                val label1 = if (!customer?.additionalCostDesc1.isNullOrBlank()) "Biaya Tambahan (${customer.additionalCostDesc1})" else "Biaya Tambahan 1"
+                ThermalRow(label1, "Rp. ${currencyFmt.format(add1)}")
+            }
+            if (add2 > 0L) {
+                val label2 = if (!customer?.additionalCostDesc2.isNullOrBlank()) "Biaya Tambahan (${customer.additionalCostDesc2})" else "Biaya Tambahan 2"
+                ThermalRow(label2, "Rp. ${currencyFmt.format(add2)}")
+            }
+            if (disc > 0L) {
+                ThermalRow("Diskon", "- Rp. ${currencyFmt.format(disc)}")
+            }
+            if (add1 == 0L && add2 == 0L && disc == 0L) {
+                ThermalRow("Biaya Tambahan", "Rp. 0")
+            }
             
             Spacer(modifier = Modifier.height(8.dp))
             ThermalDivider()
             Spacer(modifier = Modifier.height(8.dp))
             
-            ThermalRow("TOTAL", totalAmount, isBold = true)
+            ThermalRow("TOTAL", effectiveTotal, isBold = true)
             ThermalRow("STATUS", currentStatus, isBold = true)
             
             Spacer(modifier = Modifier.height(16.dp))

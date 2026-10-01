@@ -446,6 +446,7 @@ data class CustomerSyncItem(
     val phone: String? = null,
     val area: String? = null,
     val address: String? = null,
+    val alamat: String? = null,
     val username: String? = null,
     val billingDate: String? = null,
     val status: String? = null,
@@ -458,7 +459,11 @@ data class CustomerSyncItem(
     val odp_id: String? = null,
     val odp_port: String? = null,
     val additionalCost1: String? = null,
-    val additionalCost2: String? = null
+    val additionalCost2: String? = null,
+    val additionalCostDesc1: String? = null,
+    val additionalCostDesc2: String? = null,
+    @com.squareup.moshi.Json(name = "additional_cost_desc1") val additional_cost_desc1: String? = null,
+    @com.squareup.moshi.Json(name = "additional_cost_desc2") val additional_cost_desc2: String? = null
 )
 
 data class TagihanSyncItem(

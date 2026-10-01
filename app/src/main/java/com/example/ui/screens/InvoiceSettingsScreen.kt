@@ -75,9 +75,17 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                         input.copyTo(output)
                     }
                 }
+                try {
+                    context.getExternalFilesDir(null)?.let { extDir ->
+                        val extFile = File(extDir, "invoice_kop_logo.png")
+                        destinationFile.copyTo(extFile, overwrite = true)
+                    }
+                } catch (_: Exception) {}
+
                 logoPath = destinationFile.absolutePath
                 SettingsManager.invoiceLogoPath = destinationFile.absolutePath
                 SettingsManager.useInvoiceLogo = true
+                SettingsManager.persistInvoiceSettings(context)
                 previewRefreshKey++
                 Toast.makeText(context, "Logo kop invoice berhasil diunggah", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -749,6 +757,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                     SettingsManager.invoiceFooterText = footerText
                     SettingsManager.invoiceLogoPath = logoPath
                     SettingsManager.useInvoiceLogo = true
+                    SettingsManager.persistInvoiceSettings(context)
                     Toast.makeText(context, "Pengaturan invoice berhasil disimpan", Toast.LENGTH_SHORT).show()
                     onBack()
                 },

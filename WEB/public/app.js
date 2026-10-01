@@ -755,7 +755,9 @@ async function editCustomer(id) {
     
     // Additional pricing fields
     document.getElementById('cust-add1').value = c.additionalCost1 ? c.additionalCost1.replace(/[^0-9]/g, '') : '0';
+    document.getElementById('cust-add1-desc').value = c.additionalCostDesc1 || c.additional_cost_desc1 || '';
     document.getElementById('cust-add2').value = c.additionalCost2 ? c.additionalCost2.replace(/[^0-9]/g, '') : '0';
+    document.getElementById('cust-add2-desc').value = c.additionalCostDesc2 || c.additional_cost_desc2 || '';
     document.getElementById('cust-discount').value = c.discount ? c.discount.replace(/[^0-9]/g, '') : '0';
 
     openModal('modal-customer');
@@ -777,6 +779,8 @@ async function saveCustomer(e) {
         status: document.getElementById('cust-status').value,
         additionalCost1: "Rp. " + parseInt(document.getElementById('cust-add1').value || '0').toLocaleString('id-ID'),
         additionalCost2: "Rp. " + parseInt(document.getElementById('cust-add2').value || '0').toLocaleString('id-ID'),
+        additionalCostDesc1: document.getElementById('cust-add1-desc').value.trim(),
+        additionalCostDesc2: document.getElementById('cust-add2-desc').value.trim(),
         discount: "- Dskn : Rp. " + parseInt(document.getElementById('cust-discount').value || '0').toLocaleString('id-ID')
     };
 

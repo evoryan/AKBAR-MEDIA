@@ -133,6 +133,7 @@ fun CompanySettingsScreen(onBack: () -> Unit) {
                     SettingsManager.dashboardInfo2 = info2
                     SettingsManager.invoiceFooterText = invoiceFooter
                     SettingsManager.supportByText = supportBy
+                    SettingsManager.persistInvoiceSettings()
                     showSuccess = true
                 },
                 modifier = Modifier

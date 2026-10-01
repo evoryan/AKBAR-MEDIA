@@ -55,9 +55,9 @@ fun BackupRestoreScreen(onBack: () -> Unit) {
                     val customers = ApiClient.apiService.getCustomers()
                     context.contentResolver.openOutputStream(it)?.use { os ->
                         val writer = CSVWriter(OutputStreamWriter(os))
-                        writer.writeNext(arrayOf("id", "name", "phone", "area", "username", "billingDate", "status", "price", "discount", "registerDate", "isolateDate", "packageName", "additionalCost1", "additionalCost2", "pppoeSecret", "odpId", "odpPort"))
+                        writer.writeNext(arrayOf("id", "name", "phone", "area", "address", "username", "billingDate", "status", "price", "discount", "registerDate", "isolateDate", "packageName", "additionalCost1", "additionalCost2", "pppoeSecret", "odpId", "odpPort"))
                         for (c in customers) {
-                            writer.writeNext(arrayOf(c.id, c.name, c.phone, c.area, c.username, c.billingDate, c.status, c.price, c.discount, c.registerDate ?: "", c.isolateDate ?: "", c.packageName ?: "", c.additionalCost1 ?: "", c.additionalCost2 ?: "", c.pppoeSecret ?: "", c.odpId ?: "", c.odpPort ?: ""))
+                            writer.writeNext(arrayOf(c.id, c.name, c.phone, c.area, c.address ?: "", c.username, c.billingDate, c.status, c.price, c.discount, c.registerDate ?: "", c.isolateDate ?: "", c.packageName ?: "", c.additionalCost1 ?: "", c.additionalCost2 ?: "", c.pppoeSecret ?: "", c.odpId ?: "", c.odpPort ?: ""))
                         }
                         writer.close()
                     }
@@ -83,11 +83,34 @@ fun BackupRestoreScreen(onBack: () -> Unit) {
                             // skip header
                             for (i in 1 until rows.size) {
                                 val row = rows[i]
-                                if (row.size >= 17) {
+                                if (row.size >= 18) {
                                     val req = com.example.ui.screens.Customer(
                                         name = row[1],
                                         phone = row[2],
                                         area = row[3],
+                                        address = row[4].ifEmpty { null },
+                                        username = row[5],
+                                        billingDate = row[6],
+                                        status = row[7],
+                                        price = row[8],
+                                        discount = row[9],
+                                        registerDate = row[10],
+                                        isolateDate = row[11],
+                                        packageName = row[12],
+                                        additionalCost1 = row[13],
+                                        additionalCost2 = row[14],
+                                        pppoeSecret = row[15],
+                                        odpId = row[16],
+                                        odpPort = row[17]
+                                    )
+                                    ApiClient.apiService.addCustomer(req)
+                                } else if (row.size >= 17) {
+                                    // Older format without address column
+                                    val req = com.example.ui.screens.Customer(
+                                        name = row[1],
+                                        phone = row[2],
+                                        area = row[3],
+                                        address = null,
                                         username = row[4],
                                         billingDate = row[5],
                                         status = row[6],

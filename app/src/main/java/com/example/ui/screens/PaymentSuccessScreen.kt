@@ -94,13 +94,19 @@ fun PaymentSuccessScreen(
                     context = context,
                     customerName = cust.name,
                     customerPhone = cust.phone,
-                    customerArea = cust.area,
+                    customerArea = cust.let { if (it.getEffectiveAddress().isNotBlank()) "${it.area} / ${it.getEffectiveAddress()}" else it.area },
                     packageName = cust.packageName,
                     months = months,
                     totalAmount = formattedAmount,
                     status = currentStatus,
                     isDedicated = isDedicatedPkg,
-                    serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                    serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                    packagePrice = cust.price,
+                    additionalCost1 = cust.additionalCost1,
+                    additionalCostDesc1 = cust.additionalCostDesc1,
+                    additionalCost2 = cust.additionalCost2,
+                    additionalCostDesc2 = cust.additionalCostDesc2,
+                    discount = cust.discount
                 )
             } catch (_: Exception) {
                 null
@@ -274,13 +280,19 @@ fun PaymentSuccessScreen(
                                 context = context,
                                 customerName = customer?.name ?: "-",
                                 customerPhone = phone,
-                                customerArea = customer?.area ?: "-",
+                                customerArea = customer?.let { if (it.getEffectiveAddress().isNotBlank()) "${it.area} / ${it.getEffectiveAddress()}" else it.area } ?: "-",
                                 packageName = customer?.packageName,
                                 months = months,
                                 totalAmount = formattedAmount,
                                 status = currentStatus,
                                 isDedicated = isDedicatedPkg,
-                                serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                                serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                                packagePrice = customer?.price,
+                                additionalCost1 = customer?.additionalCost1,
+                                additionalCostDesc1 = customer?.additionalCostDesc1,
+                                additionalCost2 = customer?.additionalCost2,
+                                additionalCostDesc2 = customer?.additionalCostDesc2,
+                                discount = customer?.discount
                             )
                             withContext(Dispatchers.Main) {
                                 InvoiceGenerator.sendWhatsappInvoiceWithPng(
@@ -310,13 +322,19 @@ fun PaymentSuccessScreen(
                             context = context,
                             customerName = customer?.name ?: "-",
                             customerPhone = phone,
-                            customerArea = customer?.area ?: "-",
+                            customerArea = customer?.let { if (it.getEffectiveAddress().isNotBlank()) "${it.area} / ${it.getEffectiveAddress()}" else it.area } ?: "-",
                             packageName = customer?.packageName,
                             months = months,
                             totalAmount = formattedAmount,
                             status = currentStatus,
                             isDedicated = isDedicatedPkg,
-                            serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                            serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                            packagePrice = customer?.price,
+                            additionalCost1 = customer?.additionalCost1,
+                            additionalCostDesc1 = customer?.additionalCostDesc1,
+                            additionalCost2 = customer?.additionalCost2,
+                            additionalCostDesc2 = customer?.additionalCostDesc2,
+                            discount = customer?.discount
                         )
                         val uri = FileProvider.getUriForFile(
                             context,

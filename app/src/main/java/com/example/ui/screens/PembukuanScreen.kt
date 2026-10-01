@@ -74,9 +74,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                     var cashTotal = 0.0
                     var onlineTotal = 0.0
                     customersRes.forEach { c ->
-                        val priceVal = c.price.replace(Regex("[^0-9]"), "").toDoubleOrNull() ?: 0.0
-                        val discVal = c.discount.replace(Regex("[^0-9]"), "").toDoubleOrNull() ?: 0.0
-                        val finalPrice = if (priceVal > discVal) priceVal - discVal else priceVal
+                        val finalPrice = c.getTotalBillAmount().toDouble()
                         
                         if (c.status.contains("LUNAS CASH", ignoreCase = true)) {
                             cashTotal += finalPrice

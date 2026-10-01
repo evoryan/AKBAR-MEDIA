@@ -156,15 +156,14 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
         AlertDialog(
             onDismissRequest = { showPaymentDialog = false },
             title = { Text("Konfirmasi Pembayaran") },
-            text = { Text("Apakah Anda yakin ingin membayar tagihan untuk pelanggan ${customer?.name} sejumlah ${customer?.price}?") },
+            text = { Text("Apakah Anda yakin ingin membayar tagihan untuk pelanggan ${customer?.name} sejumlah ${customer?.getFormattedTotalBill()}?") },
             confirmButton = {
                 Button(
                     onClick = {
                         isPaying = true
                         coroutineScope.launch {
                             try {
-                                val amountStr = customer?.price?.replace(Regex("[^0-9]"), "") ?: "0"
-                                val amount = amountStr.toDoubleOrNull() ?: 0.0
+                                val amount = customer?.getTotalBillAmount()?.toDouble() ?: 0.0
                                 ApiClient.apiService.payBilling(PaymentRequest(customerId, "Admin", amount))
                                 Toast.makeText(context, "Pembayaran berhasil!", Toast.LENGTH_SHORT).show()
                                 showPaymentDialog = false
@@ -202,13 +201,19 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                         context = context,
                         customerName = cust.name,
                         customerPhone = cust.phone,
-                        customerArea = cust.area,
+                        customerArea = if (cust.getEffectiveAddress().isNotBlank()) "${cust.area} / ${cust.getEffectiveAddress()}" else cust.area,
                         packageName = cust.packageName,
                         months = previewData.months,
                         totalAmount = previewData.amount,
                         status = previewData.status,
                         isDedicated = isDedicatedPkg,
-                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                        packagePrice = cust.price,
+                        additionalCost1 = cust.additionalCost1,
+                        additionalCostDesc1 = cust.additionalCostDesc1,
+                        additionalCost2 = cust.additionalCost2,
+                        additionalCostDesc2 = cust.additionalCostDesc2,
+                        discount = cust.discount
                     )
                 } catch (_: Exception) {
                     null
@@ -328,13 +333,19 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                             context = context,
                                             customerName = customer?.name ?: "-",
                                             customerPhone = phone,
-                                            customerArea = customer?.area ?: "-",
+                                            customerArea = customer?.let { if (it.getEffectiveAddress().isNotBlank()) "${it.area} / ${it.getEffectiveAddress()}" else it.area } ?: "-",
                                             packageName = customer?.packageName,
                                             months = previewData.months,
                                             totalAmount = previewData.amount,
                                             status = previewData.status,
                                             isDedicated = isDedicatedPkg,
-                                            serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                                            serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                                            packagePrice = customer?.price,
+                                            additionalCost1 = customer?.additionalCost1,
+                                            additionalCostDesc1 = customer?.additionalCostDesc1,
+                                            additionalCost2 = customer?.additionalCost2,
+                                            additionalCostDesc2 = customer?.additionalCostDesc2,
+                                            discount = customer?.discount
                                         )
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                             InvoiceGenerator.sendWhatsappInvoiceWithPng(
@@ -363,13 +374,19 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                         context = context,
                                         customerName = customer?.name ?: "-",
                                         customerPhone = phone,
-                                        customerArea = customer?.area ?: "-",
+                                        customerArea = customer?.let { if (it.getEffectiveAddress().isNotBlank()) "${it.area} / ${it.getEffectiveAddress()}" else it.area } ?: "-",
                                         packageName = customer?.packageName,
                                         months = previewData.months,
                                         totalAmount = previewData.amount,
                                         status = previewData.status,
                                         isDedicated = isDedicatedPkg,
-                                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler"
+                                        serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                                        packagePrice = customer?.price,
+                                        additionalCost1 = customer?.additionalCost1,
+                                        additionalCostDesc1 = customer?.additionalCostDesc1,
+                                        additionalCost2 = customer?.additionalCost2,
+                                        additionalCostDesc2 = customer?.additionalCostDesc2,
+                                        discount = customer?.discount
                                     )
                                     val uri = FileProvider.getUriForFile(
                                         context,
@@ -588,6 +605,8 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                             HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))
                             DetailRow("Area", customer?.area ?: "-")
                             HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))
+                            DetailRow("Alamat", customer?.getEffectiveAddress()?.takeIf { it.isNotBlank() } ?: customer?.address?.takeIf { it.isNotBlank() } ?: "-")
+                            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))
                             DetailRow("Tgl Registrasi", customer?.registerDate?.takeIf { it.isNotBlank() } ?: "-")
                             HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))
                             DetailRow("Tgl Isolir", customer?.isolateDate?.takeIf { it.isNotBlank() } ?: "-")
@@ -595,21 +614,29 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
 
                         // Rincian Biaya
                         CardSection(title = "Rincian Biaya", cardBg = cardBg, cardBorder = cardBorder, textMain = textMain) {
+                            val currencyFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                            val add1 = customer?.getAdditionalCost1Amount() ?: 0L
+                            val add2 = customer?.getAdditionalCost2Amount() ?: 0L
+
                             DetailRow("Paket", customer?.packageName?.takeIf { it.isNotBlank() } ?: "-")
                             DetailRow("Harga Paket", customer?.price ?: "-")
                             if (!customer?.discount.isNullOrEmpty() && customer?.discount != "0") {
                                 DetailRow("Diskon", customer?.discount ?: "-")
                             }
-                            if (!customer?.additionalCost1.isNullOrEmpty() && customer?.additionalCost1 != "0") {
-                                DetailRow("Biaya Tambahan 1", "Rp. ${customer?.additionalCost1}")
+                            val desc1 = customer?.additionalCostDesc1
+                            if (add1 > 0L) {
+                                val label1 = if (!desc1.isNullOrBlank()) "Biaya Tambahan 1 ($desc1)" else "Biaya Tambahan 1"
+                                DetailRow(label1, "Rp. ${currencyFmt.format(add1)}")
                             }
-                            if (!customer?.additionalCost2.isNullOrEmpty() && customer?.additionalCost2 != "0") {
-                                DetailRow("Biaya Tambahan 2", "Rp. ${customer?.additionalCost2}")
+                            val desc2 = customer?.additionalCostDesc2
+                            if (add2 > 0L) {
+                                val label2 = if (!desc2.isNullOrBlank()) "Biaya Tambahan 2 ($desc2)" else "Biaya Tambahan 2"
+                                DetailRow(label2, "Rp. ${currencyFmt.format(add2)}")
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Total Biaya Perbulan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontSize = 14.sp)
-                                Text(customer?.price ?: "Rp. 0", color = lightBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(customer?.getFormattedTotalBill() ?: "Rp. 0", color = lightBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
 
                             val isCustomerPaid = customer?.status?.contains("belum", ignoreCase = true) != true &&
@@ -622,7 +649,7 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                     activeInvoicePreview = CustomerInvoicePreview(
                                         title = if (isCustomerPaid) "Faktur Tagihan (Lunas)" else "Faktur Tagihan (Belum Bayar)",
                                         months = "Bulan Berjalan",
-                                        amount = customer?.price ?: "Rp. 0",
+                                        amount = customer?.getFormattedTotalBill() ?: customer?.price ?: "Rp. 0",
                                         status = currentBillStatus
                                     )
                                 },

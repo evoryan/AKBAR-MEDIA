@@ -216,7 +216,9 @@ async function ensureTenantTables(pool) {
             odp_id INT DEFAULT NULL,
             odp_port VARCHAR(10) DEFAULT "",
             additionalCost1 VARCHAR(50) DEFAULT "",
-            additionalCost2 VARCHAR(50) DEFAULT ""
+            additionalCost2 VARCHAR(50) DEFAULT "",
+            additionalCostDesc1 VARCHAR(255) DEFAULT "",
+            additionalCostDesc2 VARCHAR(255) DEFAULT ""
         )`);
         await pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -460,6 +462,8 @@ app.get('/api/fix-db', async (req, res) => {
                 results.push(`${name}: odp_list portInput added`);
             } catch(e) { results.push(`${name}: odp_list portInput err: ${e.message}`); }
 
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN alamat TEXT`); } catch(e) {}
             try { await pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`); } catch(e) {}
             try { await pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`); } catch(e) {}
             try { await pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`); } catch(e) {}
@@ -500,6 +504,8 @@ async function initAllDatabases() {
         await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portCount INT DEFAULT 0`).catch(e=>{});
         await masterPool.query(`ALTER TABLE odp_list ADD COLUMN portInput VARCHAR(100) DEFAULT ''`).catch(e=>{});
 
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN alamat TEXT`).catch(e=>{});
         await masterPool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(e=>{});
@@ -509,6 +515,8 @@ async function initAllDatabases() {
         await masterPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
         
         // 2. Find all tenant databases (baik yang berawalan akbar_ maupun nama kustom seperti ion_network)
@@ -555,6 +563,8 @@ async function initAllDatabases() {
             await tPool.query(`ALTER TABLE odp_list ADD COLUMN redaman_out VARCHAR(50) DEFAULT ''`).catch(e=>{});
 
 
+            await tPool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN alamat TEXT`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(e=>{});
@@ -564,6 +574,8 @@ async function initAllDatabases() {
             await tPool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
         }
         console.log("Schema update complete!");
@@ -995,7 +1007,12 @@ app.get('/api/wa/history', async (req, res) => {
 app.get('/api/customers', async (req, res) => {
     try {
         const [rows] = await req.pool.query('SELECT * FROM customers');
-        const customers = rows.map(r => ({ ...r, id: r.id.toString() }));
+        const customers = rows.map(r => ({
+            ...r,
+            id: r.id.toString(),
+            address: r.address || r.alamat || '',
+            alamat: r.address || r.alamat || ''
+        }));
         res.json(customers);
     } catch (error) {
         console.error(error);
@@ -1079,7 +1096,12 @@ app.get('/api/sync', async (req, res) => {
         const [routerStatus] = await req.pool.query('SELECT * FROM status_router_terakhir');
 
         res.json({
-            customers: customers.map(c => ({ ...c, id: c.id.toString() })),
+            customers: customers.map(c => ({
+                ...c,
+                id: c.id.toString(),
+                address: c.address || c.alamat || '',
+                alamat: c.address || c.alamat || ''
+            })),
             tagihan: tagihan.map(t => ({ ...t, id: t.id.toString(), customer_id: t.customer_id ? t.customer_id.toString() : null })),
             routerStatus: routerStatus.map(r => ({ ...r, id: r.id.toString(), area_id: r.area_id ? r.area_id.toString() : null }))
         });
@@ -1646,6 +1668,13 @@ app.post('/api/customers/:id/isolir', async (req, res) => {
 app.put('/api/customers/:id', async (req, res) => {
     try {
         const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
+        const additionalCostDesc1 = req.body.additionalCostDesc1 || req.body.additional_cost_desc1 || '';
+        const additionalCostDesc2 = req.body.additionalCostDesc2 || req.body.additional_cost_desc2 || '';
+        const rawAddress = (req.body.address !== undefined && req.body.address !== null && req.body.address !== '')
+            ? req.body.address 
+            : (req.body.alamat || '');
+        const address = typeof rawAddress === 'string' ? rawAddress.trim() : '';
+
         const registerDate = req.body.registerDate || req.body.register_date;
         const isolateDate = req.body.isolateDate || req.body.isolate_date;
         const packageName = req.body.packageName || req.body.package_name;
@@ -1655,10 +1684,25 @@ app.put('/api/customers/:id', async (req, res) => {
 
         const parsedOdpId = (odpId !== undefined && odpId !== null && odpId !== '') ? parseInt(odpId) : null;
 
-        await req.pool.query(
-            'UPDATE customers SET name = ?, phone = ?, area = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ? WHERE id = ?',
-            [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', req.params.id]
-        );
+        try {
+            await req.pool.query(
+                'UPDATE customers SET name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, additionalCostDesc1 = ?, additionalCostDesc2 = ? WHERE id = ?',
+                [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', req.params.id]
+            );
+        } catch (updateErr) {
+            if (updateErr.message && updateErr.message.includes("Unknown column")) {
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN alamat TEXT`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(
+                    'UPDATE customers SET name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, additionalCostDesc1 = ?, additionalCostDesc2 = ? WHERE id = ?',
+                    [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', req.params.id]
+                );
+            } else {
+                throw updateErr;
+            }
+        }
 
         res.json({ message: "Pelanggan berhasil diupdate" });
     } catch (error) {
@@ -1677,6 +1721,13 @@ app.post('/api/customers', async (req, res) => {
         }
 
         const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
+        const additionalCostDesc1 = req.body.additionalCostDesc1 || req.body.additional_cost_desc1 || '';
+        const additionalCostDesc2 = req.body.additionalCostDesc2 || req.body.additional_cost_desc2 || '';
+        const rawAddress = (req.body.address !== undefined && req.body.address !== null && req.body.address !== '')
+            ? req.body.address 
+            : (req.body.alamat || '');
+        const address = typeof rawAddress === 'string' ? rawAddress.trim() : '';
+
         const registerDate = req.body.registerDate || req.body.register_date;
         const isolateDate = req.body.isolateDate || req.body.isolate_date;
         const packageName = req.body.packageName || req.body.package_name;
@@ -1688,11 +1739,13 @@ app.post('/api/customers', async (req, res) => {
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '']
+                'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '']
             );
         } catch (e) {
             if (e.message && e.message.includes("Unknown column")) {
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN alamat TEXT`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN isolate_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
@@ -1701,10 +1754,12 @@ app.post('/api/customers', async (req, res) => {
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 
                 [result] = await req.pool.query(
-                    'INSERT INTO customers (name, phone, area, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [name, phone, area, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '']
+                    'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '']
                 );
             } else {
                 throw e;

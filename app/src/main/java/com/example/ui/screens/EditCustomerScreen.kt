@@ -41,6 +41,7 @@ fun EditCustomerScreen(customerId: String,
     onBack: () -> Unit
 ) {
     val bgDark = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
+    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1E1E2A) else androidx.compose.ui.graphics.Color(0xFFF0F2F5)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
     val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
     val primaryPurple = Color(0xFF9D00FF)
@@ -68,7 +69,9 @@ fun EditCustomerScreen(customerId: String,
     var selectedPort by remember { mutableStateOf("") }
     
     var additionalCost1 by remember { mutableStateOf("") }
+    var additionalCostDesc1 by remember { mutableStateOf("") }
     var additionalCost2 by remember { mutableStateOf("") }
+    var additionalCostDesc2 by remember { mutableStateOf("") }
 
     var areas by remember { mutableStateOf<List<Area>>(emptyList()) }
     var packages by remember { mutableStateOf<List<InternetPackage>>(emptyList()) }
@@ -171,14 +174,16 @@ fun EditCustomerScreen(customerId: String,
                 originalCustomer = cust
                 name = cust.name
                 phone = cust.phone
-                address = cust.address ?: ""
+                address = cust.getEffectiveAddress().ifEmpty { cust.address ?: "" }
                 registerDate = cust.registerDate ?: ""
                 billingDate = cust.billingDate
                 isolateDate = cust.isolateDate ?: ""
                 selectedArea = areas.find { it.name == cust.area }
                 selectedPackage = packages.find { it.name == cust.packageName }
                 additionalCost1 = cust.additionalCost1 ?: ""
+                additionalCostDesc1 = cust.additionalCostDesc1 ?: ""
                 additionalCost2 = cust.additionalCost2 ?: ""
+                additionalCostDesc2 = cust.additionalCostDesc2 ?: ""
                 if (!cust.odpId.isNullOrEmpty()) {
                     selectedOdp = odps.find { it.id.toString() == cust.odpId }
                     selectedPort = cust.odpPort ?: ""
@@ -843,21 +848,89 @@ fun EditCustomerScreen(customerId: String,
                         OutlinedTextField(
                             value = additionalCost1,
                             onValueChange = { additionalCost1 = it },
-                            label = { Text("Biaya Tambahan 1", color = textSecondary) },
+                            label = { Text("Biaya Tambahan 1 (Rp)", color = textSecondary) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
                             singleLine = true
                         )
                         OutlinedTextField(
+                            value = additionalCostDesc1,
+                            onValueChange = { additionalCostDesc1 = it },
+                            label = { Text("Keterangan Biaya Tambahan 1 (Opsional)", color = textSecondary) },
+                            placeholder = { Text("Contoh: Sewa Router / IP Publik", color = textSecondary.copy(alpha = 0.5f)) },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
                             value = additionalCost2,
                             onValueChange = { additionalCost2 = it },
-                            label = { Text("Biaya Tambahan 2", color = textSecondary) },
+                            label = { Text("Biaya Tambahan 2 (Rp)", color = textSecondary) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
                             singleLine = true
                         )
+                        OutlinedTextField(
+                            value = additionalCostDesc2,
+                            onValueChange = { additionalCostDesc2 = it },
+                            label = { Text("Keterangan Biaya Tambahan 2 (Opsional)", color = textSecondary) },
+                            placeholder = { Text("Contoh: Kabel Tambahan / Jasa Pasang", color = textSecondary.copy(alpha = 0.5f)) },
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
+                            singleLine = true
+                        )
+
+                        // Live Ringkasan Total Tagihan Bulanan
+                        val parsedBasePrice = selectedPackage?.price?.toLong() ?: originalCustomer?.price?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+                        val parsedAddCost1 = additionalCost1.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                        val parsedAddCost2 = additionalCost2.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                        val parsedDiscount = originalCustomer?.discount?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+                        val totalBillCalculated = (parsedBasePrice - parsedDiscount + parsedAddCost1 + parsedAddCost2).coerceAtLeast(0L)
+                        val currencyFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = cardBg),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan.copy(alpha = 0.4f))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Ringkasan Total Tagihan Bulanan", fontWeight = FontWeight.Bold, color = neonCyan, fontSize = 14.sp)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Harga Paket (${selectedPackage?.name ?: originalCustomer?.packageName ?: "Paket"})", color = textSecondary, fontSize = 13.sp)
+                                    Text("Rp ${currencyFmt.format(parsedBasePrice)}", color = textMain, fontSize = 13.sp)
+                                }
+                                if (parsedAddCost1 > 0L) {
+                                    val label1 = if (additionalCostDesc1.isNotBlank()) "Biaya Tambahan 1 (${additionalCostDesc1})" else "Biaya Tambahan 1"
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(label1, color = textSecondary, fontSize = 13.sp)
+                                        Text("+ Rp ${currencyFmt.format(parsedAddCost1)}", color = neonCyan, fontSize = 13.sp)
+                                    }
+                                }
+                                if (parsedAddCost2 > 0L) {
+                                    val label2 = if (additionalCostDesc2.isNotBlank()) "Biaya Tambahan 2 (${additionalCostDesc2})" else "Biaya Tambahan 2"
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(label2, color = textSecondary, fontSize = 13.sp)
+                                        Text("+ Rp ${currencyFmt.format(parsedAddCost2)}", color = neonCyan, fontSize = 13.sp)
+                                    }
+                                }
+                                if (parsedDiscount > 0L) {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Diskon", color = textSecondary, fontSize = 13.sp)
+                                        Text("- Rp ${currencyFmt.format(parsedDiscount)}", color = Color(0xFF00FF4D), fontSize = 13.sp)
+                                    }
+                                }
+                                HorizontalDivider(color = textSecondary.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Total Tagihan / Bulan", fontWeight = FontWeight.Bold, color = textMain, fontSize = 14.sp)
+                                    Text("Rp ${currencyFmt.format(totalBillCalculated)}", fontWeight = FontWeight.Bold, color = neonCyan, fontSize = 16.sp)
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
@@ -871,6 +944,59 @@ fun EditCustomerScreen(customerId: String,
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("LANJUT", fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                isNameError = name.isBlank()
+                                isPhoneError = !isPhoneValid
+                                if (isFormValid) {
+                                    coroutineScope.launch {
+                                        try {
+                                            val cleanAddress = address.trim()
+                                            val updatedCust = Customer(
+                                                id = customerId,
+                                                name = name.trim(),
+                                                phone = phone.trim(),
+                                                area = selectedArea?.name ?: originalCustomer?.area ?: "Semua",
+                                                address = cleanAddress.ifEmpty { null },
+                                                alamat = cleanAddress.ifEmpty { null },
+                                                username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""),
+                                                billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" },
+                                                registerDate = registerDate,
+                                                isolateDate = isolateDate,
+                                                packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "",
+                                                status = originalCustomer?.status ?: "BELUM BAYAR",
+                                                price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0",
+                                                discount = originalCustomer?.discount ?: "- Dskn : Rp. 0",
+                                                additionalCost1 = additionalCost1,
+                                                additionalCost2 = additionalCost2,
+                                                additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null },
+                                                additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null },
+                                                pppoeSecret = secretInput,
+                                                odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId,
+                                                odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
+                                            )
+                                            ApiClient.apiService.updateCustomer(customerId, updatedCust)
+                                            Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()
+                                            onBack()
+                                        } catch(e: retrofit2.HttpException) {
+                                            val errBody = e.response()?.errorBody()?.string()
+                                            android.util.Log.e("EditCust", "HTTP Error: $errBody", e)
+                                            Toast.makeText(context, "Error: $errBody", Toast.LENGTH_LONG).show()
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("EditCust", "Exception", e)
+                                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isFormValid) neonCyan else neonCyan.copy(alpha = 0.5f), contentColor = Color.Black),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("SIMPAN SEKARANG", fontWeight = FontWeight.Bold)
                         }
                     } else if (selectedTabIndex == 1) {
                         Text("Pilih Secret PPPoE untuk binding pelanggan:", color = textMain, fontSize = 14.sp)
@@ -935,8 +1061,9 @@ fun EditCustomerScreen(customerId: String,
                             onClick = {
                                 coroutineScope.launch {
                                     try {
+                                        val cleanAddress = address.trim()
                                         val updatedCust = Customer(
-                                            id = customerId, name = name, phone = phone, area = selectedArea?.name ?: originalCustomer?.area ?: "Semua", address = address, username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "", status = originalCustomer?.status ?: "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0", discount = originalCustomer?.discount ?: "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = secretInput, odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId, odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
+                                            id = customerId, name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: originalCustomer?.area ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "", status = originalCustomer?.status ?: "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0", discount = originalCustomer?.discount ?: "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null }, additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null }, pppoeSecret = secretInput, odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId, odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
                                         )
                                         ApiClient.apiService.updateCustomer(customerId, updatedCust)
                                         Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()
@@ -1020,8 +1147,9 @@ fun EditCustomerScreen(customerId: String,
                             onClick = {
                                 coroutineScope.launch {
                                     try {
+                                        val cleanAddress = address.trim()
                                         val updatedCust = Customer(
-                                            id = customerId, name = name, phone = phone, area = selectedArea?.name ?: originalCustomer?.area ?: "Semua", address = address, username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "", status = originalCustomer?.status ?: "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0", discount = originalCustomer?.discount ?: "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, pppoeSecret = secretInput, odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId, odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
+                                            id = customerId, name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: originalCustomer?.area ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "", status = originalCustomer?.status ?: "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0", discount = originalCustomer?.discount ?: "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null }, additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null }, pppoeSecret = secretInput, odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId, odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
                                         )
                                         ApiClient.apiService.updateCustomer(customerId, updatedCust)
                                         Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()

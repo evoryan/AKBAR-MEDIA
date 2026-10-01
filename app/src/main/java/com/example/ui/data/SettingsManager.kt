@@ -12,11 +12,14 @@ object SettingsManager {
     private const val KEY_SUPPORT_BY = "support_by"
 
     private lateinit var prefs: SharedPreferences
+    private var appContext: Context? = null
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         themeStateFlow.value = appTheme
         fontScaleStateFlow.value = fontScale
+        restoreInvoiceSettingsIfPresent(context)
     }
 
     private const val KEY_API_BASE_URL = "api_base_url"
@@ -37,7 +40,10 @@ object SettingsManager {
 
     var companyName: String
         get() = prefs.getString(KEY_COMPANY_NAME, "Akbar Media") ?: "Akbar Media"
-        set(value) = prefs.edit().putString(KEY_COMPANY_NAME, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_COMPANY_NAME, value).apply()
+            persistInvoiceSettings()
+        }
 
     var dashboardInfo1: String
         get() = prefs.getString(KEY_DASHBOARD_INFO, "Pemeliharaan server pada 12 Agustus 2026") ?: "Pemeliharaan server pada 12 Agustus 2026"
@@ -70,40 +76,83 @@ object SettingsManager {
     private const val KEY_COMPANY_SLOGAN = "company_slogan"
     var companySlogan: String
         get() = prefs.getString(KEY_COMPANY_SLOGAN, "PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS") ?: "PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS"
-        set(value) = prefs.edit().putString(KEY_COMPANY_SLOGAN, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_COMPANY_SLOGAN, value).apply()
+            persistInvoiceSettings()
+        }
 
     private const val KEY_COMPANY_ADDRESS = "company_address"
     var companyAddress: String
         get() = prefs.getString(KEY_COMPANY_ADDRESS, "Jln. Raya Akbar Media, Indonesia") ?: "Jln. Raya Akbar Media, Indonesia"
-        set(value) = prefs.edit().putString(KEY_COMPANY_ADDRESS, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_COMPANY_ADDRESS, value).apply()
+            persistInvoiceSettings()
+        }
 
     private const val KEY_COMPANY_CONTACT = "company_contact"
     var companyContact: String
         get() = prefs.getString(KEY_COMPANY_CONTACT, "WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id") ?: "WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id"
-        set(value) = prefs.edit().putString(KEY_COMPANY_CONTACT, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_COMPANY_CONTACT, value).apply()
+            persistInvoiceSettings()
+        }
 
     var invoiceHeader: String
         get() = prefs.getString("invoice_header", "$companyName\n$companySlogan\n$companyAddress\n$companyContact") ?: "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
-        set(value) = prefs.edit().putString("invoice_header", value).apply()
+        set(value) {
+            prefs.edit().putString("invoice_header", value).apply()
+            persistInvoiceSettings()
+        }
 
     var invoiceFooterText: String
         get() = prefs.getString(KEY_INVOICE_FOOTER, "L U N A S") ?: "L U N A S"
-        set(value) = prefs.edit().putString(KEY_INVOICE_FOOTER, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_INVOICE_FOOTER, value).apply()
+            persistInvoiceSettings()
+        }
 
     var invoiceLogoPath: String?
-        get() = prefs.getString("invoice_logo_path", prefs.getString("custom_invoice_template_path", null))
+        get() {
+            val saved = prefs.getString("invoice_logo_path", prefs.getString("custom_invoice_template_path", null))
+            if (!saved.isNullOrBlank() && java.io.File(saved).exists()) {
+                return saved
+            }
+            appContext?.let { ctx ->
+                val localFile = java.io.File(ctx.filesDir, "invoice_kop_logo.png")
+                if (localFile.exists()) {
+                    return localFile.absolutePath
+                }
+                val extFile = ctx.getExternalFilesDir(null)?.let { java.io.File(it, "invoice_kop_logo.png") }
+                if (extFile != null && extFile.exists()) {
+                    try {
+                        extFile.copyTo(localFile, overwrite = true)
+                        return localFile.absolutePath
+                    } catch (_: Exception) {
+                        return extFile.absolutePath
+                    }
+                }
+            }
+            return saved
+        }
         set(value) {
             prefs.edit().putString("invoice_logo_path", value).apply()
             prefs.edit().putString("custom_invoice_template_path", value).apply()
+            persistInvoiceSettings()
         }
 
     var useInvoiceLogo: Boolean
         get() = prefs.getBoolean("use_invoice_logo", true)
-        set(value) = prefs.edit().putBoolean("use_invoice_logo", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("use_invoice_logo", value).apply()
+            persistInvoiceSettings()
+        }
 
     var useCustomInvoiceTemplate: Boolean
         get() = prefs.getBoolean("use_custom_invoice_template", true)
-        set(value) = prefs.edit().putBoolean("use_custom_invoice_template", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("use_custom_invoice_template", value).apply()
+            persistInvoiceSettings()
+        }
 
     var customInvoiceTemplatePath: String?
         get() = invoiceLogoPath
@@ -113,11 +162,115 @@ object SettingsManager {
 
     var customInvoiceOverlayData: Boolean
         get() = prefs.getBoolean("custom_invoice_overlay_data", true)
-        set(value) = prefs.edit().putBoolean("custom_invoice_overlay_data", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("custom_invoice_overlay_data", value).apply()
+            persistInvoiceSettings()
+        }
 
     var supportByText: String
         get() = prefs.getString(KEY_SUPPORT_BY, "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit") ?: "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit"
-        set(value) = prefs.edit().putString(KEY_SUPPORT_BY, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_SUPPORT_BY, value).apply()
+            persistInvoiceSettings()
+        }
+
+    fun persistInvoiceSettings(context: Context? = null) {
+        val ctx = context ?: appContext ?: return
+        try {
+            val json = org.json.JSONObject().apply {
+                put("company_name", prefs.getString(KEY_COMPANY_NAME, "Akbar Media"))
+                put("company_slogan", prefs.getString(KEY_COMPANY_SLOGAN, "PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS"))
+                put("company_address", prefs.getString(KEY_COMPANY_ADDRESS, "Jln. Raya Akbar Media, Indonesia"))
+                put("company_contact", prefs.getString(KEY_COMPANY_CONTACT, "WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id"))
+                put("invoice_header", prefs.getString("invoice_header", ""))
+                put("invoice_footer", prefs.getString(KEY_INVOICE_FOOTER, "L U N A S"))
+                put("support_by", prefs.getString(KEY_SUPPORT_BY, "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit"))
+                put("use_invoice_logo", prefs.getBoolean("use_invoice_logo", true))
+                put("use_custom_invoice_template", prefs.getBoolean("use_custom_invoice_template", true))
+                put("custom_invoice_overlay_data", prefs.getBoolean("custom_invoice_overlay_data", true))
+                put("invoice_logo_path", prefs.getString("invoice_logo_path", ""))
+            }.toString(2)
+
+            // Save to internal storage
+            val internalFile = java.io.File(ctx.filesDir, "invoice_settings_persistent.json")
+            internalFile.writeText(json)
+
+            // Save copy to external files dir (if available) for multi-level durability across updates
+            ctx.getExternalFilesDir(null)?.let { extDir ->
+                val extFile = java.io.File(extDir, "invoice_settings_persistent.json")
+                extFile.writeText(json)
+            }
+
+            // Also backup logo file to external files dir if available
+            val localLogo = java.io.File(ctx.filesDir, "invoice_kop_logo.png")
+            if (localLogo.exists()) {
+                ctx.getExternalFilesDir(null)?.let { extDir ->
+                    val extLogo = java.io.File(extDir, "invoice_kop_logo.png")
+                    if (!extLogo.exists() || extLogo.length() != localLogo.length()) {
+                        localLogo.copyTo(extLogo, overwrite = true)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsManager", "Error persisting invoice settings: ${e.message}")
+        }
+    }
+
+    private fun restoreInvoiceSettingsIfPresent(context: Context) {
+        try {
+            val internalFile = java.io.File(context.filesDir, "invoice_settings_persistent.json")
+            val extFile = context.getExternalFilesDir(null)?.let { java.io.File(it, "invoice_settings_persistent.json") }
+            
+            val targetFile = when {
+                internalFile.exists() && internalFile.length() > 0 -> internalFile
+                extFile != null && extFile.exists() && extFile.length() > 0 -> extFile
+                else -> null
+            }
+
+            if (targetFile != null) {
+                val jsonStr = targetFile.readText()
+                val json = org.json.JSONObject(jsonStr)
+                val editor = prefs.edit()
+                
+                if (json.has("company_name") && !prefs.contains(KEY_COMPANY_NAME)) {
+                    editor.putString(KEY_COMPANY_NAME, json.getString("company_name"))
+                }
+                if (json.has("company_slogan") && !prefs.contains(KEY_COMPANY_SLOGAN)) {
+                    editor.putString(KEY_COMPANY_SLOGAN, json.getString("company_slogan"))
+                }
+                if (json.has("company_address") && !prefs.contains(KEY_COMPANY_ADDRESS)) {
+                    editor.putString(KEY_COMPANY_ADDRESS, json.getString("company_address"))
+                }
+                if (json.has("company_contact") && !prefs.contains(KEY_COMPANY_CONTACT)) {
+                    editor.putString(KEY_COMPANY_CONTACT, json.getString("company_contact"))
+                }
+                if (json.has("invoice_header") && !prefs.contains("invoice_header")) {
+                    editor.putString("invoice_header", json.getString("invoice_header"))
+                }
+                if (json.has("invoice_footer") && !prefs.contains(KEY_INVOICE_FOOTER)) {
+                    editor.putString(KEY_INVOICE_FOOTER, json.getString("invoice_footer"))
+                }
+                if (json.has("support_by") && !prefs.contains(KEY_SUPPORT_BY)) {
+                    editor.putString(KEY_SUPPORT_BY, json.getString("support_by"))
+                }
+                if (json.has("use_invoice_logo") && !prefs.contains("use_invoice_logo")) {
+                    editor.putBoolean("use_invoice_logo", json.getBoolean("use_invoice_logo"))
+                }
+                if (json.has("use_custom_invoice_template") && !prefs.contains("use_custom_invoice_template")) {
+                    editor.putBoolean("use_custom_invoice_template", json.getBoolean("use_custom_invoice_template"))
+                }
+                if (json.has("invoice_logo_path") && !prefs.contains("invoice_logo_path")) {
+                    val path = json.getString("invoice_logo_path")
+                    if (path.isNotBlank()) {
+                        editor.putString("invoice_logo_path", path)
+                    }
+                }
+                editor.apply()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsManager", "Error restoring invoice settings: ${e.message}")
+        }
+    }
 
     // WhatsApp Gateway Settings
     var waGatewayEnabled: Boolean

@@ -39,7 +39,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val filteredPelanggan = pelangganList.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) && it.status != "TERHAPUS" }
                 val paidCount = filteredPelanggan.count { it.status == "LUNAS CASH" }
                 val unpaidCount = filteredPelanggan.size - paidCount
-                val totalGlobalRevenue = filteredPelanggan.sumOf { it.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L }.toDouble()
+                val totalGlobalRevenue = filteredPelanggan.sumOf { p ->
+                    val base = p.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                    val disc = p.discount.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                    val add1 = p.additionalCost1?.replace(Regex("\\.0$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+                    val add2 = p.additionalCost2?.replace(Regex("\\.0$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+                    (base - disc + add1 + add2).coerceAtLeast(0L)
+                }.toDouble()
 
                 val summaryResponse = DashboardSummaryResponse(
                     totalCustomers = filteredPelanggan.size,
@@ -77,12 +83,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val syncResponse = ApiClient.apiService.syncData()
                 
                 val pelangganList = syncResponse.customers.map { item ->
+                    val resolvedAddress = item.address?.takeIf { it.isNotBlank() } ?: item.alamat
                     com.example.ui.data.local.PelangganEntity(
                         id = item.id.toIntOrNull() ?: 0,
                         name = item.name ?: "",
                         phone = item.phone ?: "",
                         area = item.area ?: "",
-                        address = item.address,
+                        address = resolvedAddress,
+                        alamat = resolvedAddress,
                         username = item.username ?: "",
                         billingDate = item.billingDate ?: "",
                         status = item.status ?: "",

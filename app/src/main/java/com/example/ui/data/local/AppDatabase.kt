@@ -11,6 +11,7 @@ data class PelangganEntity(
     val phone: String,
     val area: String,
     val address: String? = null,
+    val alamat: String? = null,
     val username: String,
     val billingDate: String,
     val status: String,
@@ -23,7 +24,9 @@ data class PelangganEntity(
     val odp_id: Int? = null,
     val odp_port: String? = null,
     val additionalCost1: String? = null,
-    val additionalCost2: String? = null
+    val additionalCost2: String? = null,
+    val additionalCostDesc1: String? = null,
+    val additionalCostDesc2: String? = null
 )
 
 @Entity(tableName = "tagihan")
@@ -123,7 +126,7 @@ interface GangguanDao {
     suspend fun deleteGangguan(id: Int)
 }
 
-@Database(entities = [PelangganEntity::class, TagihanEntity::class, StatusRouterTerakhirEntity::class, GangguanEntity::class], version = 3, exportSchema = false)
+@Database(entities = [PelangganEntity::class, TagihanEntity::class, StatusRouterTerakhirEntity::class, GangguanEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pelangganDao(): PelangganDao
     abstract fun tagihanDao(): TagihanDao

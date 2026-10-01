@@ -30,7 +30,13 @@ object InvoiceGenerator {
         status: String = "BELUM BAYAR",
         invoiceNo: String = "INV-${System.currentTimeMillis().toString().takeLast(6)}",
         isDedicated: Boolean? = null,
-        serviceType: String? = null
+        serviceType: String? = null,
+        packagePrice: String? = null,
+        additionalCost1: String? = null,
+        additionalCostDesc1: String? = null,
+        additionalCost2: String? = null,
+        additionalCostDesc2: String? = null,
+        discount: String? = null
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(INVOICE_WIDTH, INVOICE_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -360,26 +366,123 @@ object InvoiceGenerator {
             isAntiAlias = true
         }
 
-        // Row 1: Langganan Internet
-        val r1Rect = RectF(kopLeft, rowY, kopLeft + tableWidth, rowY + tableRowH)
-        canvas.drawRect(r1Rect, rowBgEven)
-        canvas.drawRect(r1Rect, rowBorder)
-        canvas.drawText("1", colNoX, rowY + 32f, tdCenter)
-        val packageDesc = if (!packageName.isNullOrBlank()) "Iuran Langganan Internet ($packageName)" else "Iuran Langganan Internet ($serviceTypeDisplay)"
-        canvas.drawText(packageDesc, colDescX, rowY + 32f, tdText)
-        canvas.drawText(months, colPeriodX, rowY + 32f, tdText)
-        canvas.drawText(totalAmount, colAmountX, rowY + 32f, tdAmount)
-        rowY += tableRowH
+        fun parseInvoiceAmount(str: String?): Long {
+            if (str.isNullOrBlank()) return 0L
+            return str.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+        }
 
-        // Row 2: Biaya Pemeliharaan / Administrasi (Rp 0)
-        val r2Rect = RectF(kopLeft, rowY, kopLeft + tableWidth, rowY + tableRowH)
-        canvas.drawRect(r2Rect, rowBgOdd)
-        canvas.drawRect(r2Rect, rowBorder)
-        canvas.drawText("2", colNoX, rowY + 32f, tdCenter)
-        canvas.drawText("Biaya Administrasi & Pemeliharaan Jaringan", colDescX, rowY + 32f, tdText)
-        canvas.drawText("-", colPeriodX, rowY + 32f, tdText)
-        canvas.drawText("Rp 0", colAmountX, rowY + 32f, tdAmount)
-        rowY += tableRowH
+        fun formatInvoiceRupiah(amount: Long): String {
+            val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+            return "Rp ${formatter.format(amount)}"
+        }
+
+        val parsedPkgPrice = parseInvoiceAmount(packagePrice)
+        val parsedAdd1 = parseInvoiceAmount(additionalCost1)
+        val parsedAdd2 = parseInvoiceAmount(additionalCost2)
+        val parsedDiscount = parseInvoiceAmount(discount)
+
+        data class InvoiceItemLine(
+            val no: String,
+            val description: String,
+            val period: String,
+            val amountFormatted: String
+        )
+
+        val invoiceLines = mutableListOf<InvoiceItemLine>()
+
+        // Row 1: Langganan Internet
+        val baseInternetAmountStr = if (parsedPkgPrice > 0L) {
+            formatInvoiceRupiah(parsedPkgPrice)
+        } else if (parsedAdd1 > 0L || parsedAdd2 > 0L || parsedDiscount > 0L) {
+            val totalParsed = parseInvoiceAmount(totalAmount)
+            val deduced = (totalParsed - parsedAdd1 - parsedAdd2 + parsedDiscount).coerceAtLeast(0L)
+            if (deduced > 0L) formatInvoiceRupiah(deduced) else totalAmount
+        } else {
+            totalAmount
+        }
+
+        val packageDesc = if (!packageName.isNullOrBlank()) "Iuran Langganan Internet ($packageName)" else "Iuran Langganan Internet ($serviceTypeDisplay)"
+        invoiceLines.add(
+            InvoiceItemLine(
+                no = "1",
+                description = packageDesc,
+                period = months,
+                amountFormatted = baseInternetAmountStr
+            )
+        )
+
+        var itemCounter = 2
+
+        // Row 2: Biaya Tambahan 1 (if > 0)
+        if (parsedAdd1 > 0L) {
+            val desc1 = if (!additionalCostDesc1.isNullOrBlank()) {
+                "Biaya Tambahan: $additionalCostDesc1"
+            } else {
+                "Biaya Tambahan 1"
+            }
+            invoiceLines.add(
+                InvoiceItemLine(
+                    no = (itemCounter++).toString(),
+                    description = desc1,
+                    period = "-",
+                    amountFormatted = formatInvoiceRupiah(parsedAdd1)
+                )
+            )
+        }
+
+        // Row 3: Biaya Tambahan 2 (if > 0)
+        if (parsedAdd2 > 0L) {
+            val desc2 = if (!additionalCostDesc2.isNullOrBlank()) {
+                "Biaya Tambahan: $additionalCostDesc2"
+            } else {
+                "Biaya Tambahan 2"
+            }
+            invoiceLines.add(
+                InvoiceItemLine(
+                    no = (itemCounter++).toString(),
+                    description = desc2,
+                    period = "-",
+                    amountFormatted = formatInvoiceRupiah(parsedAdd2)
+                )
+            )
+        }
+
+        // Row: Discount (if > 0)
+        if (parsedDiscount > 0L) {
+            invoiceLines.add(
+                InvoiceItemLine(
+                    no = (itemCounter++).toString(),
+                    description = "Potongan / Diskon Langganan",
+                    period = "-",
+                    amountFormatted = "- ${formatInvoiceRupiah(parsedDiscount)}"
+                )
+            )
+        }
+
+        // Fallback default row if no additional costs and no discount
+        if (parsedAdd1 == 0L && parsedAdd2 == 0L && parsedDiscount == 0L) {
+            invoiceLines.add(
+                InvoiceItemLine(
+                    no = "2",
+                    description = "Biaya Administrasi & Pemeliharaan Jaringan",
+                    period = "-",
+                    amountFormatted = "Rp 0"
+                )
+            )
+        }
+
+        // Render Table Rows
+        invoiceLines.forEachIndexed { index, line ->
+            val rowBg = if (index % 2 == 0) rowBgEven else rowBgOdd
+            val rRect = RectF(kopLeft, rowY, kopLeft + tableWidth, rowY + tableRowH)
+            canvas.drawRect(rRect, rowBg)
+            canvas.drawRect(rRect, rowBorder)
+            canvas.drawText(line.no, colNoX, rowY + 32f, tdCenter)
+            canvas.drawText(line.description, colDescX, rowY + 32f, tdText)
+            canvas.drawText(line.period, colPeriodX, rowY + 32f, tdText)
+            canvas.drawText(line.amountFormatted, colAmountX, rowY + 32f, tdAmount)
+            rowY += tableRowH
+        }
 
         // Total Row
         val totalH = 56f
@@ -411,8 +514,20 @@ object InvoiceGenerator {
             textAlign = Paint.Align.RIGHT
             isAntiAlias = true
         }
+
+        val calculatedTotalLong = if (parsedPkgPrice > 0L) {
+            (parsedPkgPrice - parsedDiscount + parsedAdd1 + parsedAdd2).coerceAtLeast(0L)
+        } else {
+            parseInvoiceAmount(totalAmount)
+        }
+        val displayTotalAmount = if (calculatedTotalLong > 0L) {
+            formatInvoiceRupiah(calculatedTotalLong)
+        } else {
+            totalAmount
+        }
+
         canvas.drawText("TOTAL PEMBAYARAN", colDescX, rowY + 36f, totalTitle)
-        canvas.drawText(totalAmount, colAmountX, rowY + 38f, totalVal)
+        canvas.drawText(displayTotalAmount, colAmountX, rowY + 38f, totalVal)
 
         // 7. Bottom Section (Notes, Status Stamp, and Signature)
         val bottomY = rowY + totalH + 24f
@@ -582,7 +697,13 @@ object InvoiceGenerator {
         status: String = "BELUM BAYAR",
         invoiceNo: String = "INV-${System.currentTimeMillis().toString().takeLast(6)}",
         isDedicated: Boolean? = null,
-        serviceType: String? = null
+        serviceType: String? = null,
+        packagePrice: String? = null,
+        additionalCost1: String? = null,
+        additionalCostDesc1: String? = null,
+        additionalCost2: String? = null,
+        additionalCostDesc2: String? = null,
+        discount: String? = null
     ): File {
         val bitmap = generateInvoiceBitmap(
             context = context,
@@ -595,7 +716,13 @@ object InvoiceGenerator {
             status = status,
             invoiceNo = invoiceNo,
             isDedicated = isDedicated,
-            serviceType = serviceType
+            serviceType = serviceType,
+            packagePrice = packagePrice,
+            additionalCost1 = additionalCost1,
+            additionalCostDesc1 = additionalCostDesc1,
+            additionalCost2 = additionalCost2,
+            additionalCostDesc2 = additionalCostDesc2,
+            discount = discount
         )
 
         val cleanPhone = customerPhone.replace(Regex("[^0-9]"), "")

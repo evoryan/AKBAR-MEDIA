@@ -76,12 +76,14 @@ fun CustomersScreen(
 
     val customers = remember(localPelangganList) {
         localPelangganList.map { entity ->
+            val resolvedAddress = entity.address?.takeIf { it.isNotBlank() } ?: entity.alamat
             Customer(
                 id = entity.id.toString(),
                 name = entity.name,
                 phone = entity.phone,
                 area = entity.area,
-                address = entity.address,
+                address = resolvedAddress,
+                alamat = resolvedAddress,
                 username = entity.username,
                 billingDate = entity.billingDate,
                 status = entity.status,
@@ -92,6 +94,8 @@ fun CustomersScreen(
                 packageName = entity.package_name,
                 additionalCost1 = entity.additionalCost1,
                 additionalCost2 = entity.additionalCost2,
+                additionalCostDesc1 = entity.additionalCostDesc1,
+                additionalCostDesc2 = entity.additionalCostDesc2,
                 pppoeSecret = entity.pppoe_secret,
                 odpId = entity.odp_id?.toString(),
                 odpPort = entity.odp_port
@@ -104,12 +108,14 @@ fun CustomersScreen(
             UserSession.getOrFetchAreas()
             val syncResponse = ApiClient.apiService.syncData()
             val mapped = syncResponse.customers.map { item ->
+                val resolvedAddress = item.address?.takeIf { it.isNotBlank() } ?: item.alamat
                 PelangganEntity(
                     id = item.id.toIntOrNull() ?: 0,
                     name = item.name ?: "",
                     phone = item.phone ?: "",
                     area = item.area ?: "",
-                    address = item.address,
+                    address = resolvedAddress,
+                    alamat = resolvedAddress,
                     username = item.username ?: "",
                     billingDate = item.billingDate ?: "",
                     status = item.status ?: "",
@@ -122,7 +128,9 @@ fun CustomersScreen(
                     odp_id = item.odp_id?.toIntOrNull(),
                     odp_port = item.odp_port,
                     additionalCost1 = item.additionalCost1,
-                    additionalCost2 = item.additionalCost2
+                    additionalCost2 = item.additionalCost2,
+                    additionalCostDesc1 = item.additionalCostDesc1 ?: item.additional_cost_desc1,
+                    additionalCostDesc2 = item.additionalCostDesc2 ?: item.additional_cost_desc2
                 )
             }
             val tagihanMapped = syncResponse.tagihan.map { item ->
@@ -159,9 +167,9 @@ fun CustomersScreen(
     }
     
     val activeCustomers = customers.filter { it.status != "TERHAPUS" }
-    val totalPendapatanGlobal = activeCustomers.sumOf { it.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L }
+    val totalPendapatanGlobal = activeCustomers.sumOf { it.getTotalBillAmount() }
     val activeFilteredCustomers = filteredCustomers.filter { it.status != "TERHAPUS" }
-    val totalPendapatanArea = activeFilteredCustomers.sumOf { it.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L }
+    val totalPendapatanArea = activeFilteredCustomers.sumOf { it.getTotalBillAmount() }
 
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
@@ -404,6 +412,7 @@ data class Customer(
     val phone: String,
     val area: String,
     val address: String? = null,
+    val alamat: String? = null,
     val username: String,
     val billingDate: String,
     val status: String,
@@ -414,10 +423,46 @@ data class Customer(
     @Json(name = "package_name") val packageName: String? = null,
     val additionalCost1: String? = null,
     val additionalCost2: String? = null,
+    @Json(name = "additional_cost_desc1") val additionalCostDesc1: String? = null,
+    @Json(name = "additional_cost_desc2") val additionalCostDesc2: String? = null,
     @Json(name = "pppoe_secret") val pppoeSecret: String? = null,
     @Json(name = "odp_id") val odpId: String? = null,
     @Json(name = "odp_port") val odpPort: String? = null
-)
+) {
+    fun getEffectiveAddress(): String {
+        return address?.takeIf { it.isNotBlank() } ?: alamat?.takeIf { it.isNotBlank() } ?: ""
+    }
+
+    fun getBasePriceAmount(): Long {
+        return price.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+    }
+
+    fun getDiscountAmount(): Long {
+        return discount.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+    }
+
+    fun getAdditionalCost1Amount(): Long {
+        return additionalCost1?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+    }
+
+    fun getAdditionalCost2Amount(): Long {
+        return additionalCost2?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+    }
+
+    fun getTotalAdditionalCost(): Long {
+        return getAdditionalCost1Amount() + getAdditionalCost2Amount()
+    }
+
+    fun getTotalBillAmount(): Long {
+        val total = getBasePriceAmount() - getDiscountAmount() + getTotalAdditionalCost()
+        return total.coerceAtLeast(0L)
+    }
+
+    fun getFormattedTotalBill(): String {
+        val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+        return "Rp. ${formatter.format(getTotalBillAmount())}"
+    }
+}
 
 @Composable
 fun CustomerItem(
