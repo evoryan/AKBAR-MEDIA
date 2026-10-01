@@ -434,19 +434,19 @@ data class Customer(
     }
 
     fun getBasePriceAmount(): Long {
-        return price.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(price)
     }
 
     fun getDiscountAmount(): Long {
-        return discount.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(discount)
     }
 
     fun getAdditionalCost1Amount(): Long {
-        return additionalCost1?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost1)
     }
 
     fun getAdditionalCost2Amount(): Long {
-        return additionalCost2?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost2)
     }
 
     fun getTotalAdditionalCost(): Long {

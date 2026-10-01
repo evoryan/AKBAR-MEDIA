@@ -884,10 +884,10 @@ fun EditCustomerScreen(customerId: String,
                         )
 
                         // Live Ringkasan Total Tagihan Bulanan
-                        val parsedBasePrice = selectedPackage?.price?.toLong() ?: originalCustomer?.price?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
-                        val parsedAddCost1 = additionalCost1.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
-                        val parsedAddCost2 = additionalCost2.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
-                        val parsedDiscount = originalCustomer?.discount?.replace(Regex("\\.0+$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+                        val parsedBasePrice = selectedPackage?.price?.toLong() ?: com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(originalCustomer?.price)
+                        val parsedAddCost1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost1)
+                        val parsedAddCost2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost2)
+                        val parsedDiscount = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(originalCustomer?.discount)
                         val totalBillCalculated = (parsedBasePrice - parsedDiscount + parsedAddCost1 + parsedAddCost2).coerceAtLeast(0L)
                         val currencyFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
 

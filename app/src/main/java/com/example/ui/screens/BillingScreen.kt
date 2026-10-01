@@ -447,7 +447,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
         if (tagihanAmount != null && tagihanAmount > 0L) {
             tagihanAmount
         } else {
-            customer.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+            customer.getTotalBillAmount()
         }
     }
     val paidSum = paidCustomers.sumOf { customer ->
@@ -464,7 +464,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
         if (tagihanAmount != null && tagihanAmount > 0L) {
             tagihanAmount
         } else {
-            customer.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+            customer.getTotalBillAmount()
         }
     }
     val totalUnpaid = "Rp. ${formatter.format(unpaidSum)}"
@@ -483,7 +483,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
         if (tagihanAmount != null && tagihanAmount > 0L) {
             tagihanAmount
         } else {
-            customer.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+            customer.getTotalBillAmount()
         }
     }
     val selectedBulkTotalFormatted = "Rp. ${formatter.format(selectedBulkTotal)}"
@@ -626,8 +626,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                     } else null
 
                                     val amountVal = tagihanRecord?.amount
-                                        ?: cust.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toDoubleOrNull()
-                                        ?: 0.0
+                                        ?: cust.getTotalBillAmount().toDouble()
 
                                     com.example.ui.data.remote.PaymentRequest(
                                         customerId = cust.id,

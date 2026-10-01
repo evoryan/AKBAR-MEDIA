@@ -19,6 +19,26 @@ object InvoiceGenerator {
     const val INVOICE_WIDTH = 1600
     const val INVOICE_HEIGHT = 1120
 
+    fun parseInvoiceAmount(raw: String?): Long {
+        if (raw.isNullOrBlank()) return 0L
+        var s = raw.trim()
+        s = s.replace("Rp.", "", ignoreCase = true)
+            .replace("Rp", "", ignoreCase = true)
+            .replace("IDR", "", ignoreCase = true)
+            .trim()
+        s = s.replace(Regex(",[0-9]{1,2}$"), "").replace(",-", "").trim()
+        if (s.matches(Regex("^[0-9]+\\.[0-9]{1,2}$"))) {
+            s = s.substringBefore('.')
+        }
+        val digits = s.replace(Regex("[^0-9]"), "")
+        return digits.toLongOrNull() ?: 0L
+    }
+
+    fun formatInvoiceRupiah(amount: Long): String {
+        val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+        return "Rp ${formatter.format(amount)}"
+    }
+
     fun generateInvoiceBitmap(
         context: Context,
         customerName: String,
@@ -366,20 +386,27 @@ object InvoiceGenerator {
             isAntiAlias = true
         }
 
-        fun parseInvoiceAmount(str: String?): Long {
-            if (str.isNullOrBlank()) return 0L
-            return str.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
-        }
-
-        fun formatInvoiceRupiah(amount: Long): String {
-            val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
-            return "Rp ${formatter.format(amount)}"
-        }
-
+        val totalParsed = parseInvoiceAmount(totalAmount)
         val parsedPkgPrice = parseInvoiceAmount(packagePrice)
         val parsedAdd1 = parseInvoiceAmount(additionalCost1)
         val parsedAdd2 = parseInvoiceAmount(additionalCost2)
         val parsedDiscount = parseInvoiceAmount(discount)
+
+        // Count how many billing months are covered in this invoice (e.g. "Januari 2026, Februari 2026")
+        val monthCount = if (months.contains(",")) months.split(",").size.coerceAtLeast(1) else 1
+
+        val effectivePackagePrice = if (parsedPkgPrice > 0L) {
+            if (monthCount > 1 && totalParsed >= parsedPkgPrice * monthCount) {
+                parsedPkgPrice * monthCount
+            } else {
+                parsedPkgPrice
+            }
+        } else if (totalParsed > 0L) {
+            val deduced = (totalParsed - parsedAdd1 - parsedAdd2 + parsedDiscount).coerceAtLeast(0L)
+            if (deduced > 0L) deduced else totalParsed
+        } else {
+            0L
+        }
 
         data class InvoiceItemLine(
             val no: String,
@@ -391,12 +418,10 @@ object InvoiceGenerator {
         val invoiceLines = mutableListOf<InvoiceItemLine>()
 
         // Row 1: Langganan Internet
-        val baseInternetAmountStr = if (parsedPkgPrice > 0L) {
-            formatInvoiceRupiah(parsedPkgPrice)
-        } else if (parsedAdd1 > 0L || parsedAdd2 > 0L || parsedDiscount > 0L) {
-            val totalParsed = parseInvoiceAmount(totalAmount)
-            val deduced = (totalParsed - parsedAdd1 - parsedAdd2 + parsedDiscount).coerceAtLeast(0L)
-            if (deduced > 0L) formatInvoiceRupiah(deduced) else totalAmount
+        val baseInternetAmountStr = if (effectivePackagePrice > 0L) {
+            formatInvoiceRupiah(effectivePackagePrice)
+        } else if (!packagePrice.isNullOrBlank()) {
+            packagePrice
         } else {
             totalAmount
         }
@@ -515,10 +540,12 @@ object InvoiceGenerator {
             isAntiAlias = true
         }
 
-        val calculatedTotalLong = if (parsedPkgPrice > 0L) {
-            (parsedPkgPrice - parsedDiscount + parsedAdd1 + parsedAdd2).coerceAtLeast(0L)
+        val calculatedTotalLong = if (totalParsed > 0L) {
+            totalParsed
+        } else if (effectivePackagePrice > 0L) {
+            (effectivePackagePrice - parsedDiscount + parsedAdd1 + parsedAdd2).coerceAtLeast(0L)
         } else {
-            parseInvoiceAmount(totalAmount)
+            0L
         }
         val displayTotalAmount = if (calculatedTotalLong > 0L) {
             formatInvoiceRupiah(calculatedTotalLong)

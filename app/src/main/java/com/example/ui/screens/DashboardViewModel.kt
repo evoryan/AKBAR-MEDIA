@@ -40,10 +40,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val paidCount = filteredPelanggan.count { it.status == "LUNAS CASH" }
                 val unpaidCount = filteredPelanggan.size - paidCount
                 val totalGlobalRevenue = filteredPelanggan.sumOf { p ->
-                    val base = p.price.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
-                    val disc = p.discount.replace(Regex("\\.0$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
-                    val add1 = p.additionalCost1?.replace(Regex("\\.0$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
-                    val add2 = p.additionalCost2?.replace(Regex("\\.0$"), "")?.replace(Regex("[^0-9]"), "")?.toLongOrNull() ?: 0L
+                    val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.price)
+                    val disc = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.discount)
+                    val add1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.additionalCost1)
+                    val add2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.additionalCost2)
                     (base - disc + add1 + add2).coerceAtLeast(0L)
                 }.toDouble()
 

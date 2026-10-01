@@ -886,8 +886,8 @@ fun AddCustomerScreen(
 
                         // Live Ringkasan Total Tagihan Bulanan
                         val parsedBasePrice = selectedPackage?.price?.toLong() ?: 0L
-                        val parsedAddCost1 = additionalCost1.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
-                        val parsedAddCost2 = additionalCost2.replace(Regex("\\.0+$"), "").replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                        val parsedAddCost1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost1)
+                        val parsedAddCost2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost2)
                         val totalBillCalculated = (parsedBasePrice + parsedAddCost1 + parsedAddCost2).coerceAtLeast(0L)
                         val currencyFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
 
