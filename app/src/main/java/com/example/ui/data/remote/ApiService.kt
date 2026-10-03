@@ -204,10 +204,18 @@ interface ApiService {
     suspend fun getCustomers(): List<Customer>
 
     @GET("api/pembukuan")
-    suspend fun getPembukuan(): PembukuanResponse
+    suspend fun getPembukuan(
+        @Query("month") month: String? = null,
+        @Query("year") year: String? = null,
+        @Query("all") all: String? = null
+    ): PembukuanResponse
 
     @GET("api/pembukuan/all")
-    suspend fun getAllPembukuan(): List<PembukuanItem>
+    suspend fun getAllPembukuan(
+        @Query("month") month: String? = null,
+        @Query("year") year: String? = null,
+        @Query("all") all: String? = null
+    ): List<PembukuanItem>
 
     @GET("api/pembayaran")
     suspend fun getPembayaranHistory(): List<PembayaranHistoryItem>

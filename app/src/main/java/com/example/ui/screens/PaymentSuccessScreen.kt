@@ -103,9 +103,9 @@ fun PaymentSuccessScreen(
                     serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
                     packagePrice = cust.price,
                     additionalCost1 = cust.additionalCost1,
-                    additionalCostDesc1 = cust.additionalCostDesc1,
+                    additionalCostDesc1 = cust.getEffectiveCostDesc1() ?: cust.additionalCostDesc1,
                     additionalCost2 = cust.additionalCost2,
-                    additionalCostDesc2 = cust.additionalCostDesc2,
+                    additionalCostDesc2 = cust.getEffectiveCostDesc2() ?: cust.additionalCostDesc2,
                     discount = cust.discount
                 )
             } catch (_: Exception) {

@@ -34,6 +34,8 @@ import com.example.ui.data.OdpItem
 import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Locale
+import com.example.ui.data.local.AppDatabase
+import com.example.ui.data.local.PelangganEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +74,7 @@ fun EditCustomerScreen(customerId: String,
     var additionalCostDesc1 by remember { mutableStateOf("") }
     var additionalCost2 by remember { mutableStateOf("") }
     var additionalCostDesc2 by remember { mutableStateOf("") }
+    var customPrice by remember { mutableStateOf("") }
 
     var areas by remember { mutableStateOf<List<Area>>(emptyList()) }
     var packages by remember { mutableStateOf<List<InternetPackage>>(emptyList()) }
@@ -179,11 +182,15 @@ fun EditCustomerScreen(customerId: String,
                 billingDate = cust.billingDate
                 isolateDate = cust.isolateDate ?: ""
                 selectedArea = areas.find { it.name == cust.area }
-                selectedPackage = packages.find { it.name == cust.packageName }
-                additionalCost1 = cust.additionalCost1 ?: ""
-                additionalCostDesc1 = cust.additionalCostDesc1 ?: ""
-                additionalCost2 = cust.additionalCost2 ?: ""
-                additionalCostDesc2 = cust.additionalCostDesc2 ?: ""
+                selectedPackage = packages.find { it.name.trim().equals(cust.packageName?.trim(), ignoreCase = true) }
+                val parsedPkgAmount = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.price)
+                customPrice = if (parsedPkgAmount > 0L) parsedPkgAmount.toString() else cust.price.replace("Rp.", "").replace("Rp", "").replace(".", "").trim()
+                val parsedAdd1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost1)
+                additionalCost1 = if (parsedAdd1 > 0L) parsedAdd1.toString() else cust.additionalCost1?.replace("Rp.", "")?.replace("Rp", "")?.replace(".", "")?.trim() ?: ""
+                additionalCostDesc1 = cust.getEffectiveCostDesc1() ?: cust.additionalCostDesc1 ?: cust.additional_cost_desc1 ?: ""
+                val parsedAdd2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost2)
+                additionalCost2 = if (parsedAdd2 > 0L) parsedAdd2.toString() else cust.additionalCost2?.replace("Rp.", "")?.replace("Rp", "")?.replace(".", "")?.trim() ?: ""
+                additionalCostDesc2 = cust.getEffectiveCostDesc2() ?: cust.additionalCostDesc2 ?: cust.additional_cost_desc2 ?: ""
                 if (!cust.odpId.isNullOrEmpty()) {
                     selectedOdp = odps.find { it.id.toString() == cust.odpId }
                     selectedPort = cust.odpPort ?: ""
@@ -261,6 +268,101 @@ fun EditCustomerScreen(customerId: String,
         return formatter.format(calendar.time)
     }
 
+    fun saveCustomerData() {
+        isNameError = name.isBlank()
+        isPhoneError = !isPhoneValid
+        if (!isFormValid) {
+            selectedTabIndex = 0
+            Toast.makeText(context, "Mohon lengkapi nama dan no HP dengan benar", Toast.LENGTH_SHORT).show()
+            return
+        }
+        coroutineScope.launch {
+            try {
+                val cleanAddress = address.trim()
+                val desc1Trimmed = additionalCostDesc1.trim()
+                val desc2Trimmed = additionalCostDesc2.trim()
+                val effectivePriceLong = customPrice.toLongOrNull() 
+                    ?: selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } 
+                    ?: com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(originalCustomer?.price)
+                val finalPriceString = if (effectivePriceLong > 0L) {
+                    "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(effectivePriceLong)
+                } else {
+                    originalCustomer?.price ?: "Rp. 0"
+                }
+
+                val updatedCust = Customer(
+                    id = customerId,
+                    name = name.trim(),
+                    phone = phone.trim(),
+                    area = selectedArea?.name ?: originalCustomer?.area ?: "Semua",
+                    address = cleanAddress.ifEmpty { null },
+                    alamat = cleanAddress.ifEmpty { null },
+                    username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""),
+                    billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" },
+                    registerDate = registerDate,
+                    isolateDate = isolateDate,
+                    packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "",
+                    status = originalCustomer?.status ?: "BELUM BAYAR",
+                    price = finalPriceString,
+                    discount = originalCustomer?.discount ?: "- Dskn : Rp. 0",
+                    additionalCost1 = additionalCost1.trim(),
+                    additionalCost2 = additionalCost2.trim(),
+                    additionalCostDesc1 = desc1Trimmed,
+                    additionalCostDesc2 = desc2Trimmed,
+                    additional_cost_desc1 = desc1Trimmed,
+                    additional_cost_desc2 = desc2Trimmed,
+                    pppoeSecret = secretInput,
+                    odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId,
+                    odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
+                )
+
+                ApiClient.apiService.updateCustomer(customerId, updatedCust)
+
+                // Update local Room database immediately
+                try {
+                    val db = AppDatabase.getDatabase(context)
+                    db.pelangganDao().insert(
+                        PelangganEntity(
+                            id = customerId.toIntOrNull() ?: 0,
+                            name = updatedCust.name,
+                            phone = updatedCust.phone,
+                            area = updatedCust.area,
+                            address = updatedCust.address,
+                            alamat = updatedCust.alamat,
+                            username = updatedCust.username,
+                            billingDate = updatedCust.billingDate,
+                            status = updatedCust.status,
+                            price = updatedCust.price,
+                            discount = updatedCust.discount,
+                            register_date = updatedCust.registerDate,
+                            isolate_date = updatedCust.isolateDate,
+                            package_name = updatedCust.packageName,
+                            pppoe_secret = updatedCust.pppoeSecret,
+                            odp_id = updatedCust.odpId?.toIntOrNull(),
+                            odp_port = updatedCust.odpPort,
+                            additionalCost1 = updatedCust.additionalCost1,
+                            additionalCost2 = updatedCust.additionalCost2,
+                            additionalCostDesc1 = desc1Trimmed,
+                            additionalCostDesc2 = desc2Trimmed
+                        )
+                    )
+                } catch (eDb: Exception) {
+                    android.util.Log.e("EditCust", "Error updating local db", eDb)
+                }
+
+                Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()
+                onBack()
+            } catch(e: retrofit2.HttpException) {
+                val errBody = e.response()?.errorBody()?.string()
+                android.util.Log.e("EditCust", "HTTP Error: $errBody", e)
+                Toast.makeText(context, "Error: $errBody", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                android.util.Log.e("EditCust", "Exception", e)
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     if (showRegisterDatePicker) {
         DatePickerDialog(
             onDismissRequest = { showRegisterDatePicker = false },
@@ -318,6 +420,7 @@ fun EditCustomerScreen(customerId: String,
     }
 
     if (showPackageDialog) {
+        val numFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
         AlertDialog(
             onDismissRequest = { showPackageDialog = false },
             title = { Text("Pilih Paket") },
@@ -325,10 +428,12 @@ fun EditCustomerScreen(customerId: String,
                 LazyColumn {
                     items(packages.size) { index ->
                         val pkg = packages[index]
+                        val pkgPriceLong = if (pkg.taxRate > 0) pkg.finalPrice.toLong() else pkg.price.toLong()
                         Text(
-                            text = "${pkg.name} - Rp ${pkg.price}",
+                            text = "${pkg.name} - Rp ${numFmt.format(pkgPriceLong)}",
                             modifier = Modifier.fillMaxWidth().clickable {
                                 selectedPackage = pkg
+                                customPrice = pkgPriceLong.toString()
                                 showPackageDialog = false
                             }.padding(16.dp)
                         )
@@ -842,8 +947,27 @@ fun EditCustomerScreen(customerId: String,
                         ClickableField(title = "Area", subtitle = null, actionText = selectedArea?.name ?: "Pilih Area", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showAreaDialog = true })
                         HorizontalDivider(color = textSecondary.copy(alpha = 0.5f))
 
-                        ClickableField(title = "Paket", subtitle = null, actionText = selectedPackage?.name?.let { "$it (Rp ${selectedPackage?.price})" } ?: "Pilih Paket", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showPackageDialog = true })
+                        val currentPkgPriceLong = customPrice.toLongOrNull() ?: selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } ?: com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(originalCustomer?.price)
+                        val numFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                        ClickableField(
+                            title = "Paket",
+                            subtitle = null,
+                            actionText = selectedPackage?.name?.let { "$it (Rp ${numFmt.format(currentPkgPriceLong)})" } ?: originalCustomer?.packageName?.takeIf { it.isNotBlank() }?.let { "$it (Rp ${numFmt.format(currentPkgPriceLong)})" } ?: "Pilih Paket",
+                            neonCyan = neonCyan,
+                            textSecondary = textSecondary,
+                            onClick = { showPackageDialog = true }
+                        )
                         HorizontalDivider(color = textSecondary.copy(alpha = 0.5f))
+
+                        OutlinedTextField(
+                            value = customPrice,
+                            onValueChange = { customPrice = it },
+                            label = { Text("Harga Layanan / Paket (Rp)", color = textSecondary) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
+                            singleLine = true
+                        )
 
                         OutlinedTextField(
                             value = additionalCost1,
@@ -884,7 +1008,7 @@ fun EditCustomerScreen(customerId: String,
                         )
 
                         // Live Ringkasan Total Tagihan Bulanan
-                        val parsedBasePrice = selectedPackage?.price?.toLong() ?: com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(originalCustomer?.price)
+                        val parsedBasePrice = customPrice.toLongOrNull() ?: selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } ?: com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(originalCustomer?.price)
                         val parsedAddCost1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost1)
                         val parsedAddCost2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost2)
                         val parsedDiscount = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(originalCustomer?.discount)
@@ -948,50 +1072,7 @@ fun EditCustomerScreen(customerId: String,
 
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
-                            onClick = {
-                                isNameError = name.isBlank()
-                                isPhoneError = !isPhoneValid
-                                if (isFormValid) {
-                                    coroutineScope.launch {
-                                        try {
-                                            val cleanAddress = address.trim()
-                                            val updatedCust = Customer(
-                                                id = customerId,
-                                                name = name.trim(),
-                                                phone = phone.trim(),
-                                                area = selectedArea?.name ?: originalCustomer?.area ?: "Semua",
-                                                address = cleanAddress.ifEmpty { null },
-                                                alamat = cleanAddress.ifEmpty { null },
-                                                username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""),
-                                                billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" },
-                                                registerDate = registerDate,
-                                                isolateDate = isolateDate,
-                                                packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "",
-                                                status = originalCustomer?.status ?: "BELUM BAYAR",
-                                                price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0",
-                                                discount = originalCustomer?.discount ?: "- Dskn : Rp. 0",
-                                                additionalCost1 = additionalCost1,
-                                                additionalCost2 = additionalCost2,
-                                                additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null },
-                                                additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null },
-                                                pppoeSecret = secretInput,
-                                                odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId,
-                                                odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
-                                            )
-                                            ApiClient.apiService.updateCustomer(customerId, updatedCust)
-                                            Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()
-                                            onBack()
-                                        } catch(e: retrofit2.HttpException) {
-                                            val errBody = e.response()?.errorBody()?.string()
-                                            android.util.Log.e("EditCust", "HTTP Error: $errBody", e)
-                                            Toast.makeText(context, "Error: $errBody", Toast.LENGTH_LONG).show()
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("EditCust", "Exception", e)
-                                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                }
-                            },
+                            onClick = { saveCustomerData() },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = if (isFormValid) neonCyan else neonCyan.copy(alpha = 0.5f), contentColor = Color.Black),
                             shape = RoundedCornerShape(12.dp)
@@ -1058,26 +1139,7 @@ fun EditCustomerScreen(customerId: String,
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    try {
-                                        val cleanAddress = address.trim()
-                                        val updatedCust = Customer(
-                                            id = customerId, name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: originalCustomer?.area ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "", status = originalCustomer?.status ?: "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0", discount = originalCustomer?.discount ?: "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null }, additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null }, pppoeSecret = secretInput, odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId, odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
-                                        )
-                                        ApiClient.apiService.updateCustomer(customerId, updatedCust)
-                                        Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()
-                                        onBack()
-                                    } catch(e: retrofit2.HttpException) {
-                                        val errBody = e.response()?.errorBody()?.string()
-                                        android.util.Log.e("AddCust", "HTTP Error: $errBody", e)
-                                        android.widget.Toast.makeText(context, "Error: $errBody", android.widget.Toast.LENGTH_LONG).show()
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("AddCust", "Exception", e)
-                                        android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
+                            onClick = { saveCustomerData() },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black),
                             shape = RoundedCornerShape(12.dp)
@@ -1144,26 +1206,7 @@ fun EditCustomerScreen(customerId: String,
 
                         Spacer(modifier = Modifier.height(32.dp))
                         Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    try {
-                                        val cleanAddress = address.trim()
-                                        val updatedCust = Customer(
-                                            id = customerId, name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: originalCustomer?.area ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else originalCustomer?.username ?: name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { originalCustomer?.billingDate ?: "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: originalCustomer?.packageName ?: "", status = originalCustomer?.status ?: "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: originalCustomer?.price ?: "Rp. 0", discount = originalCustomer?.discount ?: "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null }, additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null }, pppoeSecret = secretInput, odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId, odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
-                                        )
-                                        ApiClient.apiService.updateCustomer(customerId, updatedCust)
-                                        Toast.makeText(context, "Pelanggan berhasil diupdate!", Toast.LENGTH_SHORT).show()
-                                        onBack()
-                                    } catch(e: retrofit2.HttpException) {
-                                        val errBody = e.response()?.errorBody()?.string()
-                                        android.util.Log.e("AddCust", "HTTP Error: $errBody", e)
-                                        android.widget.Toast.makeText(context, "Error: $errBody", android.widget.Toast.LENGTH_LONG).show()
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("AddCust", "Exception", e)
-                                        android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
+                            onClick = { saveCustomerData() },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black),
                             shape = RoundedCornerShape(12.dp)

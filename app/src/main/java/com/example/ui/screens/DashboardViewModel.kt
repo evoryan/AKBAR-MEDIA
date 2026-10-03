@@ -18,7 +18,8 @@ sealed class DashboardState {
     data class Success(
         val data: DashboardSummaryResponse,
         val offlinePppoe: List<OfflinePppoeUser> = emptyList(),
-        val tagihanList: List<com.example.ui.data.local.TagihanEntity> = emptyList()
+        val tagihanList: List<com.example.ui.data.local.TagihanEntity> = emptyList(),
+        val pelangganList: List<com.example.ui.data.local.PelangganEntity> = emptyList()
     ) : DashboardState()
     data class Error(val message: String) : DashboardState()
 }
@@ -37,15 +38,36 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 db.statusRouterDao().getAllStatusRouter()
             ) { pelangganList, tagihanList, routerStatusList ->
                 val filteredPelanggan = pelangganList.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) && it.status != "TERHAPUS" }
-                val paidCount = filteredPelanggan.count { it.status == "LUNAS CASH" }
-                val unpaidCount = filteredPelanggan.size - paidCount
-                val totalGlobalRevenue = filteredPelanggan.sumOf { p ->
+                val paidCount = filteredPelanggan.count { it.status.contains("LUNAS", ignoreCase = true) || it.status.contains("SUDAH", ignoreCase = true) }
+                val unpaidCount = (filteredPelanggan.size - paidCount).coerceAtLeast(0)
+
+                // Total global revenue lunas bayar memperhitungkan nilai tagihan riil (diskon, prorata, ppn, biaya tambahan)
+                val customerBillMap = filteredPelanggan.associate { p ->
                     val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.price)
                     val disc = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.discount)
                     val add1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.additionalCost1)
                     val add2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(p.additionalCost2)
-                    (base - disc + add1 + add2).coerceAtLeast(0L)
-                }.toDouble()
+                    p.id to (base - disc + add1 + add2).coerceAtLeast(0L).toDouble()
+                }
+
+                val paidTagihanList = tagihanList.filter { 
+                    it.status.contains("LUNAS", ignoreCase = true) || it.status.contains("SUDAH", ignoreCase = true) 
+                }
+                val paidTagihanCustIds = mutableSetOf<Int>()
+                var sumGlobalRevenue = 0.0
+                paidTagihanList.forEach { t ->
+                    paidTagihanCustIds.add(t.customer_id)
+                    val amt = if (t.amount > 0.0) t.amount else (customerBillMap[t.customer_id] ?: 0.0)
+                    sumGlobalRevenue += amt
+                }
+
+                filteredPelanggan.forEach { p ->
+                    if (!paidTagihanCustIds.contains(p.id) && 
+                        (p.status.contains("LUNAS", ignoreCase = true) || p.status.contains("SUDAH", ignoreCase = true))) {
+                        sumGlobalRevenue += (customerBillMap[p.id] ?: 0.0)
+                    }
+                }
+                val totalGlobalRevenue = sumGlobalRevenue
 
                 val summaryResponse = DashboardSummaryResponse(
                     totalCustomers = filteredPelanggan.size,
@@ -67,7 +89,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 }
 
-                DashboardState.Success(summaryResponse, offlinePppoeList, tagihanList)
+                DashboardState.Success(summaryResponse, offlinePppoeList, tagihanList, filteredPelanggan)
             }.collect { state ->
                 _uiState.value = state
             }

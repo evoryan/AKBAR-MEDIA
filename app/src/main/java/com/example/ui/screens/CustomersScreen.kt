@@ -96,6 +96,8 @@ fun CustomersScreen(
                 additionalCost2 = entity.additionalCost2,
                 additionalCostDesc1 = entity.additionalCostDesc1,
                 additionalCostDesc2 = entity.additionalCostDesc2,
+                additional_cost_desc1 = entity.additionalCostDesc1,
+                additional_cost_desc2 = entity.additionalCostDesc2,
                 pppoeSecret = entity.pppoe_secret,
                 odpId = entity.odp_id?.toString(),
                 odpPort = entity.odp_port
@@ -423,12 +425,21 @@ data class Customer(
     @Json(name = "package_name") val packageName: String? = null,
     val additionalCost1: String? = null,
     val additionalCost2: String? = null,
-    @Json(name = "additional_cost_desc1") val additionalCostDesc1: String? = null,
-    @Json(name = "additional_cost_desc2") val additionalCostDesc2: String? = null,
+    val additionalCostDesc1: String? = null,
+    val additionalCostDesc2: String? = null,
+    @Json(name = "additional_cost_desc1") val additional_cost_desc1: String? = null,
+    @Json(name = "additional_cost_desc2") val additional_cost_desc2: String? = null,
     @Json(name = "pppoe_secret") val pppoeSecret: String? = null,
     @Json(name = "odp_id") val odpId: String? = null,
     @Json(name = "odp_port") val odpPort: String? = null
 ) {
+    fun getEffectiveCostDesc1(): String? {
+        return additionalCostDesc1?.takeIf { it.isNotBlank() } ?: additional_cost_desc1?.takeIf { it.isNotBlank() }
+    }
+
+    fun getEffectiveCostDesc2(): String? {
+        return additionalCostDesc2?.takeIf { it.isNotBlank() } ?: additional_cost_desc2?.takeIf { it.isNotBlank() }
+    }
     fun getEffectiveAddress(): String {
         return address?.takeIf { it.isNotBlank() } ?: alamat?.takeIf { it.isNotBlank() } ?: ""
     }

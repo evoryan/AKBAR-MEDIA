@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,7 +55,13 @@ data class CustomerInvoicePreview(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit, onNavigateToAcs: (String) -> Unit = {}) {
+fun CustomerDetailScreen(
+    customerId: String,
+    onBack: () -> Unit,
+    onNavigateToPayment: (String) -> Unit,
+    onNavigateToAcs: (String) -> Unit = {},
+    onNavigateToEdit: (String) -> Unit = {}
+) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
@@ -86,8 +93,22 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
     
     val graphicsLayer = rememberGraphicsLayer()
     var activeInvoicePreview by remember { mutableStateOf<CustomerInvoicePreview?>(null) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(customerId) {
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                refreshTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(customerId, refreshTrigger) {
         isBackgroundLoading = true
         try {
             val custs = ApiClient.apiService.getCustomers()
@@ -210,9 +231,9 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                         serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
                         packagePrice = cust.price,
                         additionalCost1 = cust.additionalCost1,
-                        additionalCostDesc1 = cust.additionalCostDesc1,
+                        additionalCostDesc1 = cust.getEffectiveCostDesc1() ?: cust.additionalCostDesc1,
                         additionalCost2 = cust.additionalCost2,
-                        additionalCostDesc2 = cust.additionalCostDesc2,
+                        additionalCostDesc2 = cust.getEffectiveCostDesc2() ?: cust.additionalCostDesc2,
                         discount = cust.discount
                     )
                 } catch (_: Exception) {
@@ -342,9 +363,9 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                             serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
                                             packagePrice = customer?.price,
                                             additionalCost1 = customer?.additionalCost1,
-                                            additionalCostDesc1 = customer?.additionalCostDesc1,
+                                            additionalCostDesc1 = customer?.getEffectiveCostDesc1() ?: customer?.additionalCostDesc1,
                                             additionalCost2 = customer?.additionalCost2,
-                                            additionalCostDesc2 = customer?.additionalCostDesc2,
+                                            additionalCostDesc2 = customer?.getEffectiveCostDesc2() ?: customer?.additionalCostDesc2,
                                             discount = customer?.discount
                                         )
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -383,9 +404,9 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                                         serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
                                         packagePrice = customer?.price,
                                         additionalCost1 = customer?.additionalCost1,
-                                        additionalCostDesc1 = customer?.additionalCostDesc1,
+                                        additionalCostDesc1 = customer?.getEffectiveCostDesc1() ?: customer?.additionalCostDesc1,
                                         additionalCost2 = customer?.additionalCost2,
-                                        additionalCostDesc2 = customer?.additionalCostDesc2,
+                                        additionalCostDesc2 = customer?.getEffectiveCostDesc2() ?: customer?.additionalCostDesc2,
                                         discount = customer?.discount
                                     )
                                     val uri = FileProvider.getUriForFile(
@@ -425,20 +446,59 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
     Scaffold(containerColor = bgMain,
         topBar = {
             TopAppBar(
-                title = { },
+                title = {
+                    Text(
+                        text = customer?.name ?: "Detail Pelanggan",
+                        color = textMain,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        maxLines = 1
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { onNavigateToEdit(customerId) },
+                        modifier = Modifier.testTag("btn_edit_customer_top")
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Pelanggan", tint = neonCyan)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
             )
         },
         bottomBar = {
-            Box(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { onNavigateToEdit(customerId) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(50.dp)
+                        .testTag("btn_edit_customer_bottom"),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, neonCyan),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp), tint = neonCyan)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("EDIT", fontWeight = FontWeight.Bold, color = neonCyan)
+                }
+
                 Button(
                     onClick = { onNavigateToPayment(customerId) },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    modifier = Modifier
+                        .weight(1.5f)
+                        .height(50.dp)
+                        .testTag("btn_bayar_tagihan"),
                     colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -514,6 +574,19 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                         color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666),
                         fontSize = 12.sp
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { onNavigateToEdit(customerId) },
+                        modifier = Modifier.testTag("btn_edit_customer_header"),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp), tint = neonCyan)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Edit Pelanggan", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = neonCyan)
+                    }
                 }
 
                 // Tabs
@@ -623,13 +696,13 @@ fun CustomerDetailScreen(customerId: String, onBack: () -> Unit, onNavigateToPay
                             if (!customer?.discount.isNullOrEmpty() && customer?.discount != "0") {
                                 DetailRow("Diskon", customer?.discount ?: "-")
                             }
-                            val desc1 = customer?.additionalCostDesc1
-                            if (add1 > 0L) {
+                            val desc1 = customer?.getEffectiveCostDesc1() ?: customer?.additionalCostDesc1
+                            if (add1 > 0L || !desc1.isNullOrBlank()) {
                                 val label1 = if (!desc1.isNullOrBlank()) "Biaya Tambahan 1 ($desc1)" else "Biaya Tambahan 1"
                                 DetailRow(label1, "Rp. ${currencyFmt.format(add1)}")
                             }
-                            val desc2 = customer?.additionalCostDesc2
-                            if (add2 > 0L) {
+                            val desc2 = customer?.getEffectiveCostDesc2() ?: customer?.additionalCostDesc2
+                            if (add2 > 0L || !desc2.isNullOrBlank()) {
                                 val label2 = if (!desc2.isNullOrBlank()) "Biaya Tambahan 2 ($desc2)" else "Biaya Tambahan 2"
                                 DetailRow(label2, "Rp. ${currencyFmt.format(add2)}")
                             }

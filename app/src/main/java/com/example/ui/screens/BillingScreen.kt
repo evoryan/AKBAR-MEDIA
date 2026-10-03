@@ -1211,9 +1211,9 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                                 serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
                                                 packagePrice = customer.price,
                                                 additionalCost1 = customer.additionalCost1,
-                                                additionalCostDesc1 = customer.additionalCostDesc1,
+                                                additionalCostDesc1 = customer.getEffectiveCostDesc1() ?: customer.additionalCostDesc1,
                                                 additionalCost2 = customer.additionalCost2,
-                                                additionalCostDesc2 = customer.additionalCostDesc2,
+                                                additionalCostDesc2 = customer.getEffectiveCostDesc2() ?: customer.additionalCostDesc2,
                                                 discount = customer.discount
                                             )
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {

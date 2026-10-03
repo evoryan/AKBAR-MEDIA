@@ -395,15 +395,21 @@ object InvoiceGenerator {
         // Count how many billing months are covered in this invoice (e.g. "Januari 2026, Februari 2026")
         val monthCount = if (months.contains(",")) months.split(",").size.coerceAtLeast(1) else 1
 
-        val effectivePackagePrice = if (parsedPkgPrice > 0L) {
-            if (monthCount > 1 && totalParsed >= parsedPkgPrice * monthCount) {
+        val effectiveAdd1 = parsedAdd1 * monthCount
+        val effectiveAdd2 = parsedAdd2 * monthCount
+        val effectiveDiscount = parsedDiscount * monthCount
+
+        val effectivePackagePrice = if (totalParsed > 0L) {
+            val deduced = (totalParsed - effectiveAdd1 - effectiveAdd2 + effectiveDiscount).coerceAtLeast(0L)
+            if (deduced > 0L) {
+                deduced
+            } else if (parsedPkgPrice > 0L) {
                 parsedPkgPrice * monthCount
             } else {
-                parsedPkgPrice
+                totalParsed
             }
-        } else if (totalParsed > 0L) {
-            val deduced = (totalParsed - parsedAdd1 - parsedAdd2 + parsedDiscount).coerceAtLeast(0L)
-            if (deduced > 0L) deduced else totalParsed
+        } else if (parsedPkgPrice > 0L) {
+            parsedPkgPrice * monthCount
         } else {
             0L
         }
@@ -439,7 +445,7 @@ object InvoiceGenerator {
         var itemCounter = 2
 
         // Row 2: Biaya Tambahan 1 (if > 0)
-        if (parsedAdd1 > 0L) {
+        if (effectiveAdd1 > 0L) {
             val desc1 = if (!additionalCostDesc1.isNullOrBlank()) {
                 "Biaya Tambahan: $additionalCostDesc1"
             } else {
@@ -449,14 +455,14 @@ object InvoiceGenerator {
                 InvoiceItemLine(
                     no = (itemCounter++).toString(),
                     description = desc1,
-                    period = "-",
-                    amountFormatted = formatInvoiceRupiah(parsedAdd1)
+                    period = if (monthCount > 1) "$monthCount Bulan" else "-",
+                    amountFormatted = formatInvoiceRupiah(effectiveAdd1)
                 )
             )
         }
 
         // Row 3: Biaya Tambahan 2 (if > 0)
-        if (parsedAdd2 > 0L) {
+        if (effectiveAdd2 > 0L) {
             val desc2 = if (!additionalCostDesc2.isNullOrBlank()) {
                 "Biaya Tambahan: $additionalCostDesc2"
             } else {
@@ -466,26 +472,26 @@ object InvoiceGenerator {
                 InvoiceItemLine(
                     no = (itemCounter++).toString(),
                     description = desc2,
-                    period = "-",
-                    amountFormatted = formatInvoiceRupiah(parsedAdd2)
+                    period = if (monthCount > 1) "$monthCount Bulan" else "-",
+                    amountFormatted = formatInvoiceRupiah(effectiveAdd2)
                 )
             )
         }
 
         // Row: Discount (if > 0)
-        if (parsedDiscount > 0L) {
+        if (effectiveDiscount > 0L) {
             invoiceLines.add(
                 InvoiceItemLine(
                     no = (itemCounter++).toString(),
                     description = "Potongan / Diskon Langganan",
-                    period = "-",
-                    amountFormatted = "- ${formatInvoiceRupiah(parsedDiscount)}"
+                    period = if (monthCount > 1) "$monthCount Bulan" else "-",
+                    amountFormatted = "- ${formatInvoiceRupiah(effectiveDiscount)}"
                 )
             )
         }
 
         // Fallback default row if no additional costs and no discount
-        if (parsedAdd1 == 0L && parsedAdd2 == 0L && parsedDiscount == 0L) {
+        if (effectiveAdd1 == 0L && effectiveAdd2 == 0L && effectiveDiscount == 0L) {
             invoiceLines.add(
                 InvoiceItemLine(
                     no = "2",
@@ -543,7 +549,7 @@ object InvoiceGenerator {
         val calculatedTotalLong = if (totalParsed > 0L) {
             totalParsed
         } else if (effectivePackagePrice > 0L) {
-            (effectivePackagePrice - parsedDiscount + parsedAdd1 + parsedAdd2).coerceAtLeast(0L)
+            (effectivePackagePrice - effectiveDiscount + effectiveAdd1 + effectiveAdd2).coerceAtLeast(0L)
         } else {
             0L
         }

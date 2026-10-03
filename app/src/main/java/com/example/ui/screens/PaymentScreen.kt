@@ -1219,12 +1219,13 @@ $monthsDetailText
                                     // Perbarui langsung status tagihan di Room DB agar sinkron seketika
                                     val custIdInt = customerId.toIntOrNull()
                                     if (custIdInt != null) {
+                                        val perMonthAmount = if (monthsToPay.isNotEmpty()) finalAmount.toDouble() / monthsToPay.size else finalAmount.toDouble()
                                         val updatedTagihans = localTagihanList.map { t ->
                                             if (t.customer_id == custIdInt && monthsToPay.any { m ->
                                                 val p = m.trim().split(" ")
                                                 isTagihanInMonthRecap(t, p.getOrNull(0) ?: "", p.getOrNull(1) ?: "", monthsList)
                                             }) {
-                                                t.copy(status = "LUNAS CASH", admin_name = currentUser?.name ?: "Admin")
+                                                t.copy(status = "LUNAS CASH", admin_name = currentUser?.name ?: "Admin", amount = perMonthAmount)
                                             } else {
                                                 t
                                             }

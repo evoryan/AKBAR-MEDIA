@@ -694,7 +694,7 @@ app.post('/api/billing/pay', async (req, res) => {
             const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
             if (tagihan.length > 0) {
                 await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
-                await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ? WHERE id = ?', [adminName, tagihan[0].id]);
+                await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ?, amount = ? WHERE id = ?', [adminName, totalAmount || 0, tagihan[0].id]);
                 desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
             }
         }
@@ -912,8 +912,8 @@ app.post('/api/billing/delete', async (req, res) => {
 app.get('/api/dashboard/summary', async (req, res) => {
     try {
         const [customers] = await req.pool.query('SELECT COUNT(*) as total FROM customers');
-        const [paidCustomers] = await req.pool.query('SELECT COUNT(*) as paid FROM customers WHERE status = "LUNAS CASH"');
-        const [unpaidCustomers] = await req.pool.query('SELECT COUNT(*) as unpaid FROM customers WHERE status != "LUNAS CASH"');
+        const [paidCustomers] = await req.pool.query('SELECT COUNT(*) as paid FROM customers WHERE status LIKE "%LUNAS%" OR status LIKE "%SUDAH%"');
+        const [unpaidCustomers] = await req.pool.query('SELECT COUNT(*) as unpaid FROM customers WHERE status NOT LIKE "%LUNAS%" AND status NOT LIKE "%SUDAH%"');
         
         let totalPemasukan = 0;
         let totalPengeluaran = 0;
@@ -1007,12 +1007,24 @@ app.get('/api/wa/history', async (req, res) => {
 app.get('/api/customers', async (req, res) => {
     try {
         const [rows] = await req.pool.query('SELECT * FROM customers');
-        const customers = rows.map(r => ({
-            ...r,
-            id: r.id.toString(),
-            address: r.address || r.alamat || '',
-            alamat: r.address || r.alamat || ''
-        }));
+        const customers = rows.map(r => {
+            const desc1 = r.additionalCostDesc1 || r.additional_cost_desc1 || r.additionalcostdesc1 || r.additionalCostdesc1 || '';
+            const desc2 = r.additionalCostDesc2 || r.additional_cost_desc2 || r.additionalcostdesc2 || r.additionalCostdesc2 || '';
+            const add1 = r.additionalCost1 || r.additionalcost1 || r.additional_cost1 || '';
+            const add2 = r.additionalCost2 || r.additionalcost2 || r.additional_cost2 || '';
+            return {
+                ...r,
+                id: r.id.toString(),
+                address: r.address || r.alamat || '',
+                alamat: r.address || r.alamat || '',
+                additionalCost1: add1,
+                additionalCost2: add2,
+                additionalCostDesc1: desc1,
+                additionalCostDesc2: desc2,
+                additional_cost_desc1: desc1,
+                additional_cost_desc2: desc2
+            };
+        });
         res.json(customers);
     } catch (error) {
         console.error(error);
@@ -1096,12 +1108,24 @@ app.get('/api/sync', async (req, res) => {
         const [routerStatus] = await req.pool.query('SELECT * FROM status_router_terakhir');
 
         res.json({
-            customers: customers.map(c => ({
-                ...c,
-                id: c.id.toString(),
-                address: c.address || c.alamat || '',
-                alamat: c.address || c.alamat || ''
-            })),
+            customers: customers.map(c => {
+                const desc1 = c.additionalCostDesc1 || c.additional_cost_desc1 || c.additionalcostdesc1 || c.additionalCostdesc1 || '';
+                const desc2 = c.additionalCostDesc2 || c.additional_cost_desc2 || c.additionalcostdesc2 || c.additionalCostdesc2 || '';
+                const add1 = c.additionalCost1 || c.additionalcost1 || c.additional_cost1 || '';
+                const add2 = c.additionalCost2 || c.additionalcost2 || c.additional_cost2 || '';
+                return {
+                    ...c,
+                    id: c.id.toString(),
+                    address: c.address || c.alamat || '',
+                    alamat: c.address || c.alamat || '',
+                    additionalCost1: add1,
+                    additionalCost2: add2,
+                    additionalCostDesc1: desc1,
+                    additionalCostDesc2: desc2,
+                    additional_cost_desc1: desc1,
+                    additional_cost_desc2: desc2
+                };
+            }),
             tagihan: tagihan.map(t => ({ ...t, id: t.id.toString(), customer_id: t.customer_id ? t.customer_id.toString() : null })),
             routerStatus: routerStatus.map(r => ({ ...r, id: r.id.toString(), area_id: r.area_id ? r.area_id.toString() : null }))
         });
@@ -1164,9 +1188,73 @@ app.get('/api/uang-di-admin', async (req, res) => {
         res.status(500).json({ error: "Terjadi kesalahan server" });
     }
 });
+function parseMonthYearFilter(month, year) {
+    if (!month && !year) {
+        const now = new Date();
+        return {
+            targetMonth: now.getMonth() + 1,
+            targetYear: now.getFullYear(),
+            isAll: false
+        };
+    }
+    if (month === 'Semua Waktu' || month === 'all' || month === 'ALL') {
+        return { isAll: true };
+    }
+    const now = new Date();
+    let targetYear = year ? parseInt(year, 10) : now.getFullYear();
+    let targetMonth = null;
+
+    if (month) {
+        const monthNames = [
+            'januari', 'februari', 'maret', 'april', 'mei', 'juni',
+            'juli', 'agustus', 'september', 'oktober', 'november', 'desember'
+        ];
+        const engMonthNames = [
+            'january', 'february', 'march', 'april', 'may', 'june',
+            'july', 'august', 'september', 'october', 'november', 'december'
+        ];
+        const clean = month.toString().toLowerCase().trim();
+        const mIdx = monthNames.findIndex(m => clean.includes(m));
+        if (mIdx >= 0) {
+            targetMonth = mIdx + 1;
+        } else {
+            const eIdx = engMonthNames.findIndex(m => clean.includes(m));
+            if (eIdx >= 0) {
+                targetMonth = eIdx + 1;
+            } else {
+                const num = parseInt(clean, 10);
+                if (!isNaN(num) && num >= 1 && num <= 12) {
+                    targetMonth = num;
+                }
+            }
+        }
+    } else {
+        targetMonth = now.getMonth() + 1;
+    }
+
+    return {
+        targetMonth,
+        targetYear: isNaN(targetYear) ? now.getFullYear() : targetYear,
+        isAll: false
+    };
+}
+
 app.get('/api/pembukuan', async (req, res) => {
     try {
-        const [rows] = await req.pool.query('SELECT type, category, SUM(amount) as total FROM pembukuan GROUP BY type, category');
+        const { month, year, all } = req.query;
+        let query = 'SELECT type, category, SUM(amount) as total FROM pembukuan';
+        const params = [];
+
+        if (all !== 'true' && month !== 'Semua Waktu' && month !== 'all') {
+            const filter = parseMonthYearFilter(month, year);
+            if (!filter.isAll && filter.targetMonth !== null) {
+                query += ' WHERE MONTH(created_at) = ? AND YEAR(created_at) = ?';
+                params.push(filter.targetMonth, filter.targetYear);
+            }
+        }
+
+        query += ' GROUP BY type, category';
+        const [rows] = await req.pool.query(query, params);
         let summary = {
             pemasukan: 0,
             pengeluaran: 0,
@@ -1213,7 +1301,20 @@ app.get('/api/pembayaran', async (req, res) => {
 
 app.get('/api/pembukuan/all', async (req, res) => {
     try {
-        const [rows] = await req.pool.query('SELECT * FROM pembukuan ORDER BY id DESC');
+        const { month, year, all } = req.query;
+        let query = 'SELECT * FROM pembukuan';
+        const params = [];
+
+        if (all !== 'true' && month && month !== 'Semua Waktu' && month !== 'all' && month !== 'ALL') {
+            const filter = parseMonthYearFilter(month, year);
+            if (!filter.isAll && filter.targetMonth !== null) {
+                query += ' WHERE MONTH(created_at) = ? AND YEAR(created_at) = ?';
+                params.push(filter.targetMonth, filter.targetYear);
+            }
+        }
+
+        query += ' ORDER BY id DESC';
+        const [rows] = await req.pool.query(query, params);
         res.json(rows.map(r => ({ ...r, id: r.id.toString(), amount: Number(r.amount) })));
     } catch (error) {
         console.error(error);
@@ -1668,8 +1769,8 @@ app.post('/api/customers/:id/isolir', async (req, res) => {
 app.put('/api/customers/:id', async (req, res) => {
     try {
         const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
-        const additionalCostDesc1 = req.body.additionalCostDesc1 || req.body.additional_cost_desc1 || '';
-        const additionalCostDesc2 = req.body.additionalCostDesc2 || req.body.additional_cost_desc2 || '';
+        const additionalCostDesc1 = req.body.additionalCostDesc1 || req.body.additional_cost_desc1 || req.body.additionalcostdesc1 || '';
+        const additionalCostDesc2 = req.body.additionalCostDesc2 || req.body.additional_cost_desc2 || req.body.additionalcostdesc2 || '';
         const rawAddress = (req.body.address !== undefined && req.body.address !== null && req.body.address !== '')
             ? req.body.address 
             : (req.body.alamat || '');
@@ -1695,6 +1796,8 @@ app.put('/api/customers/:id', async (req, res) => {
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN alamat TEXT`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(
                     'UPDATE customers SET name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, additionalCostDesc1 = ?, additionalCostDesc2 = ? WHERE id = ?',
                     [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', req.params.id]
@@ -1702,6 +1805,22 @@ app.put('/api/customers/:id', async (req, res) => {
             } else {
                 throw updateErr;
             }
+        }
+        await req.pool.query(
+            'UPDATE customers SET additional_cost_desc1 = ?, additional_cost_desc2 = ? WHERE id = ?',
+            [additionalCostDesc1 || '', additionalCostDesc2 || '', req.params.id]
+        ).catch(()=>{});
+
+        if (price) {
+            const base = parseFloat(String(price).replace(/[^0-9]/g, '')) || 0;
+            const disc = discount ? (parseFloat(String(discount).replace(/[^0-9]/g, '')) || 0) : 0;
+            const add1 = additionalCost1 ? (parseFloat(String(additionalCost1).replace(/[^0-9]/g, '')) || 0) : 0;
+            const add2 = additionalCost2 ? (parseFloat(String(additionalCost2).replace(/[^0-9]/g, '')) || 0) : 0;
+            const updatedBillAmount = Math.max(0, base - disc + add1 + add2);
+            await req.pool.query(
+                'UPDATE tagihan_bulanan SET amount = ? WHERE customer_id = ? AND status = "BELUM BAYAR"',
+                [updatedBillAmount, req.params.id]
+            ).catch(() => {});
         }
 
         res.json({ message: "Pelanggan berhasil diupdate" });
@@ -1721,8 +1840,8 @@ app.post('/api/customers', async (req, res) => {
         }
 
         const { name, phone, area, username, billingDate, status, price, discount, additionalCost1, additionalCost2 } = req.body;
-        const additionalCostDesc1 = req.body.additionalCostDesc1 || req.body.additional_cost_desc1 || '';
-        const additionalCostDesc2 = req.body.additionalCostDesc2 || req.body.additional_cost_desc2 || '';
+        const additionalCostDesc1 = req.body.additionalCostDesc1 || req.body.additional_cost_desc1 || req.body.additionalcostdesc1 || '';
+        const additionalCostDesc2 = req.body.additionalCostDesc2 || req.body.additional_cost_desc2 || req.body.additionalcostdesc2 || '';
         const rawAddress = (req.body.address !== undefined && req.body.address !== null && req.body.address !== '')
             ? req.body.address 
             : (req.body.alamat || '');
@@ -1756,6 +1875,8 @@ app.post('/api/customers', async (req, res) => {
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 
                 [result] = await req.pool.query(
                     'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -1764,6 +1885,12 @@ app.post('/api/customers', async (req, res) => {
             } else {
                 throw e;
             }
+        }
+        if (result && result.insertId) {
+            await req.pool.query(
+                'UPDATE customers SET additional_cost_desc1 = ?, additional_cost_desc2 = ? WHERE id = ?',
+                [additionalCostDesc1 || '', additionalCostDesc2 || '', result.insertId]
+            ).catch(()=>{});
         }
         
         // Handle additional costs
@@ -1802,7 +1929,11 @@ app.post('/api/customers', async (req, res) => {
             
             let initialAmount = 0;
             if (price) {
-                initialAmount = parseFloat(price.replace(/[^0-9]/g, '')) || 0;
+                const base = parseFloat(price.replace(/[^0-9]/g, '')) || 0;
+                const disc = req.body.discount ? (parseFloat(String(req.body.discount).replace(/[^0-9]/g, '')) || 0) : 0;
+                const add1 = (req.body.additionalCost1 || req.body.additional_cost1) ? (parseFloat(String(req.body.additionalCost1 || req.body.additional_cost1).replace(/[^0-9]/g, '')) || 0) : 0;
+                const add2 = (req.body.additionalCost2 || req.body.additional_cost2) ? (parseFloat(String(req.body.additionalCost2 || req.body.additional_cost2).replace(/[^0-9]/g, '')) || 0) : 0;
+                initialAmount = Math.max(0, base - disc + add1 + add2);
             }
             
             // Ensure table exists
@@ -3114,7 +3245,11 @@ cron.schedule('1 0 * * *', async () => {
                     if (existing.length === 0) {
                         let amount = 0;
                         if (customer.price) {
-                            amount = parseFloat(customer.price.replace(/[^0-9]/g, '')) || 0;
+                            const base = parseFloat(customer.price.replace(/[^0-9]/g, '')) || 0;
+                            const disc = customer.discount ? (parseFloat(String(customer.discount).replace(/[^0-9]/g, '')) || 0) : 0;
+                            const add1 = (customer.additionalCost1 || customer.additional_cost1) ? (parseFloat(String(customer.additionalCost1 || customer.additional_cost1).replace(/[^0-9]/g, '')) || 0) : 0;
+                            const add2 = (customer.additionalCost2 || customer.additional_cost2) ? (parseFloat(String(customer.additionalCost2 || customer.additional_cost2).replace(/[^0-9]/g, '')) || 0) : 0;
+                            amount = Math.max(0, base - disc + add1 + add2);
                         }
                         await pool.query(
                             'INSERT INTO tagihan_bulanan (customer_id, bulan, tahun, amount, status) VALUES (?, ?, ?, ?, "BELUM BAYAR")',

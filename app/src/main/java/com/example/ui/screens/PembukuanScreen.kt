@@ -44,6 +44,20 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
     val successGreen = Color(0xFF00C853)
     val errorRed = Color(0xFFFF5252)
     val primaryCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+    val currentMonth = remember {
+        java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("MMMM", java.util.Locale.forLanguageTag("id-ID")))
+    }
+    val currentYear = remember {
+        java.time.LocalDate.now().year.toString()
+    }
+    val monthsList = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    val yearsList = listOf(currentYear, (currentYear.toInt() - 1).toString())
+
+    var selectedMonth by remember { mutableStateOf(currentMonth) }
+    var selectedYear by remember { mutableStateOf(currentYear) }
+    var monthDropdownExpanded by remember { mutableStateOf(false) }
+    var yearDropdownExpanded by remember { mutableStateOf(false) }
+
     val currentUser by UserSession.currentUser.collectAsState()
     var pemasukan by remember { mutableStateOf(0.0) }
     var pengeluaran by remember { mutableStateOf(0.0) }
@@ -60,32 +74,17 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
     var inputDescription by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
 
-    fun fetchData() {
+    fun fetchData(m: String = selectedMonth, y: String = selectedYear) {
         coroutineScope.launch {
             try {
-                val res = ApiClient.apiService.getPembukuan()
+                val res = ApiClient.apiService.getPembukuan(month = m, year = y)
                 pemasukan = res.pemasukan
                 pengeluaran = res.pengeluaran
                 categories = res.categories
 
-                try {
-                    com.example.ui.data.UserSession.getOrFetchAreas()
-                    val customersRes = ApiClient.apiService.getCustomers().filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
-                    var cashTotal = 0.0
-                    var onlineTotal = 0.0
-                    customersRes.forEach { c ->
-                        val finalPrice = c.getTotalBillAmount().toDouble()
-                        
-                        if (c.status.contains("LUNAS CASH", ignoreCase = true)) {
-                            cashTotal += finalPrice
-                        } else if (c.status.contains("LUNAS TRANSFER", ignoreCase = true) || c.status.contains("LUNAS ONLINE", ignoreCase = true)) {
-                            onlineTotal += finalPrice
-                        }
-                    }
-                    transaksiCash = cashTotal
-                    transaksiOnline = onlineTotal
-                } catch (e: Exception) {}
-
+                // Ambil total transaksi cash & online khusus pada bulan dan tahun terpilih
+                transaksiCash = categories["Transaksi Cash"] ?: 0.0
+                transaksiOnline = categories["Transaksi Online"] ?: categories["Online"] ?: 0.0
                 
                 try {
                     pengeluaranDetails = ApiClient.apiService.getPengeluaranDetail()
@@ -94,8 +93,8 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
             }
         }
     }
-    LaunchedEffect(Unit) {
-        fetchData()
+    LaunchedEffect(selectedMonth, selectedYear) {
+        fetchData(selectedMonth, selectedYear)
     }
 
 
@@ -122,6 +121,135 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Periode Bulan & Keterangan Mulai dari 0
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = cardBg),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    "Periode Pembukuan",
+                                    color = textSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box {
+                                        Row(
+                                            modifier = Modifier
+                                                .clickable { monthDropdownExpanded = true }
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                selectedMonth,
+                                                color = primaryCyan,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Icon(
+                                                Icons.Default.ArrowDropDown,
+                                                contentDescription = null,
+                                                tint = primaryCyan
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = monthDropdownExpanded,
+                                            onDismissRequest = { monthDropdownExpanded = false },
+                                            containerColor = cardBg
+                                        ) {
+                                            monthsList.forEach { m ->
+                                                DropdownMenuItem(
+                                                    text = { Text(m, color = textMain) },
+                                                    onClick = {
+                                                        selectedMonth = m
+                                                        monthDropdownExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Box {
+                                        Row(
+                                            modifier = Modifier
+                                                .clickable { yearDropdownExpanded = true }
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                selectedYear,
+                                                color = primaryCyan,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Icon(
+                                                Icons.Default.ArrowDropDown,
+                                                contentDescription = null,
+                                                tint = primaryCyan
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = yearDropdownExpanded,
+                                            onDismissRequest = { yearDropdownExpanded = false },
+                                            containerColor = cardBg
+                                        ) {
+                                            yearsList.forEach { y ->
+                                                DropdownMenuItem(
+                                                    text = { Text(y, color = textMain) },
+                                                    onClick = {
+                                                        selectedYear = y
+                                                        yearDropdownExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Button(
+                                onClick = onNavigateToRangkuman,
+                                colors = ButtonDefaults.buttonColors(containerColor = primaryCyan.copy(alpha = 0.15f)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.PieChart, contentDescription = null, tint = primaryCyan, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Rangkuman", color = primaryCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = primaryCyan.copy(alpha = 0.08f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = primaryCyan, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Logika bulanan aktif: Mulai dari Rp 0 setiap awal bulan.",
+                                    color = textMain,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Pemasukkan
             if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.ADMIN) {
             item {

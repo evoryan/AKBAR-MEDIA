@@ -69,9 +69,9 @@ fun ThermalInvoiceView(
                     serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
                     packagePrice = customer?.price,
                     additionalCost1 = customer?.additionalCost1,
-                    additionalCostDesc1 = customer?.additionalCostDesc1,
+                    additionalCostDesc1 = customer?.getEffectiveCostDesc1() ?: customer?.additionalCostDesc1,
                     additionalCost2 = customer?.additionalCost2,
-                    additionalCostDesc2 = customer?.additionalCostDesc2,
+                    additionalCostDesc2 = customer?.getEffectiveCostDesc2() ?: customer?.additionalCostDesc2,
                     discount = customer?.discount
                 )
             } catch (_: Exception) {
@@ -156,19 +156,36 @@ fun ThermalInvoiceView(
                 textAlign = TextAlign.Start
             )
             Spacer(modifier = Modifier.height(8.dp))
-            ThermalRow("Iuran Internet", customer?.price ?: totalAmount)
-            if (add1 > 0L) {
-                val label1 = if (!customer?.additionalCostDesc1.isNullOrBlank()) "Biaya Tambahan (${customer.additionalCostDesc1})" else "Biaya Tambahan 1"
-                ThermalRow(label1, "Rp. ${currencyFmt.format(add1)}")
+            val totalParsed = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(totalAmount)
+            val parsedPkg = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(customer?.price)
+            val monthCount = if (months.contains(",")) months.split(",").size.coerceAtLeast(1) else 1
+            val effectiveAdd1 = add1 * monthCount
+            val effectiveAdd2 = add2 * monthCount
+            val effectiveDisc = disc * monthCount
+            val effectivePkg = if (totalParsed > 0L) {
+                val deduced = (totalParsed - effectiveAdd1 - effectiveAdd2 + effectiveDisc).coerceAtLeast(0L)
+                if (deduced > 0L) deduced else if (parsedPkg > 0L) parsedPkg * monthCount else totalParsed
+            } else if (parsedPkg > 0L) {
+                parsedPkg * monthCount
+            } else {
+                totalParsed
             }
-            if (add2 > 0L) {
-                val label2 = if (!customer?.additionalCostDesc2.isNullOrBlank()) "Biaya Tambahan (${customer.additionalCostDesc2})" else "Biaya Tambahan 2"
-                ThermalRow(label2, "Rp. ${currencyFmt.format(add2)}")
+
+            ThermalRow("Iuran Internet", "Rp. ${currencyFmt.format(effectivePkg)}")
+            val desc1 = customer?.getEffectiveCostDesc1() ?: customer?.additionalCostDesc1
+            if (effectiveAdd1 > 0L || !desc1.isNullOrBlank()) {
+                val label1 = if (!desc1.isNullOrBlank()) "Biaya Tambahan ($desc1)" else "Biaya Tambahan 1"
+                ThermalRow(label1, "Rp. ${currencyFmt.format(effectiveAdd1)}")
             }
-            if (disc > 0L) {
-                ThermalRow("Diskon", "- Rp. ${currencyFmt.format(disc)}")
+            val desc2 = customer?.getEffectiveCostDesc2() ?: customer?.additionalCostDesc2
+            if (effectiveAdd2 > 0L || !desc2.isNullOrBlank()) {
+                val label2 = if (!desc2.isNullOrBlank()) "Biaya Tambahan ($desc2)" else "Biaya Tambahan 2"
+                ThermalRow(label2, "Rp. ${currencyFmt.format(effectiveAdd2)}")
             }
-            if (add1 == 0L && add2 == 0L && disc == 0L) {
+            if (effectiveDisc > 0L) {
+                ThermalRow("Diskon", "- Rp. ${currencyFmt.format(effectiveDisc)}")
+            }
+            if (effectiveAdd1 == 0L && effectiveAdd2 == 0L && effectiveDisc == 0L && desc1.isNullOrBlank() && desc2.isNullOrBlank()) {
                 ThermalRow("Biaya Tambahan", "Rp. 0")
             }
             

@@ -74,6 +74,9 @@ interface PelangganDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(pelanggan: List<PelangganEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(pelanggan: PelangganEntity)
+
     @Query("DELETE FROM pelanggan WHERE id = :id")
     suspend fun deleteById(id: Int)
 

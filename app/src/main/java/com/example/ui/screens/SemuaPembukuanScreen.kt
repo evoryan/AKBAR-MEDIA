@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -106,11 +107,30 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     val currentMonthYear = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.forLanguageTag("id-ID")))
     }
+    val currentYear = remember { LocalDate.now().year }
     val context = androidx.compose.ui.platform.LocalContext.current
     
     var selectedMonth by remember { mutableStateOf(currentMonthYear) }
     var monthDropdownExpanded by remember { mutableStateOf(false) }
-    val months = listOf("Mei 2026", "Juni 2026", "Juli 2026", "Agustus 2026")
+    val months = remember {
+        val monthNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+        val list = mutableListOf("Semua Waktu")
+        for (m in monthNames) {
+            list.add("$m $currentYear")
+        }
+        list
+    }
+
+    // Tab Index: 0 -> Pemasukan, 1 -> Pengeluaran, 2 -> Semua
+    var selectedTab by remember {
+        mutableIntStateOf(
+            when (initialType.lowercase()) {
+                "pengeluaran" -> 1
+                "pemasukan" -> 0
+                else -> 0
+            }
+        )
+    }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var keterangan by remember { mutableStateOf("") }
@@ -123,30 +143,73 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     var pembukuanList by remember { mutableStateOf(emptyList<com.example.ui.data.remote.PembukuanItem>()) }
     var isBackgroundLoading by remember { mutableStateOf(true) }
     var editingItem by remember { mutableStateOf<com.example.ui.data.remote.PembukuanItem?>(null) }
-    
-    
-    
-    LaunchedEffect(Unit) {
-        try {
-            pembukuanList = ApiClient.apiService.getAllPembukuan()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            isBackgroundLoading = false
+    val coroutineScope = rememberCoroutineScope()
+    var searchQuery by remember { mutableStateOf("") }
+
+    fun refreshData() {
+        coroutineScope.launch {
+            try {
+                isBackgroundLoading = true
+                pembukuanList = ApiClient.apiService.getAllPembukuan(month = if (selectedMonth == "Semua Waktu") null else selectedMonth)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isBackgroundLoading = false
+            }
         }
     }
     
-    val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(selectedMonth) {
+        refreshData()
+    }
 
-    var searchQuery by remember { mutableStateOf("") }
-    
+    fun isItemInMonth(item: com.example.ui.data.remote.PembukuanItem, filter: String): Boolean {
+        if (filter == "Semua Waktu") return true
+        val createdAt = item.created_at ?: return false
+        val parts = filter.split(" ")
+        if (parts.size < 2) return true
+        val mName = parts[0]
+        val yStr = parts[1]
+        val monthNames = listOf("januari", "februari", "maret", "april", "mei", "juni", "juli", "agustus", "september", "oktober", "november", "desember")
+        val mIdx = monthNames.indexOf(mName.lowercase())
+        if (mIdx < 0) return true
+        val mNum = String.format("%02d", mIdx + 1)
+        return createdAt.startsWith("$yStr-$mNum")
+    }
+
+    val monthFilteredList = remember(pembukuanList, selectedMonth) {
+        pembukuanList.filter { isItemInMonth(it, selectedMonth) }
+    }
+    val totalPemasukanBulan = remember(monthFilteredList) {
+        monthFilteredList.filter { it.type.equals("pemasukan", ignoreCase = true) }.sumOf { it.amount.toLong() }
+    }
+    val totalPengeluaranBulan = remember(monthFilteredList) {
+        monthFilteredList.filter { it.type.equals("pengeluaran", ignoreCase = true) }.sumOf { it.amount.toLong() }
+    }
+    val totalSetorBulan = remember(monthFilteredList) {
+        monthFilteredList.filter { it.type.equals("setor", ignoreCase = true) }.sumOf { it.amount.toLong() }
+    }
+
+    val currentTabItems = remember(monthFilteredList, selectedTab, searchQuery) {
+        val byType = when (selectedTab) {
+            0 -> monthFilteredList.filter { it.type.equals("pemasukan", ignoreCase = true) }
+            1 -> monthFilteredList.filter { it.type.equals("pengeluaran", ignoreCase = true) }
+            else -> monthFilteredList
+        }
+        if (searchQuery.isBlank()) byType
+        else byType.filter {
+            it.description?.contains(searchQuery, ignoreCase = true) == true ||
+            it.category?.contains(searchQuery, ignoreCase = true) == true ||
+            it.type.contains(searchQuery, ignoreCase = true)
+        }
+    }
 
     Scaffold(
         containerColor = bgMain,
         topBar = {
             Column(modifier = Modifier.background(if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))) {
                 TopAppBar(
-                    title = { Text("Pembukuan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                    title = { Text("Semua Pembukuan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
@@ -158,20 +221,27 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Berikut Pembukuan Bulan :", color = textMain, fontSize = 14.sp)
+                        Text("Bulan Pembukuan :", color = textSecondary, fontSize = 12.sp)
                         Box {
-                            Text(
-                                selectedMonth,
-                                color = warningYellow,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { monthDropdownExpanded = true }.padding(vertical = 4.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clickable { monthDropdownExpanded = true }
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    selectedMonth,
+                                    color = warningYellow,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = warningYellow)
+                            }
                             DropdownMenu(
                                 expanded = monthDropdownExpanded,
                                 onDismissRequest = { monthDropdownExpanded = false },
@@ -195,15 +265,113 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             editingItem = null
                             keterangan = ""
                             jumlah = ""
-                            tipePembukuan = "Pilih Tipe Pembukuan"
+                            tipePembukuan = when (selectedTab) {
+                                0 -> "Pemasukan"
+                                1 -> "Pengeluaran"
+                                else -> "Pilih Tipe Pembukuan"
+                            }
                             showAddDialog = true 
                         },
-                        containerColor = bgMain,
+                        containerColor = if (selectedTab == 0) successGreen else if (selectedTab == 1) errorRed else primaryBlue,
+                        contentColor = Color.White,
                         shape = CircleShape,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add", tint = textMain)
+                        Icon(Icons.Default.Add, contentDescription = "Add", tint = Color.White)
                     }
+                }
+
+                // TabRow Pemisah Pemasukan dan Pengeluaran
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF151522) else androidx.compose.ui.graphics.Color(0xFFF0F4F8),
+                    contentColor = primaryBlue,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = if (selectedTab == 0) successGreen else if (selectedTab == 1) errorRed else primaryBlue,
+                            height = 3.dp
+                        )
+                    }
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    "Pemasukan",
+                                    color = if (selectedTab == 0) successGreen else textSecondary,
+                                    fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 14.sp
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (selectedTab == 0) successGreen.copy(alpha = 0.2f) else textSecondary.copy(alpha = 0.1f)
+                                ) {
+                                    Text(
+                                        "${monthFilteredList.count { it.type.equals("pemasukan", ignoreCase = true) }}",
+                                        color = if (selectedTab == 0) successGreen else textSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    "Pengeluaran",
+                                    color = if (selectedTab == 1) errorRed else textSecondary,
+                                    fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 14.sp
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (selectedTab == 1) errorRed.copy(alpha = 0.2f) else textSecondary.copy(alpha = 0.1f)
+                                ) {
+                                    Text(
+                                        "${monthFilteredList.count { it.type.equals("pengeluaran", ignoreCase = true) }}",
+                                        color = if (selectedTab == 1) errorRed else textSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    "Semua",
+                                    color = if (selectedTab == 2) primaryBlue else textSecondary,
+                                    fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 14.sp
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (selectedTab == 2) primaryBlue.copy(alpha = 0.2f) else textSecondary.copy(alpha = 0.1f)
+                                ) {
+                                    Text(
+                                        "${monthFilteredList.size}",
+                                        color = if (selectedTab == 2) primaryBlue else textSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    )
                 }
             }
         },
@@ -212,28 +380,32 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Total Pengeluaran", color = textMain, fontSize = 14.sp)
+                    Text("Total Pemasukan :", color = textSecondary, fontSize = 13.sp)
                     Text(
-                        "Rp. ${String.format("%,d", pembukuanList.filter { it.type.lowercase() == "pengeluaran" }.sumOf { it.amount.toLong() }).replace(",", ".")}",
+                        "Rp. ${String.format("%,d", totalPemasukanBulan).replace(",", ".")}",
+                        color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Total Pengeluaran :", color = textSecondary, fontSize = 13.sp)
+                    Text(
+                        "Rp. ${String.format("%,d", totalPengeluaranBulan).replace(",", ".")}",
                         color = errorRed, fontSize = 14.sp, fontWeight = FontWeight.Bold
                     )
                 }
+                Divider(color = textSecondary.copy(alpha = 0.2f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Total Pemasukan Lain2", color = textMain, fontSize = 14.sp)
+                    Text("Sisa Saldo Kas Bulan Ini :", color = textMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    val sisaSaldo = totalPemasukanBulan - totalPengeluaranBulan
                     Text(
-                        "Rp. ${String.format("%,d", pembukuanList.filter { it.type.lowercase() == "pemasukan" }.sumOf { it.amount.toLong() }).replace(",", ".")}",
-                        color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold
-                    )
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Total Setor", color = textMain, fontSize = 14.sp)
-                    Text(
-                        "Rp. ${String.format("%,d", pembukuanList.filter { it.type.lowercase() == "setor" }.sumOf { it.amount.toLong() }).replace(",", ".")}",
-                        color = successGreen, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                        "Rp. ${String.format("%,d", sisaSaldo).replace(",", ".")}",
+                        color = if (sisaSaldo >= 0) successGreen else errorRed,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -243,8 +415,66 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
+            // Summary Banner khusus tab aktif
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = when (selectedTab) {
+                        0 -> successGreen.copy(alpha = 0.12f)
+                        1 -> errorRed.copy(alpha = 0.12f)
+                        else -> primaryBlue.copy(alpha = 0.12f)
+                    }
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            when (selectedTab) {
+                                0 -> "Total Pemasukan ($selectedMonth)"
+                                1 -> "Total Pengeluaran ($selectedMonth)"
+                                else -> "Ringkasan Pembukuan ($selectedMonth)"
+                            },
+                            color = textSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            when (selectedTab) {
+                                0 -> "Rp. ${String.format("%,d", totalPemasukanBulan).replace(",", ".")}"
+                                1 -> "Rp. ${String.format("%,d", totalPengeluaranBulan).replace(",", ".")}"
+                                else -> "Rp. ${String.format("%,d", (totalPemasukanBulan - totalPengeluaranBulan)).replace(",", ".")}"
+                            },
+                            color = when (selectedTab) {
+                                0 -> successGreen
+                                1 -> errorRed
+                                else -> primaryBlue
+                            },
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        when (selectedTab) {
+                            0 -> "${monthFilteredList.count { it.type.equals("pemasukan", ignoreCase = true) }} transaksi"
+                            1 -> "${monthFilteredList.count { it.type.equals("pengeluaran", ignoreCase = true) }} pengeluaran"
+                            else -> "${monthFilteredList.size} total"
+                        },
+                        color = textSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -253,15 +483,15 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                 TextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = { Text("Cari Sesuatu...", color = textSecondary) },
+                    placeholder = { Text("Cari keterangan atau kategori...", color = textSecondary) },
                     modifier = Modifier.weight(1f),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
                         focusedIndicatorColor = textSecondary,
                         unfocusedIndicatorColor = textSecondary,
-                        focusedTextColor = Color.Black,
-                        unfocusedTextColor = Color.Black
+                        focusedTextColor = textMain,
+                        unfocusedTextColor = textMain
                     ),
                     singleLine = true
                 )
@@ -273,11 +503,11 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                         .background(primaryBlue),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = "Search", tint = textMain)
+                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             
             if (isBackgroundLoading) {
                 LinearProgressIndicator(
@@ -286,20 +516,33 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                 )
             }
             
-            if (!isBackgroundLoading && pembukuanList.isEmpty()) {
-                Text(
-                    text = "Tidak ada Data",
-                    color = textSecondary,
-                    modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
-                    textAlign = TextAlign.Center
-                )
+            if (!isBackgroundLoading && currentTabItems.isEmpty()) {
+                val emptyMessage = when (selectedTab) {
+                    0 -> "Belum ada transaksi Pemasukan pada bulan $selectedMonth.\n(Mulai dari Rp 0 setiap awal bulan)"
+                    1 -> "Belum ada transaksi Pengeluaran pada bulan $selectedMonth.\n(Mulai dari Rp 0 setiap awal bulan)"
+                    else -> "Belum ada catatan pembukuan pada bulan $selectedMonth."
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(top = 40.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Text(
+                        text = emptyMessage,
+                        color = textSecondary,
+                        textAlign = TextAlign.Center,
+                        fontSize = 14.sp
+                    )
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(pembukuanList.filter { it.description?.contains(searchQuery, ignoreCase = true) == true || it.category?.contains(searchQuery, ignoreCase = true) == true || it.type.contains(searchQuery, ignoreCase = true) }) { item ->
+                    items(currentTabItems) { item ->
                         PembukuanListItem(
                             item = item,
                             bgMain = bgMain,
@@ -321,7 +564,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                                 coroutineScope.launch {
                                     try {
                                         ApiClient.apiService.deletePembukuan(item.id)
-                                        pembukuanList = ApiClient.apiService.getAllPembukuan()
+                                        refreshData()
                                         android.widget.Toast.makeText(context, "Data berhasil dihapus", android.widget.Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
                                         e.printStackTrace()
@@ -447,7 +690,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                                     } else {
                                         ApiClient.apiService.addPembukuan(req)
                                     }
-                                    pembukuanList = ApiClient.apiService.getAllPembukuan()
+                                    refreshData()
                                     showAddDialog = false
                                     editingItem = null
                                     keterangan = ""

@@ -192,7 +192,8 @@ fun AkbarMediaNavGraph() {
                     customerId = route.customerId,
                     onBack = { navController.popBackStack() },
                     onNavigateToPayment = { id -> navController.navigate(PaymentRoute(id)) },
-                    onNavigateToAcs = { query -> navController.navigate(AcsRoute(query)) }
+                    onNavigateToAcs = { query -> navController.navigate(AcsRoute(query)) },
+                    onNavigateToEdit = { id -> navController.navigate(EditCustomerRoute(id)) }
                 )
             }
 

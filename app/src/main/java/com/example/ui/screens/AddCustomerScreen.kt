@@ -843,7 +843,12 @@ fun AddCustomerScreen(
                         ClickableField(title = "Area", subtitle = null, actionText = selectedArea?.name ?: "Pilih Area", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showAreaDialog = true })
                         HorizontalDivider(color = textSecondary.copy(alpha = 0.5f))
 
-                        ClickableField(title = "Paket", subtitle = null, actionText = selectedPackage?.name?.let { "$it (Rp ${selectedPackage?.price})" } ?: "Pilih Paket", neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showPackageDialog = true })
+                        val addPkgPriceFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                        val addPkgPriceText = selectedPackage?.let { pkg ->
+                            val pLong = if (pkg.taxRate > 0) pkg.finalPrice.toLong() else pkg.price.toLong()
+                            "${pkg.name} (Rp ${addPkgPriceFmt.format(pLong)})"
+                        } ?: "Pilih Paket"
+                        ClickableField(title = "Paket", subtitle = null, actionText = addPkgPriceText, neonCyan = neonCyan, textSecondary = textSecondary, onClick = { showPackageDialog = true })
                         HorizontalDivider(color = textSecondary.copy(alpha = 0.5f))
 
                         OutlinedTextField(
@@ -885,7 +890,7 @@ fun AddCustomerScreen(
                         )
 
                         // Live Ringkasan Total Tagihan Bulanan
-                        val parsedBasePrice = selectedPackage?.price?.toLong() ?: 0L
+                        val parsedBasePrice = selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } ?: 0L
                         val parsedAddCost1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost1)
                         val parsedAddCost2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost2)
                         val totalBillCalculated = (parsedBasePrice + parsedAddCost1 + parsedAddCost2).coerceAtLeast(0L)
@@ -1003,8 +1008,10 @@ fun AddCustomerScreen(
                                 coroutineScope.launch {
                                     try {
                                         val cleanAddress = address.trim()
+                                        val pLong = selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } ?: 0L
+                                        val basePriceString = if (pLong > 0L) "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(pLong) else "Rp. 0"
                                         val newCust = Customer(
-                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: "Rp. 0", discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null }, additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null }, pppoeSecret = secretInput
+                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput
                                         )
                                         ApiClient.apiService.addCustomer(newCust)
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
@@ -1089,8 +1096,10 @@ fun AddCustomerScreen(
                                 coroutineScope.launch {
                                     try {
                                         val cleanAddress = address.trim()
+                                        val pLong = selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } ?: 0L
+                                        val basePriceString = if (pLong > 0L) "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(pLong) else "Rp. 0"
                                         val newCust = Customer(
-                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = selectedPackage?.price?.toLong()?.let { "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(it) } ?: "Rp. 0", discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1, additionalCost2 = additionalCost2, additionalCostDesc1 = additionalCostDesc1.trim().ifEmpty { null }, additionalCostDesc2 = additionalCostDesc2.trim().ifEmpty { null }, pppoeSecret = secretInput, odpId = selectedOdp?.id ?: "", odpPort = selectedPort
+                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput, odpId = selectedOdp?.id ?: "", odpPort = selectedPort
                                         )
                                         ApiClient.apiService.addCustomer(newCust)
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()

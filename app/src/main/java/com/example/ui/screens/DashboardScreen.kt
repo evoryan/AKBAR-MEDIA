@@ -347,9 +347,41 @@ fun DashboardScreen(
                                 val format = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("id-ID"))
                                 format.maximumFractionDigits = 0
                                 val amount = if (page == 0) {
-                                    state.tagihanList
-                                        .filter { it.status == "LUNAS CASH" && it.bulan.equals(selectedMonth, ignoreCase = true) && it.tahun.toString() == selectedYear }
-                                        .sumOf { it.amount }
+                                    val paidTagihans = state.tagihanList.filter { t ->
+                                        (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
+                                        isTagihanInMonthRecap(t, selectedMonth, selectedYear)
+                                    }
+                                    val pelangganMap = state.pelangganList.associateBy { it.id }
+                                    var sum = 0.0
+                                    val accountedCustomerIds = mutableSetOf<Int>()
+
+                                    paidTagihans.forEach { t ->
+                                        accountedCustomerIds.add(t.customer_id)
+                                        if (t.amount > 0.0) {
+                                            sum += t.amount
+                                        } else {
+                                            val cust = pelangganMap[t.customer_id]
+                                            if (cust != null) {
+                                                val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.price)
+                                                val disc = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.discount)
+                                                val add1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost1)
+                                                val add2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost2)
+                                                sum += (base - disc + add1 + add2).coerceAtLeast(0L).toDouble()
+                                            }
+                                        }
+                                    }
+
+                                    state.pelangganList.forEach { cust ->
+                                        if (!accountedCustomerIds.contains(cust.id) &&
+                                            (cust.status.contains("LUNAS", ignoreCase = true) || cust.status.contains("SUDAH", ignoreCase = true))) {
+                                            val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.price)
+                                            val disc = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.discount)
+                                            val add1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost1)
+                                            val add2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost2)
+                                            sum += (base - disc + add1 + add2).coerceAtLeast(0L).toDouble()
+                                        }
+                                    }
+                                    sum
                                 } else {
                                     state.data.totalGlobalRevenue
                                 }
@@ -418,7 +450,7 @@ fun DashboardScreen(
                             is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
                             is DashboardState.Success -> {
                                 val paidCount = state.tagihanList
-                                    .filter { it.status.contains("LUNAS", ignoreCase = true) && it.bulan.equals(selectedMonth, ignoreCase = true) && it.tahun.toString() == selectedYear }
+                                    .filter { (it.status.contains("LUNAS", ignoreCase = true) || it.status.contains("SUDAH", ignoreCase = true)) && isTagihanInMonthRecap(it, selectedMonth, selectedYear) }
                                     .map { it.customer_id }
                                     .distinct()
                                     .count()
