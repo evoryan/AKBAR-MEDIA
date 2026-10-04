@@ -151,6 +151,9 @@ fun CustomersScreen(
             db.pelangganDao().insertAll(mapped)
             db.tagihanDao().deleteAll()
             db.tagihanDao().insertAll(tagihanMapped)
+            if (!syncResponse.gangguan.isNullOrEmpty()) {
+                db.gangguanDao().insertAll(syncResponse.gangguan)
+            }
         } catch (e: Exception) {
             // Silently fall back to cached copy
         }
@@ -425,6 +428,8 @@ data class Customer(
     @Json(name = "package_name") val packageName: String? = null,
     val additionalCost1: String? = null,
     val additionalCost2: String? = null,
+    @Json(name = "additional_cost1") val additional_cost1: String? = null,
+    @Json(name = "additional_cost2") val additional_cost2: String? = null,
     val additionalCostDesc1: String? = null,
     val additionalCostDesc2: String? = null,
     @Json(name = "additional_cost_desc1") val additional_cost_desc1: String? = null,
@@ -433,6 +438,14 @@ data class Customer(
     @Json(name = "odp_id") val odpId: String? = null,
     @Json(name = "odp_port") val odpPort: String? = null
 ) {
+    fun getEffectiveCost1(): String? {
+        return additionalCost1?.takeIf { it.isNotBlank() } ?: additional_cost1?.takeIf { it.isNotBlank() }
+    }
+
+    fun getEffectiveCost2(): String? {
+        return additionalCost2?.takeIf { it.isNotBlank() } ?: additional_cost2?.takeIf { it.isNotBlank() }
+    }
+
     fun getEffectiveCostDesc1(): String? {
         return additionalCostDesc1?.takeIf { it.isNotBlank() } ?: additional_cost_desc1?.takeIf { it.isNotBlank() }
     }
@@ -453,11 +466,11 @@ data class Customer(
     }
 
     fun getAdditionalCost1Amount(): Long {
-        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost1)
+        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(getEffectiveCost1())
     }
 
     fun getAdditionalCost2Amount(): Long {
-        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost2)
+        return com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(getEffectiveCost2())
     }
 
     fun getTotalAdditionalCost(): Long {
@@ -614,7 +627,10 @@ fun CustomerItem(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(text = customer.price, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textMain)
+                Text(text = customer.getFormattedTotalBill(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textMain)
+                if (customer.getTotalAdditionalCost() > 0L || customer.getDiscountAmount() > 0L) {
+                    Text(text = "Paket: ${customer.price}", fontSize = 10.sp, color = textSecondary)
+                }
                 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

@@ -50,29 +50,31 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     p.id to (base - disc + add1 + add2).coerceAtLeast(0L).toDouble()
                 }
 
+                // Total akumulasi tagihan pelanggan (seluruh tagihan pelanggan akhir)
+                val totalAkumulasiTagihan = filteredPelanggan.sumOf { it.getTotalBillAmount().toDouble() }
+
+                // Nilai pemasukan dari pembayaran pelanggan yang sudah membayar
                 val paidTagihanList = tagihanList.filter { 
                     it.status.contains("LUNAS", ignoreCase = true) || it.status.contains("SUDAH", ignoreCase = true) 
                 }
-                val paidTagihanCustIds = mutableSetOf<Int>()
-                var sumGlobalRevenue = 0.0
-                paidTagihanList.forEach { t ->
-                    paidTagihanCustIds.add(t.customer_id)
-                    val amt = if (t.amount > 0.0) t.amount else (customerBillMap[t.customer_id] ?: 0.0)
-                    sumGlobalRevenue += amt
-                }
-
-                filteredPelanggan.forEach { p ->
-                    if (!paidTagihanCustIds.contains(p.id) && 
-                        (p.status.contains("LUNAS", ignoreCase = true) || p.status.contains("SUDAH", ignoreCase = true))) {
-                        sumGlobalRevenue += (customerBillMap[p.id] ?: 0.0)
+                var sumPemasukanPaid = 0.0
+                if (paidTagihanList.isNotEmpty()) {
+                    paidTagihanList.forEach { t ->
+                        val amt = if (t.amount > 0.0) t.amount else (customerBillMap[t.customer_id] ?: 0.0)
+                        sumPemasukanPaid += amt
+                    }
+                } else {
+                    filteredPelanggan.forEach { p ->
+                        if (p.status.contains("LUNAS", ignoreCase = true) || p.status.contains("SUDAH", ignoreCase = true)) {
+                            sumPemasukanPaid += (customerBillMap[p.id] ?: 0.0)
+                        }
                     }
                 }
-                val totalGlobalRevenue = sumGlobalRevenue
 
                 val summaryResponse = DashboardSummaryResponse(
                     totalCustomers = filteredPelanggan.size,
-                    monthlyRevenue = totalGlobalRevenue,
-                    totalGlobalRevenue = totalGlobalRevenue,
+                    monthlyRevenue = sumPemasukanPaid,
+                    totalGlobalRevenue = totalAkumulasiTagihan,
                     activePPPoE = routerStatusList.sumOf { it.active_pppoe.toIntOrNull() ?: 0 },
                     activeHotspot = 0,
                     paidCustomers = paidCount,

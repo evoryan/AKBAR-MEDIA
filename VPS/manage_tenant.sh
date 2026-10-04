@@ -71,11 +71,12 @@ while true; do
     echo -e " ${COLOR_GREEN}7.${COLOR_RESET} 📊 Lihat Statistik & Detail Tenant (Pelanggan, Router, Tagihan)"
     echo -e " ${COLOR_GREEN}8.${COLOR_RESET} 💾 Backup Database Tenant (Export SQL Dump)"
     echo -e " ${COLOR_GREEN}9.${COLOR_RESET} 🔄 Restore Database Tenant (Import SQL Dump)"
-    echo -e " ${COLOR_RED}10.${COLOR_RESET} 🗑️  Hapus Tenant & Databasenya (Permanent Delete)"
+    echo -e " ${COLOR_CYAN}10.${COLOR_RESET} ⚡ Update Database Tenant Sesuai init.sql Terbaru (Sinkron Room DB)"
+    echo -e " ${COLOR_RED}11.${COLOR_RESET} 🗑️  Hapus Tenant & Databasenya (Permanent Delete)"
     echo -e " ${COLOR_WHITE}0.${COLOR_RESET} 🚪 Keluar"
     print_divider
 
-    read -rp "👉 Masukkan pilihan Anda [0-10]: " CHOICE
+    read -rp "👉 Masukkan pilihan Anda [0-11]: " CHOICE
     echo ""
 
     case "$CHOICE" in
@@ -377,8 +378,40 @@ while true; do
             ;;
 
         10)
-            # 10. HAPUS TENANT
-            echo -e "${COLOR_RED}${COLOR_BOLD}=== [10] HAPUS TENANT & DATABASE PERMANEN ===${COLOR_RESET}"
+            # 10. UPDATE DATABASE TENANT SESUAI INIT.SQL TERBARU
+            echo -e "${COLOR_CYAN}${COLOR_BOLD}=== [10] UPDATE DATABASE TENANT SESUAI INIT.SQL TERBARU ===${COLOR_RESET}"
+            echo -e "${COLOR_WHITE}Menu ini akan menyelaraskan database tenant dengan skema database (init.sql) terbaru,${COLOR_RESET}"
+            echo -e "${COLOR_WHITE}termasuk menambahkan tabel/kolom sinkronisasi Room database lokal (pelanggan, tagihan, status_router, gangguan, dsb).${COLOR_RESET}"
+            echo ""
+            node manage_tenant.js list
+            echo -e "${COLOR_YELLOW}Pilihan Target Update:${COLOR_RESET}"
+            echo -e " ${COLOR_GREEN}[1]${COLOR_RESET} Update SEMUA Tenant sekaligus"
+            echo -e " ${COLOR_GREEN}[2]${COLOR_RESET} Update SATU Tenant tertentu (masukkan username / db_name)"
+            echo -e " ${COLOR_WHITE}[0]${COLOR_RESET} Batal"
+            echo ""
+            read -rp "👉 Masukkan pilihan target [0-2]: " UPDATE_CHOICE
+
+            if [ "$UPDATE_CHOICE" = "1" ]; then
+                echo -e "\n${COLOR_CYAN}Sedang mengupdate seluruh database tenant...${COLOR_RESET}"
+                node manage_tenant.js update-db all
+            elif [ "$UPDATE_CHOICE" = "2" ]; then
+                read -rp "Masukkan Username atau Nama Database tenant yang ingin diupdate: " TARGET_TENANT
+                TARGET_TENANT="$(echo "$TARGET_TENANT" | tr -d ' ')"
+                if [ -n "$TARGET_TENANT" ]; then
+                    echo -e "\n${COLOR_CYAN}Sedang mengupdate database tenant '$TARGET_TENANT'...${COLOR_RESET}"
+                    node manage_tenant.js update-db "$TARGET_TENANT"
+                else
+                    echo -e "${COLOR_YELLOW}Operasi dibatalkan.${COLOR_RESET}"
+                fi
+            else
+                echo -e "${COLOR_YELLOW}Operasi dibatalkan.${COLOR_RESET}"
+            fi
+            pause_screen
+            ;;
+
+        11)
+            # 11. HAPUS TENANT
+            echo -e "${COLOR_RED}${COLOR_BOLD}=== [11] HAPUS TENANT & DATABASE PERMANEN ===${COLOR_RESET}"
             echo -e "${COLOR_RED}⚠️ PERINGATAN: Tindakan ini akan menghapus database tenant beserta seluruh data pelanggan, tagihan, transaksi, dan akun superadmin!${COLOR_RESET}"
             echo ""
             node manage_tenant.js list
@@ -406,7 +439,7 @@ while true; do
             ;;
 
         *)
-            echo -e "${COLOR_RED}Pilihan tidak valid! Silakan masukkan angka 0 sampai 10.${COLOR_RESET}"
+            echo -e "${COLOR_RED}Pilihan tidak valid! Silakan masukkan angka 0 sampai 11.${COLOR_RESET}"
             pause_screen
             ;;
     esac

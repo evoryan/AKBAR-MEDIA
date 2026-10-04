@@ -336,7 +336,7 @@ fun DashboardScreen(
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                if (page == 0) "Total Lunas Bayar ($selectedMonth $selectedYear)" else "Total Lunas Bayar Global",
+                                if (page == 0) "Total Lunas Bayar ($selectedMonth $selectedYear)" else "Total Akumulasi Tagihan Pelanggan",
                                 fontWeight = FontWeight.Medium, fontSize = 14.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
                             )
                         }
@@ -344,48 +344,17 @@ fun DashboardScreen(
                         when (val state = uiState) {
                             is DashboardState.Loading -> Text("Rp ...", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                             is DashboardState.Success -> {
-                                val format = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.forLanguageTag("id-ID"))
-                                format.maximumFractionDigits = 0
+                                val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                                val customers = state.pelangganList.map { it.toCustomer() }
+                                    .filter { it.status != "TERHAPUS" && com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
                                 val amount = if (page == 0) {
-                                    val paidTagihans = state.tagihanList.filter { t ->
-                                        (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
-                                        isTagihanInMonthRecap(t, selectedMonth, selectedYear)
-                                    }
-                                    val pelangganMap = state.pelangganList.associateBy { it.id }
-                                    var sum = 0.0
-                                    val accountedCustomerIds = mutableSetOf<Int>()
-
-                                    paidTagihans.forEach { t ->
-                                        accountedCustomerIds.add(t.customer_id)
-                                        if (t.amount > 0.0) {
-                                            sum += t.amount
-                                        } else {
-                                            val cust = pelangganMap[t.customer_id]
-                                            if (cust != null) {
-                                                val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.price)
-                                                val disc = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.discount)
-                                                val add1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost1)
-                                                val add2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost2)
-                                                sum += (base - disc + add1 + add2).coerceAtLeast(0L).toDouble()
-                                            }
-                                        }
-                                    }
-
-                                    state.pelangganList.forEach { cust ->
-                                        if (!accountedCustomerIds.contains(cust.id) &&
-                                            (cust.status.contains("LUNAS", ignoreCase = true) || cust.status.contains("SUDAH", ignoreCase = true))) {
-                                            val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.price)
-                                            val disc = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.discount)
-                                            val add1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost1)
-                                            val add2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(cust.additionalCost2)
-                                            sum += (base - disc + add1 + add2).coerceAtLeast(0L).toDouble()
-                                        }
-                                    }
-                                    sum
+                                    // Total Tagihan Sudah Dibayar (sinkron dengan card Total Tagihan Sudah Dibayar di BillingScreen)
+                                    calculateTotalPaidBills(customers, state.tagihanList, selectedMonth, selectedYear)
                                 } else {
-                                    state.data.totalGlobalRevenue
+                                    // Total Akumulasi Tagihan Seluruh Pelanggan
+                                    customers.sumOf { it.getTotalBillAmount() }
                                 }
-                                Text(format.format(amount), fontWeight = FontWeight.Bold, fontSize = 32.sp, color = primaryBg)
+                                Text("Rp. ${formatter.format(amount)}", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = primaryBg)
                             }
                             is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 32.sp, color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                         }
@@ -449,12 +418,15 @@ fun DashboardScreen(
                         when (val state = uiState) {
                             is DashboardState.Loading -> Text("...", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
                             is DashboardState.Success -> {
-                                val paidCount = state.tagihanList
-                                    .filter { (it.status.contains("LUNAS", ignoreCase = true) || it.status.contains("SUDAH", ignoreCase = true)) && isTagihanInMonthRecap(it, selectedMonth, selectedYear) }
-                                    .map { it.customer_id }
-                                    .distinct()
-                                    .count()
-                                val unpaidCount = (state.data.totalCustomers - paidCount).coerceAtLeast(0)
+                                val filteredCustomers = state.pelangganList.map { it.toCustomer() }
+                                    .filter { it.status != "TERHAPUS" && com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
+                                val paidCount = filteredCustomers.count { customer ->
+                                    isCustomerPaidForMonth(customer, selectedMonth, selectedYear, state.tagihanList)
+                                }
+                                val unpaidCount = filteredCustomers.count { customer ->
+                                    !isCustomerPaidForMonth(customer, selectedMonth, selectedYear, state.tagihanList) &&
+                                    isRegisteredBeforeOrInMonth(customer, selectedMonth, selectedYear)
+                                }
                                 Text("$unpaidCount", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
                             }
                             is DashboardState.Error -> Text("-", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)

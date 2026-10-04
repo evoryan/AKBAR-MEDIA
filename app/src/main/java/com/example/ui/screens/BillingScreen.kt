@@ -116,15 +116,7 @@ fun isTagihanInMonthRecap(
     if (monthIdx < 0) return false
     val yearInt = year.trim().toIntOrNull() ?: return false
 
-    val (startMillis, endMillis) = getMonthDateRange(monthIdx, yearInt)
-
-    // 1. Cek dari tanggal created_at apakah dimulai dari awal bulan/tanggal 1 sampai akhir bulan
-    val createdMillis = parseDateToMillis(t.created_at)
-    if (createdMillis != null && createdMillis in startMillis..endMillis) {
-        return true
-    }
-
-    // 2. Cek kesesuaian tahun dan bulan pada field tagihan
+    // 1. Cek kesesuaian tahun dan bulan pada field tagihan
     val yearStr = yearInt.toString()
     val yearMatches = t.tahun == yearInt ||
             (t.tahun == 0 && (t.bulan.contains(yearStr) || (t.created_at != null && t.created_at.startsWith(yearStr))))
@@ -140,7 +132,20 @@ fun isTagihanInMonthRecap(
             (t.bulan.trim() == monthNumberStr || t.bulan.contains("-$monthNumberStr") || t.bulan.contains("/$monthNumberStr")) ||
             (t.bulan.trim() == monthNumberSingle)
 
-    return yearMatches && monthMatches
+    if (yearMatches && monthMatches) {
+        return true
+    }
+
+    // 2. Fallback jika bulan atau tahun pada t kosong, cek dari tanggal created_at
+    if (t.bulan.isBlank() || t.tahun == 0) {
+        val (startMillis, endMillis) = getMonthDateRange(monthIdx, yearInt)
+        val createdMillis = parseDateToMillis(t.created_at)
+        if (createdMillis != null && createdMillis in startMillis..endMillis) {
+            return true
+        }
+    }
+
+    return false
 }
 
 fun isCustomerPaidForMonth(
@@ -150,17 +155,58 @@ fun isCustomerPaidForMonth(
     tagihanList: List<com.example.ui.data.local.TagihanEntity>,
     monthsList: List<String> = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
 ): Boolean {
-    val custId = customer.id.toIntOrNull() ?: return false
-
-    val paidRecord = tagihanList.find { t ->
-        if (t.customer_id != custId) return@find false
-        val isStatusPaid = t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)
-        if (!isStatusPaid) return@find false
-
-        isTagihanInMonthRecap(t, month, year, monthsList)
+    val custId = customer.id.toIntOrNull()
+    if (custId != null) {
+        val tagihanThisMonth = tagihanList.filter { t ->
+            t.customer_id == custId && isTagihanInMonthRecap(t, month, year, monthsList)
+        }
+        if (tagihanThisMonth.isNotEmpty()) {
+            return tagihanThisMonth.any { t ->
+                t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)
+            }
+        }
     }
 
-    return paidRecord != null
+    val currentCal = java.util.Calendar.getInstance()
+    val curMonthIdx = currentCal.get(java.util.Calendar.MONTH)
+    val curMonthName = monthsList.getOrElse(curMonthIdx) { "Januari" }
+    val curYear = currentCal.get(java.util.Calendar.YEAR).toString()
+
+    val isCurrentPeriod = month.equals(curMonthName, ignoreCase = true) && year.trim() == curYear
+    if (isCurrentPeriod) {
+        return customer.status.contains("LUNAS", ignoreCase = true) || customer.status.contains("SUDAH", ignoreCase = true)
+    }
+
+    return false
+}
+
+fun calculateTotalPaidBills(
+    customers: List<Customer>,
+    tagihanList: List<com.example.ui.data.local.TagihanEntity>,
+    month: String,
+    year: String,
+    monthsList: List<String> = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+): Long {
+    val paidCustomers = customers.filter { customer ->
+        isCustomerPaidForMonth(customer, month, year, tagihanList, monthsList)
+    }
+    return paidCustomers.sumOf { customer ->
+        val custId = customer.id.toIntOrNull()
+        val tagihanRecord = if (custId != null) {
+            tagihanList.firstOrNull { t ->
+                t.customer_id == custId &&
+                (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
+                isTagihanInMonthRecap(t, month, year, monthsList)
+            }
+        } else null
+
+        val tagihanAmount = tagihanRecord?.amount?.toLong()
+        if (tagihanAmount != null && tagihanAmount > 0L) {
+            tagihanAmount
+        } else {
+            customer.getTotalBillAmount()
+        }
+    }
 }
 
 fun parseCustomerRegistrationDate(dateStr: String?): java.util.Calendar? {
@@ -196,7 +242,7 @@ fun isRegisteredBeforeOrInMonth(
     customer: Customer,
     month: String,
     year: String,
-    monthsList: List<String>
+    monthsList: List<String> = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
 ): Boolean {
     val monthIdx = monthsList.indexOfFirst { it.equals(month, ignoreCase = true) }.takeIf { it >= 0 } ?: 0
     val yearInt = year.trim().toIntOrNull() ?: java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
@@ -319,30 +365,8 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
     val localTagihanList by db.tagihanDao().getAllTagihan().collectAsState(initial = emptyList())
 
     val customers = remember(localPelangganList) {
-        localPelangganList.map { entity ->
-            val resolvedAddress = entity.address?.takeIf { it.isNotBlank() } ?: entity.alamat
-            Customer(
-                id = entity.id.toString(),
-                name = entity.name,
-                phone = entity.phone,
-                area = entity.area,
-                address = resolvedAddress,
-                alamat = resolvedAddress,
-                username = entity.username,
-                billingDate = entity.billingDate,
-                status = entity.status,
-                price = entity.price,
-                discount = entity.discount,
-                registerDate = entity.register_date,
-                isolateDate = entity.isolate_date,
-                packageName = entity.package_name,
-                additionalCost1 = entity.additionalCost1,
-                additionalCost2 = entity.additionalCost2,
-                pppoeSecret = entity.pppoe_secret,
-                odpId = entity.odp_id?.toString(),
-                odpPort = entity.odp_port
-            )
-        }.filter { it.status != "TERHAPUS" && com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
+        localPelangganList.map { it.toCustomer() }
+            .filter { it.status != "TERHAPUS" && com.example.ui.data.UserSession.isAreaNameAllowed(it.area) }
     }
 
     var showCancelDialog by remember { mutableStateOf(false) }
@@ -380,8 +404,10 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                         pppoe_secret = item.pppoe_secret,
                         odp_id = item.odp_id?.toIntOrNull(),
                         odp_port = item.odp_port,
-                        additionalCost1 = item.additionalCost1,
-                        additionalCost2 = item.additionalCost2
+                        additionalCost1 = item.getEffectiveCost1(),
+                        additionalCost2 = item.getEffectiveCost2(),
+                        additionalCostDesc1 = item.getEffectiveDesc1(),
+                        additionalCostDesc2 = item.getEffectiveDesc2()
                     )
                 }
                 val tagihanMapped = syncResponse.tagihan.map { item ->
@@ -400,6 +426,9 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                 db.pelangganDao().insertAll(mapped)
                 db.tagihanDao().deleteAll()
                 db.tagihanDao().insertAll(tagihanMapped)
+                if (!syncResponse.gangguan.isNullOrEmpty()) {
+                    db.gangguanDao().insertAll(syncResponse.gangguan)
+                }
             } catch (e: Exception) {}
         }
     }
@@ -450,23 +479,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
             customer.getTotalBillAmount()
         }
     }
-    val paidSum = paidCustomers.sumOf { customer ->
-        val custId = customer.id.toIntOrNull()
-        val tagihanRecord = if (custId != null) {
-            localTagihanList.firstOrNull { t ->
-                t.customer_id == custId &&
-                (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
-                isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)
-            }
-        } else null
-
-        val tagihanAmount = tagihanRecord?.amount?.toLong()
-        if (tagihanAmount != null && tagihanAmount > 0L) {
-            tagihanAmount
-        } else {
-            customer.getTotalBillAmount()
-        }
-    }
+    val paidSum = calculateTotalPaidBills(paidCustomers, localTagihanList, selectedMonth, selectedYear, months)
     val totalUnpaid = "Rp. ${formatter.format(unpaidSum)}"
     val totalPaid = "Rp. ${formatter.format(paidSum)}"
 
@@ -663,7 +676,9 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 val updatedTagihans = localTagihanList.map { t ->
                                     if (selectedSet.contains(t.customer_id.toString()) &&
                                         isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)) {
-                                        t.copy(status = "LUNAS CASH", admin_name = adminName)
+                                        val cust = selectedCustomersList.find { it.id == t.customer_id.toString() }
+                                        val amt = if (t.amount > 0.0) t.amount else (cust?.getTotalBillAmount()?.toDouble() ?: 0.0)
+                                        t.copy(status = "LUNAS CASH", admin_name = adminName, amount = amt)
                                     } else {
                                         t
                                     }
@@ -1160,7 +1175,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 neonPink = neonPink, 
                                 onPayClick = { onNavigateToPayment(customer.id) },
                                 onDetailClick = {
-                                    val amount = customer.price.replace(Regex("[^0-9]"), "")
+                                    val amount = customer.getTotalBillAmount().toString()
                                     onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", "BELUM BAYAR")
                                 },
                                 onIsolirClick = {
@@ -1285,7 +1300,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                         }
                                     } else null
                                     val amount = tagihanRecord?.amount?.toLong()?.toString()
-                                        ?: customer.price.replace(Regex("[^0-9]"), "")
+                                        ?: customer.getTotalBillAmount().toString()
                                     onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", "LUNAS")
                                 },
                                 onLongPress = {
@@ -1362,7 +1377,17 @@ fun BillingCustomerItem(
                 Text("Area: ${customer.area}", color = textSecondary, fontSize = 11.sp)
                 
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(customer.price, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(customer.getFormattedTotalBill(), color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                if (customer.getTotalAdditionalCost() > 0L || customer.getDiscountAmount() > 0L) {
+                    val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+                    val details = buildList {
+                        if (customer.price.isNotBlank()) add("Paket: ${customer.price}")
+                        if (customer.getDiscountAmount() > 0L) add("Diskon: -Rp. ${fmt.format(customer.getDiscountAmount())}")
+                        if (customer.getAdditionalCost1Amount() > 0L) add("Tambahan 1: +Rp. ${fmt.format(customer.getAdditionalCost1Amount())}")
+                        if (customer.getAdditionalCost2Amount() > 0L) add("Tambahan 2: +Rp. ${fmt.format(customer.getAdditionalCost2Amount())}")
+                    }.joinToString(" • ")
+                    Text(details, color = textSecondary, fontSize = 10.sp)
+                }
             }
             
             // Right content: Status, WA (if unpaid), and Actions

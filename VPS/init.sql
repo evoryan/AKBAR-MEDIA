@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS customers (
     phone VARCHAR(20),
     area VARCHAR(50),
     address TEXT,
+    alamat TEXT,
     username VARCHAR(50),
     billingDate VARCHAR(10),
     status VARCHAR(20),
@@ -69,10 +70,16 @@ CREATE TABLE IF NOT EXISTS customers (
     odp_port VARCHAR(10) DEFAULT "",
     additionalCost1 VARCHAR(50) DEFAULT "",
     additionalCost2 VARCHAR(50) DEFAULT "",
+    additional_cost1 VARCHAR(50) DEFAULT "",
+    additional_cost2 VARCHAR(50) DEFAULT "",
     additionalCostDesc1 VARCHAR(255) DEFAULT "",
     additionalCostDesc2 VARCHAR(255) DEFAULT "",
+    additional_cost_desc1 VARCHAR(255) DEFAULT "",
+    additional_cost_desc2 VARCHAR(255) DEFAULT "",
     FOREIGN KEY (odp_id) REFERENCES odp_list(id) ON DELETE SET NULL
 );
+
+CREATE OR REPLACE VIEW pelanggan AS SELECT * FROM customers;
 
 CREATE TABLE IF NOT EXISTS tagihan_bulanan (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -84,6 +91,33 @@ CREATE TABLE IF NOT EXISTS tagihan_bulanan (
     admin_name VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+);
+
+CREATE OR REPLACE VIEW tagihan AS SELECT * FROM tagihan_bulanan;
+
+CREATE TABLE IF NOT EXISTS status_router_terakhir (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    area_id INT UNIQUE,
+    area_name VARCHAR(100),
+    cpu_load VARCHAR(50),
+    uptime VARCHAR(50),
+    active_pppoe VARCHAR(50),
+    offline_pppoe VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'Online',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS gangguan (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customerName VARCHAR(100),
+    description TEXT,
+    status VARCHAR(50) DEFAULT 'OTW',
+    date VARCHAR(50),
+    reporter VARCHAR(100),
+    teknisi VARCHAR(100) DEFAULT '',
+    biaya DECIMAL(15, 2) DEFAULT 0.0,
+    resolverAdmin VARCHAR(100) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS pembukuan (

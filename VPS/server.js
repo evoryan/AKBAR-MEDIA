@@ -307,6 +307,48 @@ async function ensureTenantTables(pool) {
             status VARCHAR(50),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        // Tables corresponding to Room local database entities
+        await pool.query(`CREATE TABLE IF NOT EXISTS status_router_terakhir (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            area_id INT UNIQUE,
+            area_name VARCHAR(100),
+            cpu_load VARCHAR(50),
+            uptime VARCHAR(50),
+            active_pppoe VARCHAR(50),
+            offline_pppoe VARCHAR(50),
+            status VARCHAR(20) DEFAULT 'Online',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`);
+
+        await pool.query(`CREATE TABLE IF NOT EXISTS gangguan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customerName VARCHAR(100),
+            description TEXT,
+            status VARCHAR(50) DEFAULT 'OTW',
+            date VARCHAR(50),
+            reporter VARCHAR(100),
+            teknisi VARCHAR(100) DEFAULT '',
+            biaya DECIMAL(15, 2) DEFAULT 0.0,
+            resolverAdmin VARCHAR(100) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        await pool.query(`CREATE OR REPLACE VIEW pelanggan AS SELECT * FROM customers`).catch(()=>{});
+        await pool.query(`CREATE OR REPLACE VIEW tagihan AS SELECT * FROM tagihan_bulanan`).catch(()=>{});
+
+        // Ensure all customer columns exist matching Room PelangganEntity
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS alamat TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCost1 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCost2 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost1 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost2 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(()=>{});
     } catch (err) {
         console.error("ensureTenantTables error:", err.message);
     }
@@ -803,7 +845,7 @@ app.post('/api/billing/pay-bulk', async (req, res) => {
             } else {
                 const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
                 if (tagihan.length > 0) {
-                    await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ? WHERE id = ?', [adminName || 'Admin', tagihan[0].id]);
+                    await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ?, amount = ? WHERE id = ?', [adminName || 'Admin', totalAmount || 0, tagihan[0].id]);
                     desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
                 }
             }
@@ -1107,6 +1149,8 @@ app.get('/api/sync', async (req, res) => {
         const [tagihan] = await req.pool.query('SELECT * FROM tagihan_bulanan');
         const [routerStatus] = await req.pool.query('SELECT * FROM status_router_terakhir');
 
+        const [gangguan] = await req.pool.query('SELECT * FROM gangguan ORDER BY id DESC').catch(e => [[]]);
+
         res.json({
             customers: customers.map(c => {
                 const desc1 = c.additionalCostDesc1 || c.additional_cost_desc1 || c.additionalcostdesc1 || c.additionalCostdesc1 || '';
@@ -1120,6 +1164,8 @@ app.get('/api/sync', async (req, res) => {
                     alamat: c.address || c.alamat || '',
                     additionalCost1: add1,
                     additionalCost2: add2,
+                    additional_cost1: add1,
+                    additional_cost2: add2,
                     additionalCostDesc1: desc1,
                     additionalCostDesc2: desc2,
                     additional_cost_desc1: desc1,
@@ -1127,11 +1173,117 @@ app.get('/api/sync', async (req, res) => {
                 };
             }),
             tagihan: tagihan.map(t => ({ ...t, id: t.id.toString(), customer_id: t.customer_id ? t.customer_id.toString() : null })),
-            routerStatus: routerStatus.map(r => ({ ...r, id: r.id.toString(), area_id: r.area_id ? r.area_id.toString() : null }))
+            routerStatus: routerStatus.map(r => ({ ...r, id: r.id.toString(), area_id: r.area_id ? r.area_id.toString() : null })),
+            gangguan: (gangguan || []).map(g => ({
+                id: g.id,
+                customerName: g.customerName || '',
+                description: g.description || '',
+                status: g.status || 'OTW',
+                date: g.date || '',
+                reporter: g.reporter || '',
+                teknisi: g.teknisi || '',
+                biaya: parseFloat(g.biaya) || 0.0,
+                resolverAdmin: g.resolverAdmin || null
+            }))
         });
     } catch (error) {
         console.error("Sync API Error:", error.message);
         res.status(500).json({ error: error.message || "Failed to sync" });
+    }
+});
+
+// Gangguan (Ticket) Endpoints - Synchronized with local Room database
+app.get('/api/gangguan', async (req, res) => {
+    try {
+        await req.pool.query(`CREATE TABLE IF NOT EXISTS gangguan (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            customerName VARCHAR(100),
+            description TEXT,
+            status VARCHAR(50) DEFAULT 'OTW',
+            date VARCHAR(50),
+            reporter VARCHAR(100),
+            teknisi VARCHAR(100) DEFAULT '',
+            biaya DECIMAL(15, 2) DEFAULT 0.0,
+            resolverAdmin VARCHAR(100) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).catch(()=>{});
+        const [rows] = await req.pool.query('SELECT * FROM gangguan ORDER BY id DESC');
+        res.json(rows.map(g => ({
+            id: g.id,
+            customerName: g.customerName || '',
+            description: g.description || '',
+            status: g.status || 'OTW',
+            date: g.date || '',
+            reporter: g.reporter || '',
+            teknisi: g.teknisi || '',
+            biaya: parseFloat(g.biaya) || 0.0,
+            resolverAdmin: g.resolverAdmin || null
+        })));
+    } catch (error) {
+        console.error("Error fetching gangguan:", error);
+        res.status(500).json({ error: "Gagal mengambil data gangguan" });
+    }
+});
+
+app.post('/api/gangguan', async (req, res) => {
+    try {
+        const { customerName, description, status, date, reporter, teknisi, biaya, resolverAdmin } = req.body;
+        const [result] = await req.pool.query(
+            'INSERT INTO gangguan (customerName, description, status, date, reporter, teknisi, biaya, resolverAdmin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [customerName || '', description || '', status || 'OTW', date || '', reporter || '', teknisi || '', biaya || 0.0, resolverAdmin || null]
+        );
+        res.json({
+            id: result.insertId,
+            customerName: customerName || '',
+            description: description || '',
+            status: status || 'OTW',
+            date: date || '',
+            reporter: reporter || '',
+            teknisi: teknisi || '',
+            biaya: parseFloat(biaya) || 0.0,
+            resolverAdmin: resolverAdmin || null
+        });
+    } catch (error) {
+        console.error("Error adding gangguan:", error);
+        res.status(500).json({ error: "Gagal menambahkan data gangguan" });
+    }
+});
+
+app.put('/api/gangguan/:id', async (req, res) => {
+    try {
+        const { customerName, description, status, date, reporter, teknisi, biaya, resolverAdmin } = req.body;
+        await req.pool.query(
+            'UPDATE gangguan SET customerName = ?, description = ?, status = ?, date = ?, reporter = ?, teknisi = ?, biaya = ?, resolverAdmin = ? WHERE id = ?',
+            [customerName || '', description || '', status || 'OTW', date || '', reporter || '', teknisi || '', biaya || 0.0, resolverAdmin || null, req.params.id]
+        );
+        res.json({ message: "Data gangguan berhasil diperbarui" });
+    } catch (error) {
+        console.error("Error updating gangguan:", error);
+        res.status(500).json({ error: "Gagal memperbarui data gangguan" });
+    }
+});
+
+app.put('/api/gangguan/:id/status', async (req, res) => {
+    try {
+        const { status, resolverAdmin } = req.body;
+        await req.pool.query(
+            'UPDATE gangguan SET status = ?, resolverAdmin = ? WHERE id = ?',
+            [status || 'SELESAI', resolverAdmin || null, req.params.id]
+        );
+        res.json({ message: "Status gangguan berhasil diupdate" });
+    } catch (error) {
+        console.error("Error updating status gangguan:", error);
+        res.status(500).json({ error: "Gagal mengupdate status gangguan" });
+    }
+});
+
+app.delete('/api/gangguan/:id', async (req, res) => {
+    try {
+        await req.pool.query('DELETE FROM gangguan WHERE id = ?', [req.params.id]);
+        res.json({ message: "Data gangguan berhasil dihapus" });
+    } catch (error) {
+        console.error("Error deleting gangguan:", error);
+        res.status(500).json({ error: "Gagal menghapus data gangguan" });
     }
 });
 
@@ -1814,8 +1966,8 @@ app.put('/api/customers/:id', async (req, res) => {
         if (price) {
             const base = parseFloat(String(price).replace(/[^0-9]/g, '')) || 0;
             const disc = discount ? (parseFloat(String(discount).replace(/[^0-9]/g, '')) || 0) : 0;
-            const add1 = additionalCost1 ? (parseFloat(String(additionalCost1).replace(/[^0-9]/g, '')) || 0) : 0;
-            const add2 = additionalCost2 ? (parseFloat(String(additionalCost2).replace(/[^0-9]/g, '')) || 0) : 0;
+            const add1 = (additionalCost1 || req.body.additional_cost1) ? (parseFloat(String(additionalCost1 || req.body.additional_cost1).replace(/[^0-9]/g, '')) || 0) : 0;
+            const add2 = (additionalCost2 || req.body.additional_cost2) ? (parseFloat(String(additionalCost2 || req.body.additional_cost2).replace(/[^0-9]/g, '')) || 0) : 0;
             const updatedBillAmount = Math.max(0, base - disc + add1 + add2);
             await req.pool.query(
                 'UPDATE tagihan_bulanan SET amount = ? WHERE customer_id = ? AND status = "BELUM BAYAR"',

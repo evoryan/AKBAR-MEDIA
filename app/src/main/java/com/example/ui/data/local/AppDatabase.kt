@@ -27,7 +27,51 @@ data class PelangganEntity(
     val additionalCost2: String? = null,
     val additionalCostDesc1: String? = null,
     val additionalCostDesc2: String? = null
-)
+) {
+    fun getTotalBillAmount(): Long {
+        val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(price)
+        val disc = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(discount)
+        val add1 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost1)
+        val add2 = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(additionalCost2)
+        return (base - disc + add1 + add2).coerceAtLeast(0L)
+    }
+
+    fun getFormattedTotalBill(): String {
+        val formatter = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
+        return "Rp. ${formatter.format(getTotalBillAmount())}"
+    }
+
+    fun toCustomer(): com.example.ui.screens.Customer {
+        val resolvedAddress = address?.takeIf { it.isNotBlank() } ?: alamat
+        return com.example.ui.screens.Customer(
+            id = id.toString(),
+            name = name,
+            phone = phone,
+            area = area,
+            address = resolvedAddress,
+            alamat = resolvedAddress,
+            username = username,
+            billingDate = billingDate,
+            status = status,
+            price = price,
+            discount = discount,
+            registerDate = register_date,
+            isolateDate = isolate_date,
+            packageName = package_name,
+            additionalCost1 = additionalCost1,
+            additionalCost2 = additionalCost2,
+            additional_cost1 = additionalCost1,
+            additional_cost2 = additionalCost2,
+            additionalCostDesc1 = additionalCostDesc1,
+            additionalCostDesc2 = additionalCostDesc2,
+            additional_cost_desc1 = additionalCostDesc1,
+            additional_cost_desc2 = additionalCostDesc2,
+            pppoeSecret = pppoe_secret,
+            odpId = odp_id?.toString(),
+            odpPort = odp_port
+        )
+    }
+}
 
 @Entity(tableName = "tagihan")
 data class TagihanEntity(
@@ -125,8 +169,14 @@ interface GangguanDao {
     @Query("UPDATE gangguan SET status = :status, resolverAdmin = :resolverAdmin WHERE id = :id")
     suspend fun updateStatusAndResolver(id: Int, status: String, resolverAdmin: String)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(list: List<GangguanEntity>)
+
     @Query("DELETE FROM gangguan WHERE id = :id")
     suspend fun deleteGangguan(id: Int)
+
+    @Query("DELETE FROM gangguan")
+    suspend fun deleteAll()
 }
 
 @Database(entities = [PelangganEntity::class, TagihanEntity::class, StatusRouterTerakhirEntity::class, GangguanEntity::class], version = 5, exportSchema = false)

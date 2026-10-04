@@ -66,6 +66,14 @@ fun GangguanScreen(onBack: () -> Unit) {
         } catch (e: Exception) {
             Log.e("GangguanScreen", "Gagal memuat daftar area", e)
         }
+        try {
+            val remoteList = ApiClient.apiService.getGangguan()
+            if (remoteList.isNotEmpty()) {
+                db.gangguanDao().insertAll(remoteList)
+            }
+        } catch (e: Exception) {
+            Log.e("GangguanScreen", "Gagal sync gangguan dari server", e)
+        }
     }
 
     var showAddDialog by remember { mutableStateOf(false) }
@@ -305,6 +313,11 @@ fun GangguanScreen(onBack: () -> Unit) {
                                                 coroutineScope.launch {
                                                     val currentAdminName = UserSession.currentUser.value?.name ?: "Admin"
                                                     db.gangguanDao().updateStatusAndResolver(item.id, "SELESAI", currentAdminName)
+                                                    try {
+                                                        ApiClient.apiService.updateGangguanStatus(item.id, mapOf("status" to "SELESAI", "resolverAdmin" to currentAdminName))
+                                                    } catch (e: Exception) {
+                                                        Log.e("GangguanScreen", "Gagal update status gangguan ke server", e)
+                                                    }
                                                     Toast.makeText(context, "Selesai diselesaikan oleh $currentAdminName", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
@@ -321,6 +334,11 @@ fun GangguanScreen(onBack: () -> Unit) {
                                             onClick = {
                                                 coroutineScope.launch {
                                                     db.gangguanDao().deleteGangguan(item.id)
+                                                    try {
+                                                        ApiClient.apiService.deleteGangguan(item.id)
+                                                    } catch (e: Exception) {
+                                                        Log.e("GangguanScreen", "Gagal hapus gangguan di server", e)
+                                                    }
                                                     Toast.makeText(context, "Laporan dihapus", Toast.LENGTH_SHORT).show()
                                                 }
                                             },
@@ -488,19 +506,23 @@ fun GangguanScreen(onBack: () -> Unit) {
                         val biayaDouble = biayaInput.toDoubleOrNull() ?: 0.0
                         
                         coroutineScope.launch {
-                            // Insert to local room db
-                            db.gangguanDao().insertGangguan(
-                                GangguanEntity(
-                                    customerName = selectedAreaName,
-                                    description = complaintDescription,
-                                    status = "OTW",
-                                    date = today,
-                                    reporter = adminRealName,
-                                    teknisi = teknisiName,
-                                    biaya = biayaDouble,
-                                    resolverAdmin = null
-                                )
+                            val newGangguan = GangguanEntity(
+                                customerName = selectedAreaName,
+                                description = complaintDescription,
+                                status = "OTW",
+                                date = today,
+                                reporter = adminRealName,
+                                teknisi = teknisiName,
+                                biaya = biayaDouble,
+                                resolverAdmin = null
                             )
+                            try {
+                                val created = ApiClient.apiService.addGangguan(newGangguan)
+                                db.gangguanDao().insertGangguan(created)
+                            } catch (e: Exception) {
+                                Log.e("GangguanScreen", "Gagal menyimpan gangguan ke server", e)
+                                db.gangguanDao().insertGangguan(newGangguan)
+                            }
 
                             // Automatically post to expense database (pembukuan) if biaya > 0
                             if (biayaDouble > 0.0) {
@@ -738,20 +760,23 @@ fun GangguanScreen(onBack: () -> Unit) {
                         }
 
                         coroutineScope.launch {
-                            // Update local room db
-                            db.gangguanDao().insertGangguan(
-                                GangguanEntity(
-                                    id = item.id,
-                                    customerName = selectedAreaName,
-                                    description = complaintDescription,
-                                    status = statusChoice,
-                                    date = item.date, // keep original date
-                                    reporter = item.reporter, // keep original reporter
-                                    teknisi = teknisiName,
-                                    biaya = biayaDouble,
-                                    resolverAdmin = finalResolverAdmin
-                                )
+                            val updated = GangguanEntity(
+                                id = item.id,
+                                customerName = selectedAreaName,
+                                description = complaintDescription,
+                                status = statusChoice,
+                                date = item.date, // keep original date
+                                reporter = item.reporter, // keep original reporter
+                                teknisi = teknisiName,
+                                biaya = biayaDouble,
+                                resolverAdmin = finalResolverAdmin
                             )
+                            db.gangguanDao().insertGangguan(updated)
+                            try {
+                                ApiClient.apiService.updateGangguan(item.id, updated)
+                            } catch (e: Exception) {
+                                Log.e("GangguanScreen", "Gagal update gangguan di server", e)
+                            }
 
                             // Automatically post to expense database (pembukuan) if biaya has changed and is positive
                             if (costChanged && biayaDouble > 0.0) {

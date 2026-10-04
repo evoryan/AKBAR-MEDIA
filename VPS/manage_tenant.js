@@ -122,12 +122,101 @@ async function executeSqlFile(conn, filePath, targetDb) {
     }
 }
 
+async function updateTenantDatabase(conn, dbName) {
+    console.log(`\n-------------------------------------------------------`);
+    console.log(` Menyelaraskan Database Tenant: \`${dbName}\``);
+    console.log(`-------------------------------------------------------`);
+
+    // 1. Eksekusi skema dari init.sql
+    const initSqlPath = path.join(__dirname, 'init.sql');
+    await executeSqlFile(conn, initSqlPath, dbName);
+
+    // 2. Pindah ke database tenant
+    await conn.query(`USE \`${dbName}\``);
+
+    // 3. Pastikan tabel Room Database lokal (status_router_terakhir, gangguan) pasti ada
+    await conn.query(`CREATE TABLE IF NOT EXISTS status_router_terakhir (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        area_id INT UNIQUE,
+        area_name VARCHAR(100),
+        cpu_load VARCHAR(50),
+        uptime VARCHAR(50),
+        active_pppoe VARCHAR(50),
+        offline_pppoe VARCHAR(50),
+        status VARCHAR(20) DEFAULT 'Online',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`).catch(e => {});
+
+    await conn.query(`CREATE TABLE IF NOT EXISTS gangguan (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        customerName VARCHAR(100),
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'OTW',
+        date VARCHAR(50),
+        reporter VARCHAR(100),
+        teknisi VARCHAR(100) DEFAULT '',
+        biaya DECIMAL(15, 2) DEFAULT 0.0,
+        resolverAdmin VARCHAR(100) DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`).catch(e => {});
+
+    // 4. Pastikan VIEW pelanggan & tagihan ada agar sesuai dengan nama entity Room
+    await conn.query(`CREATE OR REPLACE VIEW pelanggan AS SELECT * FROM customers`).catch(()=>{});
+    await conn.query(`CREATE OR REPLACE VIEW tagihan AS SELECT * FROM tagihan_bulanan`).catch(()=>{});
+
+    // 5. Tambahkan kolom-kolom baru jika belum ada (aman dan tidak merusak data yang ada)
+    const customerColumns = [
+        "address TEXT",
+        "alamat TEXT",
+        "register_date VARCHAR(50) DEFAULT ''",
+        "isolate_date VARCHAR(50) DEFAULT ''",
+        "package_name VARCHAR(100) DEFAULT ''",
+        "pppoe_secret VARCHAR(100) DEFAULT ''",
+        "odp_id INT DEFAULT NULL",
+        "odp_port VARCHAR(10) DEFAULT ''",
+        "additionalCost1 VARCHAR(50) DEFAULT ''",
+        "additionalCost2 VARCHAR(50) DEFAULT ''",
+        "additional_cost1 VARCHAR(50) DEFAULT ''",
+        "additional_cost2 VARCHAR(50) DEFAULT ''",
+        "additionalCostDesc1 VARCHAR(255) DEFAULT ''",
+        "additionalCostDesc2 VARCHAR(255) DEFAULT ''",
+        "additional_cost_desc1 VARCHAR(255) DEFAULT ''",
+        "additional_cost_desc2 VARCHAR(255) DEFAULT ''"
+    ];
+
+    for (const col of customerColumns) {
+        await conn.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS ${col}`).catch(async () => {
+            try { await conn.query(`ALTER TABLE customers ADD COLUMN ${col}`); } catch(e){}
+        });
+    }
+
+    await conn.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(async () => {
+        try { await conn.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`); } catch(e){}
+    });
+
+    await conn.query(`ALTER TABLE packages ADD COLUMN IF NOT EXISTS qr_image_url VARCHAR(255) DEFAULT NULL`).catch(async () => {
+        try { await conn.query(`ALTER TABLE packages ADD COLUMN qr_image_url VARCHAR(255) DEFAULT NULL`); } catch(e){}
+    });
+
+    const odcColumns = ["area VARCHAR(100) DEFAULT ''", "portInput VARCHAR(100) DEFAULT ''", "redaman_in VARCHAR(50) DEFAULT ''", "redaman_out VARCHAR(50) DEFAULT ''"];
+    for (const col of odcColumns) {
+        await conn.query(`ALTER TABLE odc_list ADD COLUMN IF NOT EXISTS ${col}`).catch(async () => {
+            try { await conn.query(`ALTER TABLE odc_list ADD COLUMN ${col}`); } catch(e){}
+        });
+        await conn.query(`ALTER TABLE odp_list ADD COLUMN IF NOT EXISTS ${col}`).catch(async () => {
+            try { await conn.query(`ALTER TABLE odp_list ADD COLUMN ${col}`); } catch(e){}
+        });
+    }
+
+    console.log(`   ✅ Database \`${dbName}\` berhasil disinkronkan dengan init.sql terbaru.`);
+}
+
 async function run() {
     const args = process.argv.slice(2);
     const action = args[0];
 
     if (!action) {
-        console.log("Usage: node manage_tenant.js <list|add|delete|disable|enable|reset-password|toggle-demo|stats|restore> [params...]");
+        console.log("Usage: node manage_tenant.js <list|add|delete|disable|enable|reset-password|toggle-demo|stats|restore|update-db> [params...]");
         return;
     }
 
@@ -373,6 +462,63 @@ async function run() {
             await executeSqlFile(conn, sqlFilePath, dbName);
 
             console.log(`\n✅ SUKSES: Database tenant \`${dbName}\` berhasil direstore dari file '${sqlFilePath}'.`);
+        }
+        else if (action === 'update-db' || action === 'update-schema') {
+            const target = args[1];
+
+            if (!target) {
+                console.log("❌ Error: Harap tentukan target tenant.");
+                console.log("   Contoh: node manage_tenant.js update-db all");
+                console.log("   Contoh: node manage_tenant.js update-db <username_atau_dbname>");
+                return;
+            }
+
+            if (target === 'all') {
+                const [users] = await conn.query("SELECT DISTINCT db_name FROM users WHERE db_name IS NOT NULL AND db_name != ''");
+                const dbList = users.map(u => u.db_name);
+                if (!dbList.includes('app_db')) dbList.unshift('app_db');
+
+                console.log(`\n=======================================================`);
+                console.log(` MEMULAI UPDATE DATABASE UNTUK ${dbList.length} TENANT`);
+                console.log(`=======================================================`);
+                let successCount = 0;
+                let failCount = 0;
+
+                for (const db of dbList) {
+                    try {
+                        const [checkDb] = await conn.query(`SHOW DATABASES LIKE '${db}'`);
+                        if (checkDb.length === 0) {
+                            console.log(`⚠️ Database \`${db}\` belum dibuat di MySQL, membuat database baru...`);
+                            await conn.query(`CREATE DATABASE IF NOT EXISTS \`${db}\``);
+                        }
+                        await updateTenantDatabase(conn, db);
+                        successCount++;
+                    } catch (err) {
+                        console.log(`❌ Gagal update database \`${db}\`: ${err.message}`);
+                        failCount++;
+                    }
+                }
+
+                console.log(`\n=======================================================`);
+                console.log(` RINGKASAN UPDATE DATABASE TENANT                      `);
+                console.log(`=======================================================`);
+                console.log(` ✅ Berhasil : ${successCount} database`);
+                if (failCount > 0) {
+                    console.log(` ❌ Gagal    : ${failCount} database`);
+                }
+                console.log(`=======================================================\n`);
+            } else {
+                const [users] = await conn.query("SELECT * FROM users WHERE username = ? OR db_name = ?", [target, target]);
+                const dbName = users.length > 0 ? users[0].db_name : target;
+
+                const [checkDb] = await conn.query(`SHOW DATABASES LIKE '${dbName}'`);
+                if (checkDb.length === 0) {
+                    console.log(`⚠️ Database \`${dbName}\` belum dibuat di MySQL, membuat database baru...`);
+                    await conn.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+                }
+
+                await updateTenantDatabase(conn, dbName);
+            }
         }
         else {
             console.log(`Aksi '${action}' tidak dikenal.`);

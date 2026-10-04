@@ -197,6 +197,24 @@ interface ApiService {
     @GET("api/sync")
     suspend fun syncData(): SyncResponse
 
+    @GET("api/gangguan")
+    suspend fun getGangguan(): List<com.example.ui.data.local.GangguanEntity>
+
+    @POST("api/gangguan")
+    suspend fun addGangguan(@Body request: com.example.ui.data.local.GangguanEntity): com.example.ui.data.local.GangguanEntity
+
+    @PUT("api/gangguan/{id}")
+    suspend fun updateGangguan(@Path("id") id: Int, @Body request: com.example.ui.data.local.GangguanEntity): ApiResponse
+
+    @PUT("api/gangguan/{id}/status")
+    suspend fun updateGangguanStatus(
+        @Path("id") id: Int,
+        @Body request: Map<String, String?>
+    ): ApiResponse
+
+    @DELETE("api/gangguan/{id}")
+    suspend fun deleteGangguan(@Path("id") id: Int): ApiResponse
+
     @POST("api/login")
     suspend fun login(@Body request: LoginRequest): AdminUser
 
@@ -445,7 +463,8 @@ data class PaymentHistory(
 data class SyncResponse(
     val customers: List<CustomerSyncItem>,
     val tagihan: List<TagihanSyncItem>,
-    val routerStatus: List<RouterStatusSyncItem>
+    val routerStatus: List<RouterStatusSyncItem>,
+    val gangguan: List<com.example.ui.data.local.GangguanEntity>? = null
 )
 
 data class CustomerSyncItem(
@@ -468,11 +487,18 @@ data class CustomerSyncItem(
     val odp_port: String? = null,
     val additionalCost1: String? = null,
     val additionalCost2: String? = null,
+    @com.squareup.moshi.Json(name = "additional_cost1") val additional_cost1: String? = null,
+    @com.squareup.moshi.Json(name = "additional_cost2") val additional_cost2: String? = null,
     val additionalCostDesc1: String? = null,
     val additionalCostDesc2: String? = null,
     @com.squareup.moshi.Json(name = "additional_cost_desc1") val additional_cost_desc1: String? = null,
     @com.squareup.moshi.Json(name = "additional_cost_desc2") val additional_cost_desc2: String? = null
-)
+) {
+    fun getEffectiveCost1(): String? = additionalCost1?.takeIf { it.isNotBlank() } ?: additional_cost1?.takeIf { it.isNotBlank() }
+    fun getEffectiveCost2(): String? = additionalCost2?.takeIf { it.isNotBlank() } ?: additional_cost2?.takeIf { it.isNotBlank() }
+    fun getEffectiveDesc1(): String? = additionalCostDesc1?.takeIf { it.isNotBlank() } ?: additional_cost_desc1?.takeIf { it.isNotBlank() }
+    fun getEffectiveDesc2(): String? = additionalCostDesc2?.takeIf { it.isNotBlank() } ?: additional_cost_desc2?.takeIf { it.isNotBlank() }
+}
 
 data class TagihanSyncItem(
     val id: String,
