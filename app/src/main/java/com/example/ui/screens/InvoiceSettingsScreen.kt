@@ -57,6 +57,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
     var companyAddress by remember { mutableStateOf(SettingsManager.companyAddress) }
     var companyContact by remember { mutableStateOf(SettingsManager.companyContact) }
     var footerText by remember { mutableStateOf(SettingsManager.invoiceFooterText) }
+    var invoiceHelpText by remember { mutableStateOf(SettingsManager.invoiceHelpText) }
     var logoPath by remember { mutableStateOf(SettingsManager.invoiceLogoPath) }
 
     // Toggle for live preview between Reguler & Dedicated package types
@@ -465,6 +466,29 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                         ),
                         placeholder = { Text("Contoh: Pembayaran melalui transfer bank atau cash...", color = textSecondary) }
                     )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 6. Teks Layanan Bantuan / Konfirmasi (Footer)
+                    Text("Teks Layanan Bantuan (Footer Invoice)", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = invoiceHelpText,
+                        onValueChange = {
+                            invoiceHelpText = it
+                            previewRefreshKey++
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Default.SupportAgent, contentDescription = null, tint = neonCyan) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = textSecondary.copy(alpha = 0.5f),
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        ),
+                        placeholder = { Text("Contoh: Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890", color = textSecondary) },
+                        singleLine = true
+                    )
                 }
             }
 
@@ -683,6 +707,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                         companyAddress,
                         companyContact,
                         footerText,
+                        invoiceHelpText,
                         previewPackageType,
                         previewStatus,
                         previewRefreshKey
@@ -694,6 +719,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                             SettingsManager.companyContact = companyContact
                             SettingsManager.invoiceHeader = "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
                             SettingsManager.invoiceFooterText = footerText
+                            SettingsManager.invoiceHelpText = invoiceHelpText
                             SettingsManager.invoiceLogoPath = logoPath
 
                             InvoiceGenerator.generateInvoiceBitmap(
@@ -755,6 +781,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                     SettingsManager.companyContact = companyContact
                     SettingsManager.invoiceHeader = "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
                     SettingsManager.invoiceFooterText = footerText
+                    SettingsManager.invoiceHelpText = invoiceHelpText
                     SettingsManager.invoiceLogoPath = logoPath
                     SettingsManager.useInvoiceLogo = true
                     SettingsManager.persistInvoiceSettings(context)

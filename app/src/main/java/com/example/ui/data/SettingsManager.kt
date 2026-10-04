@@ -174,6 +174,14 @@ object SettingsManager {
             persistInvoiceSettings()
         }
 
+    private const val KEY_INVOICE_HELP_TEXT = "invoice_help_text"
+    var invoiceHelpText: String
+        get() = prefs.getString(KEY_INVOICE_HELP_TEXT, "Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890") ?: "Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890"
+        set(value) {
+            prefs.edit().putString(KEY_INVOICE_HELP_TEXT, value).apply()
+            persistInvoiceSettings()
+        }
+
     fun persistInvoiceSettings(context: Context? = null) {
         val ctx = context ?: appContext ?: return
         try {
@@ -184,6 +192,7 @@ object SettingsManager {
                 put("company_contact", prefs.getString(KEY_COMPANY_CONTACT, "WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id"))
                 put("invoice_header", prefs.getString("invoice_header", ""))
                 put("invoice_footer", prefs.getString(KEY_INVOICE_FOOTER, "L U N A S"))
+                put("invoice_help_text", prefs.getString(KEY_INVOICE_HELP_TEXT, "Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890"))
                 put("support_by", prefs.getString(KEY_SUPPORT_BY, "Toko Ana, PT.Telkom, PT.Citra Selaras Terabit"))
                 put("use_invoice_logo", prefs.getBoolean("use_invoice_logo", true))
                 put("use_custom_invoice_template", prefs.getBoolean("use_custom_invoice_template", true))
@@ -249,6 +258,9 @@ object SettingsManager {
                 }
                 if (json.has("invoice_footer") && !prefs.contains(KEY_INVOICE_FOOTER)) {
                     editor.putString(KEY_INVOICE_FOOTER, json.getString("invoice_footer"))
+                }
+                if (json.has("invoice_help_text") && !prefs.contains(KEY_INVOICE_HELP_TEXT)) {
+                    editor.putString(KEY_INVOICE_HELP_TEXT, json.getString("invoice_help_text"))
                 }
                 if (json.has("support_by") && !prefs.contains(KEY_SUPPORT_BY)) {
                     editor.putString(KEY_SUPPORT_BY, json.getString("support_by"))

@@ -424,8 +424,7 @@ fun DashboardScreen(
                                     isCustomerPaidForMonth(customer, selectedMonth, selectedYear, state.tagihanList)
                                 }
                                 val unpaidCount = filteredCustomers.count { customer ->
-                                    !isCustomerPaidForMonth(customer, selectedMonth, selectedYear, state.tagihanList) &&
-                                    isRegisteredBeforeOrInMonth(customer, selectedMonth, selectedYear)
+                                    !isCustomerPaidForMonth(customer, selectedMonth, selectedYear, state.tagihanList)
                                 }
                                 Text("$unpaidCount", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = textErrorPrimary)
                             }

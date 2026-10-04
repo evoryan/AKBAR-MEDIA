@@ -126,8 +126,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         pppoe_secret = item.pppoe_secret,
                         odp_id = item.odp_id?.toIntOrNull(),
                         odp_port = item.odp_port,
-                        additionalCost1 = item.additionalCost1,
-                        additionalCost2 = item.additionalCost2
+                        additionalCost1 = item.getEffectiveCost1(),
+                        additionalCost2 = item.getEffectiveCost2(),
+                        additionalCostDesc1 = item.getEffectiveDesc1(),
+                        additionalCostDesc2 = item.getEffectiveDesc2()
                     )
                 }
 

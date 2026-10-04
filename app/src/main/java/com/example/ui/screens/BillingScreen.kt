@@ -157,24 +157,28 @@ fun isCustomerPaidForMonth(
 ): Boolean {
     val custId = customer.id.toIntOrNull()
     if (custId != null) {
-        val tagihanThisMonth = tagihanList.filter { t ->
+        val tagihanForCustInMonth = tagihanList.filter { t ->
             t.customer_id == custId && isTagihanInMonthRecap(t, month, year, monthsList)
         }
-        if (tagihanThisMonth.isNotEmpty()) {
-            return tagihanThisMonth.any { t ->
+        if (tagihanForCustInMonth.isNotEmpty()) {
+            return tagihanForCustInMonth.any { t ->
                 t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)
             }
         }
     }
 
-    val currentCal = java.util.Calendar.getInstance()
-    val curMonthIdx = currentCal.get(java.util.Calendar.MONTH)
-    val curMonthName = monthsList.getOrElse(curMonthIdx) { "Januari" }
-    val curYear = currentCal.get(java.util.Calendar.YEAR).toString()
+    // Hanya gunakan fallback jika sama sekali belum ada record tagihan di tagihanList untuk bulan ini
+    val hasAnyTagihanInMonth = tagihanList.any { isTagihanInMonthRecap(it, month, year, monthsList) }
+    if (!hasAnyTagihanInMonth) {
+        val currentCal = java.util.Calendar.getInstance()
+        val curMonthIdx = currentCal.get(java.util.Calendar.MONTH)
+        val curMonthName = monthsList.getOrElse(curMonthIdx) { "Januari" }
+        val curYear = currentCal.get(java.util.Calendar.YEAR).toString()
 
-    val isCurrentPeriod = month.equals(curMonthName, ignoreCase = true) && year.trim() == curYear
-    if (isCurrentPeriod) {
-        return customer.status.contains("LUNAS", ignoreCase = true) || customer.status.contains("SUDAH", ignoreCase = true)
+        val isCurrentPeriod = month.equals(curMonthName, ignoreCase = true) && year.trim() == curYear
+        if (isCurrentPeriod) {
+            return customer.status.contains("LUNAS", ignoreCase = true) || customer.status.contains("SUDAH", ignoreCase = true)
+        }
     }
 
     return false
@@ -187,26 +191,37 @@ fun calculateTotalPaidBills(
     year: String,
     monthsList: List<String> = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
 ): Long {
-    val paidCustomers = customers.filter { customer ->
-        isCustomerPaidForMonth(customer, month, year, tagihanList, monthsList)
-    }
-    return paidCustomers.sumOf { customer ->
-        val custId = customer.id.toIntOrNull()
-        val tagihanRecord = if (custId != null) {
-            tagihanList.firstOrNull { t ->
-                t.customer_id == custId &&
-                (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
-                isTagihanInMonthRecap(t, month, year, monthsList)
-            }
-        } else null
+    val custMap = customers.associateBy { it.id.toIntOrNull() }
+    val allowedCustIds = custMap.keys.filterNotNull().toSet()
 
-        val tagihanAmount = tagihanRecord?.amount?.toLong()
-        if (tagihanAmount != null && tagihanAmount > 0L) {
-            tagihanAmount
-        } else {
-            customer.getTotalBillAmount()
+    // 1. Ambil seluruh record tagihan yang statusnya LUNAS pada bulan dan tahun terpilih
+    val paidTagihans = tagihanList.filter { t ->
+        (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
+        isTagihanInMonthRecap(t, month, year, monthsList) &&
+        (allowedCustIds.isEmpty() || allowedCustIds.contains(t.customer_id))
+    }
+
+    val accountedCustIds = mutableSetOf<Int>()
+    var totalPaid = 0L
+
+    for (t in paidTagihans) {
+        val amt = t.amount.toLong()
+        val customerAmt = custMap[t.customer_id]?.getTotalBillAmount() ?: 0L
+        totalPaid += if (amt > 0L) amt else customerAmt
+        accountedCustIds.add(t.customer_id)
+    }
+
+    // 2. Tambahkan pelanggan yang terdeteksi lunas untuk bulan ini jika belum tercatat di tagihanList
+    for (customer in customers) {
+        val custId = customer.id.toIntOrNull()
+        if (custId != null && !accountedCustIds.contains(custId)) {
+            if (isCustomerPaidForMonth(customer, month, year, tagihanList, monthsList)) {
+                totalPaid += customer.getTotalBillAmount()
+            }
         }
     }
+
+    return totalPaid
 }
 
 fun parseCustomerRegistrationDate(dateStr: String?): java.util.Calendar? {

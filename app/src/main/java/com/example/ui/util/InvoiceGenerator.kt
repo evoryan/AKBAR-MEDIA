@@ -609,7 +609,12 @@ object InvoiceGenerator {
             canvas.drawText("• Bukti invoice ini adalah dokumen sah yang diterbitkan oleh sistem.", kopLeft + 16f, noteCurY, notesTextPaint)
             noteCurY += 24f
         }
-        canvas.drawText("• Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890", kopLeft + 16f, noteCurY, notesTextPaint)
+        val footerHelp = SettingsManager.invoiceHelpText.trim()
+        if (footerHelp.isNotEmpty()) {
+            val helpLine = if (footerHelp.startsWith("•")) footerHelp else "• $footerHelp"
+            canvas.drawText(helpLine, kopLeft + 16f, noteCurY, notesTextPaint)
+            noteCurY += 24f
+        }
 
         // Status Badge / Stamp (Beside Notes)
         val isLunas = status.equals("LUNAS", ignoreCase = true)
