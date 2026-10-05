@@ -469,14 +469,14 @@ data class PaymentHistory(
 )
 
 data class SyncResponse(
-    val customers: List<CustomerSyncItem>,
-    val tagihan: List<TagihanSyncItem>,
-    val routerStatus: List<RouterStatusSyncItem>,
+    val customers: List<CustomerSyncItem> = emptyList(),
+    val tagihan: List<TagihanSyncItem> = emptyList(),
+    val routerStatus: List<RouterStatusSyncItem> = emptyList(),
     val gangguan: List<com.example.ui.data.local.GangguanEntity>? = null
 )
 
 data class CustomerSyncItem(
-    val id: String,
+    val id: String = "",
     val name: String? = null,
     val phone: String? = null,
     val area: String? = null,
@@ -509,7 +509,7 @@ data class CustomerSyncItem(
 }
 
 data class TagihanSyncItem(
-    val id: String,
+    val id: String = "",
     val customer_id: String? = null,
     val bulan: String? = null,
     val tahun: Int? = null,
@@ -520,7 +520,7 @@ data class TagihanSyncItem(
 )
 
 data class RouterStatusSyncItem(
-    val id: String,
+    val id: String = "",
     val area_id: String? = null,
     val area_name: String? = null,
     val cpu_load: String? = null,

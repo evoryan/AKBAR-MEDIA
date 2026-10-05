@@ -172,7 +172,8 @@ fun EditCustomerScreen(customerId: String,
             customers = ApiClient.apiService.getCustomers()
             odcList = ApiClient.apiService.getOdcList()
             rasioList = ApiClient.apiService.getRasioList()
-            val cust = customers.find { it.id == customerId }
+            val localCust = com.example.ui.data.local.AppDatabase.getDatabase(context).pelangganDao().getPelangganById(customerId.toIntOrNull() ?: 0)
+            val cust = customers.find { it.id == customerId } ?: localCust?.toCustomer()
             if (cust != null) {
                 originalCustomer = cust
                 name = cust.name
@@ -202,7 +203,9 @@ fun EditCustomerScreen(customerId: String,
                 }
             }
         } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "Gagal memuat data: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            if (originalCustomer == null) {
+                android.widget.Toast.makeText(context, "Gagal memuat data: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+            }
         } finally {
             isBackgroundLoading = false
         }

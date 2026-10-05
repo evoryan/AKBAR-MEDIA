@@ -172,28 +172,47 @@ object UserSession {
         return cachedAreas
     }
 
-    fun isAreaIdAllowed(areaId: String): Boolean {
-        val user = currentUser.value ?: return false
+    fun isAreaIdAllowed(areaId: String?): Boolean {
+        val user = currentUser.value ?: return true
         if (user.role == UserRole.SUPER_ADMIN) return true
-        val allowedAreaIds = user.area_id?.split(",")?.filter { it.isNotBlank() } ?: return true
-        if (allowedAreaIds.contains("semua")) return true
-        return allowedAreaIds.contains(areaId)
+        val target = areaId?.trim().orEmpty()
+        if (target.isBlank()) return true
+        val allowed = user.area_id?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: return true
+        if (allowed.isEmpty() || allowed.any { it.equals("semua", ignoreCase = true) }) return true
+        if (allowed.any { it.equals(target, ignoreCase = true) }) return true
+        val matchedArea = cachedAreas.find { it.name.equals(target, ignoreCase = true) }
+        if (matchedArea != null && allowed.any { it.equals(matchedArea.id, ignoreCase = true) }) return true
+        return false
     }
 
-    fun isAreaNameAllowed(areaName: String): Boolean {
-        val user = currentUser.value ?: return false
+    fun isAreaNameAllowed(areaName: String?): Boolean {
+        val user = currentUser.value ?: return true
         if (user.role == UserRole.SUPER_ADMIN) return true
-        val allowedAreaIds = user.area_id?.split(",")?.filter { it.isNotBlank() } ?: return true
-        if (allowedAreaIds.contains("semua")) return true
-        // Map ID to Name
-        val allowedNames = allowedAreaIds.mapNotNull { id ->
-            cachedAreas.find { it.id == id }?.name
-        }
-        if (allowedNames.isEmpty() && cachedAreas.isNotEmpty()) {
-            // fallback: check if we should fetch/cache. If cachedAreas is empty, we might not have it yet.
+        val target = areaName?.trim().orEmpty()
+        if (target.isBlank()) return true
+        val allowed = user.area_id?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: return true
+        if (allowed.isEmpty() || allowed.any { it.equals("semua", ignoreCase = true) }) return true
+        
+        // Direct match with allowed entries (which may be names or IDs)
+        if (allowed.any { it.equals(target, ignoreCase = true) }) return true
+
+        if (cachedAreas.isEmpty()) {
             return true
         }
-        return allowedNames.any { it.equals(areaName, ignoreCase = true) }
+
+        // Map allowed IDs to Area Names, and allowed Names to Area IDs
+        val matchedNames = allowed.mapNotNull { a ->
+            cachedAreas.find { it.id.equals(a, ignoreCase = true) }?.name
+        }
+        if (matchedNames.any { it.equals(target, ignoreCase = true) }) return true
+
+        // Also check if target matches an area by ID whose name or id is in allowed
+        val matchedAreaByTarget = cachedAreas.find { it.id.equals(target, ignoreCase = true) }
+        if (matchedAreaByTarget != null && (allowed.any { it.equals(matchedAreaByTarget.name, ignoreCase = true) } || allowed.any { it.equals(matchedAreaByTarget.id, ignoreCase = true) })) {
+            return true
+        }
+
+        return false
     }
 
     fun canManageAdmin(otherAdmin: AdminUser): Boolean {

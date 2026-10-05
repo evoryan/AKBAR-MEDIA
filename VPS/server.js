@@ -1058,19 +1058,39 @@ app.get('/api/wa/history', async (req, res) => {
 
 app.get('/api/customers', async (req, res) => {
     try {
-        const [rows] = await req.pool.query('SELECT * FROM customers');
-        const customers = rows.map(r => {
+        if (!req.pool) {
+            return res.json([]);
+        }
+        await ensureTenantTables(req.pool).catch(()=>{});
+        const [rows] = await req.pool.query('SELECT * FROM customers').catch(() => [[]]);
+        const customers = (rows || []).map(r => {
             const desc1 = r.additionalCostDesc1 || r.additional_cost_desc1 || r.additionalcostdesc1 || r.additionalCostdesc1 || '';
             const desc2 = r.additionalCostDesc2 || r.additional_cost_desc2 || r.additionalcostdesc2 || r.additionalCostdesc2 || '';
             const add1 = r.additionalCost1 || r.additionalcost1 || r.additional_cost1 || '';
             const add2 = r.additionalCost2 || r.additionalcost2 || r.additional_cost2 || '';
             return {
                 ...r,
-                id: r.id.toString(),
-                address: r.address || r.alamat || '',
-                alamat: r.address || r.alamat || '',
+                id: (r.id != null ? r.id.toString() : ''),
+                name: (r.name != null ? String(r.name) : ''),
+                phone: (r.phone != null ? String(r.phone) : ''),
+                area: (r.area != null ? String(r.area) : ''),
+                username: (r.username != null ? String(r.username) : ''),
+                billingDate: (r.billingDate || r.billing_date || '1'),
+                status: (r.status || 'BELUM BAYAR'),
+                price: (r.price != null ? String(r.price) : '0'),
+                discount: (r.discount != null ? String(r.discount) : '0'),
+                address: (r.address || r.alamat || ''),
+                alamat: (r.address || r.alamat || ''),
+                register_date: (r.register_date || r.registerDate || ''),
+                isolate_date: (r.isolate_date || r.isolateDate || ''),
+                package_name: (r.package_name || r.packageName || ''),
+                pppoe_secret: (r.pppoe_secret || r.pppoeSecret || ''),
+                odp_id: (r.odp_id != null ? String(r.odp_id) : (r.odpId != null ? String(r.odpId) : null)),
+                odp_port: (r.odp_port || r.odpPort || ''),
                 additionalCost1: add1,
                 additionalCost2: add2,
+                additional_cost1: add1,
+                additional_cost2: add2,
                 additionalCostDesc1: desc1,
                 additionalCostDesc2: desc2,
                 additional_cost_desc1: desc1,
@@ -1079,8 +1099,8 @@ app.get('/api/customers', async (req, res) => {
         });
         res.json(customers);
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Terjadi kesalahan server" });
+        console.error("API /api/customers error:", error.message);
+        res.json([]);
     }
 });
 
@@ -1100,78 +1120,93 @@ app.get('/api/sync', async (req, res) => {
             )
         `).catch(e => console.error("Error creating status_router_terakhir table:", e.message));
 
-        const [areas] = await req.pool.query('SELECT * FROM areas');
+        // Asynchronous non-blocking background router status update to prevent /api/sync timeouts
+        (async () => {
+            try {
+                const [areas] = await req.pool.query('SELECT * FROM areas');
+                for (const area of areas) {
+                    let cpuLoad = '-';
+                    let uptime = '-';
+                    let activePppoe = '-';
+                    let offlinePppoe = '-';
+                    let status = 'Offline';
 
-        const promises = areas.map(async (area) => {
-            let cpuLoad = '-';
-            let uptime = '-';
-            let activePppoe = '-';
-            let offlinePppoe = '-';
-            let status = 'Offline';
+                    if (area.routerIp && area.mikrotikUser && area.mikrotikPassword) {
+                        const [host, portStr] = area.routerIp.split(':');
+                        const port = parseInt(portStr) || 8728;
+                        const client = new RouterOSClient({
+                            host, user: area.mikrotikUser, password: area.mikrotikPassword, port, timeout: 2000
+                        });
 
-            if (area.routerIp && area.mikrotikUser && area.mikrotikPassword) {
-                const [host, portStr] = area.routerIp.split(':');
-                const port = parseInt(portStr) || 8728;
-                const client = new RouterOSClient({
-                    host, user: area.mikrotikUser, password: area.mikrotikPassword, port, timeout: 3000
-                });
+                        try {
+                            const api = await connectMikrotik(client, 2000);
+                            const resourceMenu = api.menu('/system/resource');
+                            const resources = await resourceMenu.get();
+                            const resource = resources[0];
 
-                try {
-                    const api = await connectMikrotik(client, 3000);
-                    const resourceMenu = api.menu('/system/resource');
-                    const resources = await resourceMenu.get();
-                    const resource = resources[0];
+                            const pppoeActiveMenu = api.menu('/ppp/active');
+                            const actives = await pppoeActiveMenu.get();
+                            
+                            const pppSecretMenu = api.menu('/ppp/secret');
+                            const allSecrets = await pppSecretMenu.get();
 
-                    const pppoeActiveMenu = api.menu('/ppp/active');
-                    const actives = await pppoeActiveMenu.get();
-                    
-                    const pppSecretMenu = api.menu('/ppp/secret');
-                    const allSecrets = await pppSecretMenu.get();
+                            cpuLoad = (resource && resource['cpu-load'] !== undefined) ? resource['cpu-load'] + '%' : '0%';
+                            uptime = (resource && resource['uptime']) || 'Unknown';
+                            activePppoe = actives.length.toString();
+                            offlinePppoe = (allSecrets.length - actives.length).toString();
+                            status = 'Online';
+                        } catch (err) {
+                            status = 'Offline';
+                        } finally {
+                            try { client.close(); } catch (_) {}
+                        }
+                    }
 
-                    cpuLoad = (resource && resource['cpu-load'] !== undefined) ? resource['cpu-load'] + '%' : '0%';
-                    uptime = (resource && resource['uptime']) || 'Unknown';
-                    activePppoe = actives.length.toString();
-                    offlinePppoe = (allSecrets.length - actives.length).toString();
-                    status = 'Online';
-                } catch (err) {
-                    status = 'Offline';
-                } finally {
-                    try { client.close(); } catch (_) {}
+                    await req.pool.query(`
+                        INSERT INTO status_router_terakhir (area_id, area_name, cpu_load, uptime, active_pppoe, offline_pppoe, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE 
+                            area_name = VALUES(area_name),
+                            cpu_load = VALUES(cpu_load),
+                            uptime = VALUES(uptime),
+                            active_pppoe = VALUES(active_pppoe),
+                            offline_pppoe = VALUES(offline_pppoe),
+                            status = VALUES(status)
+                    `, [area.id, area.name, cpuLoad, uptime, activePppoe, offlinePppoe, status]).catch(e => {});
                 }
-            }
+            } catch (err) {}
+        })();
 
-            await req.pool.query(`
-                INSERT INTO status_router_terakhir (area_id, area_name, cpu_load, uptime, active_pppoe, offline_pppoe, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                    area_name = VALUES(area_name),
-                    cpu_load = VALUES(cpu_load),
-                    uptime = VALUES(uptime),
-                    active_pppoe = VALUES(active_pppoe),
-                    offline_pppoe = VALUES(offline_pppoe),
-                    status = VALUES(status)
-            `, [area.id, area.name, cpuLoad, uptime, activePppoe, offlinePppoe, status]).catch(e => console.error(e));
-        });
-
-        await Promise.all(promises).catch(e => console.error("Error updating status_router_terakhir in sync:", e));
-
-        const [customers] = await req.pool.query('SELECT * FROM customers');
-        const [tagihan] = await req.pool.query('SELECT * FROM tagihan_bulanan');
-        const [routerStatus] = await req.pool.query('SELECT * FROM status_router_terakhir');
-
-        const [gangguan] = await req.pool.query('SELECT * FROM gangguan ORDER BY id DESC').catch(e => [[]]);
+        const [customers] = await req.pool.query('SELECT * FROM customers').catch(() => [[]]);
+        const [tagihan] = await req.pool.query('SELECT * FROM tagihan_bulanan').catch(() => [[]]);
+        const [routerStatus] = await req.pool.query('SELECT * FROM status_router_terakhir').catch(() => [[]]);
+        const [gangguan] = await req.pool.query('SELECT * FROM gangguan ORDER BY id DESC').catch(() => [[]]);
 
         res.json({
-            customers: customers.map(c => {
+            customers: (customers || []).map(c => {
                 const desc1 = c.additionalCostDesc1 || c.additional_cost_desc1 || c.additionalcostdesc1 || c.additionalCostdesc1 || '';
                 const desc2 = c.additionalCostDesc2 || c.additional_cost_desc2 || c.additionalcostdesc2 || c.additionalCostdesc2 || '';
                 const add1 = c.additionalCost1 || c.additionalcost1 || c.additional_cost1 || '';
                 const add2 = c.additionalCost2 || c.additionalcost2 || c.additional_cost2 || '';
                 return {
                     ...c,
-                    id: c.id.toString(),
-                    address: c.address || c.alamat || '',
-                    alamat: c.address || c.alamat || '',
+                    id: (c.id != null ? c.id.toString() : ''),
+                    name: (c.name != null ? String(c.name) : ''),
+                    phone: (c.phone != null ? String(c.phone) : ''),
+                    area: (c.area != null ? String(c.area) : ''),
+                    username: (c.username != null ? String(c.username) : ''),
+                    billingDate: (c.billingDate || c.billing_date || '1'),
+                    status: (c.status || 'BELUM BAYAR'),
+                    price: (c.price != null ? String(c.price) : '0'),
+                    discount: (c.discount != null ? String(c.discount) : '0'),
+                    address: (c.address || c.alamat || ''),
+                    alamat: (c.address || c.alamat || ''),
+                    register_date: (c.register_date || c.registerDate || ''),
+                    isolate_date: (c.isolate_date || c.isolateDate || ''),
+                    package_name: (c.package_name || c.packageName || ''),
+                    pppoe_secret: (c.pppoe_secret || c.pppoeSecret || ''),
+                    odp_id: (c.odp_id != null ? String(c.odp_id) : (c.odpId != null ? String(c.odpId) : null)),
+                    odp_port: (c.odp_port || c.odpPort || ''),
                     additionalCost1: add1,
                     additionalCost2: add2,
                     additional_cost1: add1,
@@ -1182,23 +1217,42 @@ app.get('/api/sync', async (req, res) => {
                     additional_cost_desc2: desc2
                 };
             }),
-            tagihan: tagihan.map(t => ({ ...t, id: t.id.toString(), customer_id: t.customer_id ? t.customer_id.toString() : null })),
-            routerStatus: routerStatus.map(r => ({ ...r, id: r.id.toString(), area_id: r.area_id ? r.area_id.toString() : null })),
+            tagihan: (tagihan || []).map(t => ({
+                ...t,
+                id: (t.id != null ? t.id.toString() : ''),
+                customer_id: (t.customer_id != null ? t.customer_id.toString() : null),
+                bulan: (t.bulan || ''),
+                tahun: (parseInt(t.tahun) || 0),
+                amount: (t.amount != null ? String(t.amount) : '0'),
+                status: (t.status || 'BELUM BAYAR'),
+                admin_name: (t.admin_name || null)
+            })),
+            routerStatus: (routerStatus || []).map(r => ({
+                ...r,
+                id: (r.id != null ? r.id.toString() : ''),
+                area_id: (r.area_id != null ? r.area_id.toString() : null),
+                area_name: (r.area_name || ''),
+                cpu_load: (r.cpu_load || '0%'),
+                uptime: (r.uptime || '-'),
+                active_pppoe: (r.active_pppoe || '0'),
+                offline_pppoe: (r.offline_pppoe || '0'),
+                status: (r.status || 'Online')
+            })),
             gangguan: (gangguan || []).map(g => ({
-                id: g.id,
-                customerName: g.customerName || '',
-                description: g.description || '',
-                status: g.status || 'OTW',
-                date: g.date || '',
-                reporter: g.reporter || '',
-                teknisi: g.teknisi || '',
-                biaya: parseFloat(g.biaya) || 0.0,
-                resolverAdmin: g.resolverAdmin || null
+                id: (g.id || 0),
+                customerName: (g.customerName || ''),
+                description: (g.description || ''),
+                status: (g.status || 'OTW'),
+                date: (g.date || ''),
+                reporter: (g.reporter || ''),
+                teknisi: (g.teknisi || ''),
+                biaya: (parseFloat(g.biaya) || 0.0),
+                resolverAdmin: (g.resolverAdmin || null)
             }))
         });
     } catch (error) {
         console.error("Sync API Error:", error.message);
-        res.status(500).json({ error: error.message || "Failed to sync" });
+        res.json({ customers: [], tagihan: [], routerStatus: [], gangguan: [] });
     }
 });
 

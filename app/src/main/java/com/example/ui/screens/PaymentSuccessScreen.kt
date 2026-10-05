@@ -58,10 +58,19 @@ fun PaymentSuccessScreen(
 
     LaunchedEffect(customerId) {
         try {
+            val localCust = com.example.ui.data.local.AppDatabase.getDatabase(context).pelangganDao().getPelangganById(customerId.toIntOrNull() ?: 0)
+            if (localCust != null) {
+                customer = localCust.toCustomer()
+            }
             val custs = ApiClient.apiService.getCustomers()
-            customer = custs.find { it.id == customerId }
+            val found = custs.find { it.id == customerId }
+            if (found != null) {
+                customer = found
+            }
         } catch (e: Exception) {
-            Toast.makeText(context, "Gagal memuat data pelanggan", Toast.LENGTH_SHORT).show()
+            if (customer == null) {
+                Toast.makeText(context, "Gagal memuat data pelanggan", Toast.LENGTH_SHORT).show()
+            }
         } finally {
             isBackgroundLoading = false
         }

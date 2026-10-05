@@ -111,25 +111,32 @@ fun CustomerDetailScreen(
     LaunchedEffect(customerId, refreshTrigger) {
         isBackgroundLoading = true
         try {
+            val localCust = com.example.ui.data.local.AppDatabase.getDatabase(context).pelangganDao().getPelangganById(customerId.toIntOrNull() ?: 0)
+            if (localCust != null) {
+                customer = localCust.toCustomer()
+            }
             val custs = ApiClient.apiService.getCustomers()
             val c = custs.find { it.id == customerId }
-            customer = c
+            if (c != null) {
+                customer = c
+            }
             isBackgroundLoading = false
             
-            if (c != null) {
+            val activeCust = customer
+            if (activeCust != null) {
                 // Fetch payment history in background
                 launch {
                     try {
-                        paymentHistory = ApiClient.apiService.getCustomerHistory(c.id)
+                        paymentHistory = ApiClient.apiService.getCustomerHistory(activeCust.id)
                     } catch(e: Exception) {}
                 }
 
                 // Get ODP if exist in background
                 launch {
                     try {
-                        if (!c.odpId.isNullOrEmpty()) {
+                        if (!activeCust.odpId.isNullOrEmpty()) {
                             val odps = ApiClient.apiService.getOdpList()
-                            odpItem = odps.find { it.id.toString() == c.odpId }
+                            odpItem = odps.find { it.id.toString() == activeCust.odpId }
                         }
                     } catch(e: Exception) {}
                 }
@@ -137,16 +144,18 @@ fun CustomerDetailScreen(
                 // Get ACS Device in background
                 launch {
                     try {
-                        if (!c.pppoeSecret.isNullOrEmpty()) {
+                        if (!activeCust.pppoeSecret.isNullOrEmpty()) {
                             val acsList = ApiClient.apiService.getAcsDevices()
-                            acsDevice = acsList.find { (it.username ?: "").trim().equals(c.pppoeSecret?.trim(), ignoreCase = true) }
+                            acsDevice = acsList.find { (it.username ?: "").trim().equals(activeCust.pppoeSecret?.trim(), ignoreCase = true) }
                         }
                     } catch(e: Exception) {}
                 }
             }
         } catch (e: Exception) {
             isBackgroundLoading = false
-            Toast.makeText(context, "Gagal memuat data", Toast.LENGTH_SHORT).show()
+            if (customer == null) {
+                Toast.makeText(context, "Gagal memuat data", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

@@ -100,11 +100,11 @@ data class StatusRouterTerakhirEntity(
 @Entity(tableName = "gangguan")
 data class GangguanEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val customerName: String, // opsional
-    val description: String,
-    val status: String, // "OTW", "SELESAI"
-    val date: String,
-    val reporter: String,
+    val customerName: String = "", // opsional
+    val description: String = "",
+    val status: String = "OTW", // "OTW", "SELESAI"
+    val date: String = "",
+    val reporter: String = "",
     val teknisi: String = "",
     val biaya: Double = 0.0,
     val resolverAdmin: String? = null
@@ -120,6 +120,9 @@ interface PelangganDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(pelanggan: PelangganEntity)
+
+    @Query("SELECT * FROM pelanggan WHERE id = :id LIMIT 1")
+    suspend fun getPelangganById(id: Int): PelangganEntity?
 
     @Query("DELETE FROM pelanggan WHERE id = :id")
     suspend fun deleteById(id: Int)

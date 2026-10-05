@@ -20,6 +20,10 @@ import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 
@@ -74,89 +78,131 @@ fun CustomersScreen(
         listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
     }
 
-    val customers = remember(localPelangganList) {
-        localPelangganList.map { entity ->
-            val resolvedAddress = entity.address?.takeIf { it.isNotBlank() } ?: entity.alamat
-            Customer(
-                id = entity.id.toString(),
-                name = entity.name,
-                phone = entity.phone,
-                area = entity.area,
-                address = resolvedAddress,
-                alamat = resolvedAddress,
-                username = entity.username,
-                billingDate = entity.billingDate,
-                status = entity.status,
-                price = entity.price,
-                discount = entity.discount,
-                registerDate = entity.register_date,
-                isolateDate = entity.isolate_date,
-                packageName = entity.package_name,
-                additionalCost1 = entity.additionalCost1,
-                additionalCost2 = entity.additionalCost2,
-                additionalCostDesc1 = entity.additionalCostDesc1,
-                additionalCostDesc2 = entity.additionalCostDesc2,
-                additional_cost_desc1 = entity.additionalCostDesc1,
-                additional_cost_desc2 = entity.additionalCostDesc2,
-                pppoeSecret = entity.pppoe_secret,
-                odpId = entity.odp_id?.toString(),
-                odpPort = entity.odp_port
-            )
-        }.filter { UserSession.isAreaNameAllowed(it.area) }
+    val currentUser by UserSession.currentUser.collectAsState()
+
+    val customers = remember(localPelangganList, currentUser) {
+        localPelangganList.map { it.toCustomer() }
+            .filter { UserSession.isAreaNameAllowed(it.area) }
+    }
+
+    var isRefreshing by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun loadCustomersFromRemote() {
+        coroutineScope.launch {
+            isRefreshing = true
+            errorMessage = null
+            try {
+                if (UserSession.currentUser.value == null) {
+                    UserSession.loadSession(context)
+                }
+                UserSession.getOrFetchAreas()
+                var loaded = false
+                try {
+                    val syncResponse = ApiClient.apiService.syncData()
+                    val mapped = syncResponse.customers.map { item ->
+                        val resolvedAddress = item.address?.takeIf { it.isNotBlank() } ?: item.alamat
+                        PelangganEntity(
+                            id = item.id?.toIntOrNull() ?: 0,
+                            name = item.name ?: "",
+                            phone = item.phone ?: "",
+                            area = item.area ?: "",
+                            address = resolvedAddress,
+                            alamat = resolvedAddress,
+                            username = item.username ?: "",
+                            billingDate = item.billingDate ?: "1",
+                            status = item.status ?: "BELUM BAYAR",
+                            price = item.price ?: "0",
+                            discount = item.discount ?: "0",
+                            register_date = item.register_date,
+                            isolate_date = item.isolate_date,
+                            package_name = item.package_name,
+                            pppoe_secret = item.pppoe_secret,
+                            odp_id = item.odp_id?.toIntOrNull(),
+                            odp_port = item.odp_port,
+                            additionalCost1 = item.getEffectiveCost1(),
+                            additionalCost2 = item.getEffectiveCost2(),
+                            additionalCostDesc1 = item.getEffectiveDesc1(),
+                            additionalCostDesc2 = item.getEffectiveDesc2()
+                        )
+                    }
+                    if (mapped.isNotEmpty()) {
+                        db.pelangganDao().insertAll(mapped)
+                    }
+                    val tagihanMapped = syncResponse.tagihan.map { item ->
+                        TagihanEntity(
+                            id = item.id?.toIntOrNull() ?: 0,
+                            customer_id = item.customer_id?.toIntOrNull() ?: 0,
+                            bulan = item.bulan ?: "",
+                            tahun = item.tahun ?: 0,
+                            amount = item.amount?.toDoubleOrNull() ?: 0.0,
+                            status = item.status ?: "BELUM BAYAR",
+                            admin_name = item.admin_name,
+                            created_at = item.created_at
+                        )
+                    }
+                    if (tagihanMapped.isNotEmpty()) {
+                        db.tagihanDao().insertAll(tagihanMapped)
+                    }
+                    if (!syncResponse.gangguan.isNullOrEmpty()) {
+                        db.gangguanDao().insertAll(syncResponse.gangguan)
+                    }
+                    loaded = true
+                } catch (eSync: Exception) {
+                    android.util.Log.w("CustomersScreen", "syncData failed, falling back to direct getCustomers: ${eSync.message}")
+                }
+
+                if (!loaded) {
+                    try {
+                        val directCustomers = ApiClient.apiService.getCustomers()
+                        val mapped = directCustomers.map { item ->
+                            val resolvedAddress = item.getEffectiveAddress().ifEmpty { item.address ?: item.alamat }
+                            PelangganEntity(
+                                id = item.id.toIntOrNull() ?: 0,
+                                name = item.name,
+                                phone = item.phone,
+                                area = item.area,
+                                address = resolvedAddress,
+                                alamat = resolvedAddress,
+                                username = item.username,
+                                billingDate = item.billingDate,
+                                status = item.status,
+                                price = item.price,
+                                discount = item.discount,
+                                register_date = item.getEffectiveRegisterDate(),
+                                isolate_date = item.isolateDate ?: item.isolate_date,
+                                package_name = item.packageName,
+                                pppoe_secret = item.pppoeSecret,
+                                odp_id = item.odpId?.toIntOrNull(),
+                                odp_port = item.odpPort,
+                                additionalCost1 = item.getEffectiveCost1(),
+                                additionalCost2 = item.getEffectiveCost2(),
+                                additionalCostDesc1 = item.getEffectiveCostDesc1(),
+                                additionalCostDesc2 = item.getEffectiveCostDesc2()
+                            )
+                        }
+                        if (mapped.isNotEmpty()) {
+                            db.pelangganDao().insertAll(mapped)
+                        }
+                        loaded = true
+                    } catch (eDirect: Exception) {
+                        android.util.Log.e("CustomersScreen", "direct getCustomers failed: ${eDirect.message}", eDirect)
+                        throw eDirect
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("CustomersScreen", "loadCustomersFromRemote error: ${e.message}", e)
+                if (localPelangganList.isEmpty()) {
+                    errorMessage = "Gagal memuat data pelanggan: ${e.message ?: "Periksa koneksi internet"}"
+                }
+            } finally {
+                isRefreshing = false
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
-        try {
-            UserSession.getOrFetchAreas()
-            val syncResponse = ApiClient.apiService.syncData()
-            val mapped = syncResponse.customers.map { item ->
-                val resolvedAddress = item.address?.takeIf { it.isNotBlank() } ?: item.alamat
-                PelangganEntity(
-                    id = item.id.toIntOrNull() ?: 0,
-                    name = item.name ?: "",
-                    phone = item.phone ?: "",
-                    area = item.area ?: "",
-                    address = resolvedAddress,
-                    alamat = resolvedAddress,
-                    username = item.username ?: "",
-                    billingDate = item.billingDate ?: "",
-                    status = item.status ?: "",
-                    price = item.price ?: "",
-                    discount = item.discount ?: "",
-                    register_date = item.register_date,
-                    isolate_date = item.isolate_date,
-                    package_name = item.package_name,
-                    pppoe_secret = item.pppoe_secret,
-                    odp_id = item.odp_id?.toIntOrNull(),
-                    odp_port = item.odp_port,
-                    additionalCost1 = item.additionalCost1,
-                    additionalCost2 = item.additionalCost2,
-                    additionalCostDesc1 = item.additionalCostDesc1 ?: item.additional_cost_desc1,
-                    additionalCostDesc2 = item.additionalCostDesc2 ?: item.additional_cost_desc2
-                )
-            }
-            val tagihanMapped = syncResponse.tagihan.map { item ->
-                TagihanEntity(
-                    id = item.id.toIntOrNull() ?: 0,
-                    customer_id = item.customer_id?.toIntOrNull() ?: 0,
-                    bulan = item.bulan ?: "",
-                    tahun = item.tahun ?: 0,
-                    amount = item.amount?.toDoubleOrNull() ?: 0.0,
-                    status = item.status ?: "BELUM BAYAR",
-                    admin_name = item.admin_name,
-                    created_at = item.created_at
-                )
-            }
-            db.pelangganDao().deleteAll()
-            db.pelangganDao().insertAll(mapped)
-            db.tagihanDao().deleteAll()
-            db.tagihanDao().insertAll(tagihanMapped)
-            if (!syncResponse.gangguan.isNullOrEmpty()) {
-                db.gangguanDao().insertAll(syncResponse.gangguan)
-            }
-        } catch (e: Exception) {
-            // Silently fall back to cached copy
-        }
+        loadCustomersFromRemote()
     }
     
     val areas = listOf("Semua") + customers.map { it.area }.distinct().sorted()
@@ -179,6 +225,7 @@ fun CustomersScreen(
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
 
@@ -220,8 +267,8 @@ fun CustomersScreen(
                         Icon(if (isSearchActive) Icons.Default.Close else Icons.Default.Search, contentDescription = "Search", tint = textMain)
                     }
                     if (!isSearchActive) {
-                        IconButton(onClick = { /*TODO*/ }) {
-                            Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = textMain)
+                        IconButton(onClick = { loadCustomersFromRemote() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Segarkan", tint = textMain)
                         }
                     }
                 },
@@ -378,33 +425,120 @@ fun CustomersScreen(
         )
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(filteredCustomers) { customer ->
-            CustomerItem(
-                customer = customer, 
-                onNavigateToCustomerDetail = onNavigateToCustomerDetail, 
-                onDeleteCustomer = { customerToDelete ->
-                    customerToDeleteState = customerToDelete
-                    showDeleteConfirm = true
-                }, 
-                onIsolirCustomer = { customerToIsolir ->
-                    coroutineScope.launch {
-                        try {
-                            com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
-                            android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    when {
+        isRefreshing && localPelangganList.isEmpty() -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = neonCyan)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Memuat data pelanggan...", color = textSecondary, fontSize = 14.sp)
+                }
+            }
+        }
+        errorMessage != null && localPelangganList.isEmpty() -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(48.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        errorMessage ?: "Gagal memuat data pelanggan",
+                        color = textMain,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { loadCustomersFromRemote() },
+                        colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Coba Lagi", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        filteredCustomers.isEmpty() -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = textSecondary, modifier = Modifier.size(48.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        when {
+                            searchQuery.isNotBlank() -> "Tidak ada pelanggan yang cocok dengan pencarian" 
+                            selectedArea != "Semua" -> "Tidak ada pelanggan di area $selectedArea"
+                            localPelangganList.isNotEmpty() && customers.isEmpty() -> "Tidak ada pelanggan di area akses akun Anda"
+                            else -> "Belum ada data pelanggan"
+                        },
+                        color = textSecondary,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(
+                            onClick = { loadCustomersFromRemote() },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan),
+                            border = BorderStroke(1.dp, neonCyan),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Muat Ulang")
+                        }
+                        Button(
+                            onClick = onNavigateToAddCustomer,
+                            colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Tambah Pelanggan", fontWeight = FontWeight.Bold)
                         }
                     }
-                }, 
-                onEditCustomer = { id ->
-                    onNavigateToEditCustomer(id)
                 }
-            )
+            }
+        }
+        else -> {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredCustomers) { customer ->
+                    CustomerItem(
+                        customer = customer, 
+                        onNavigateToCustomerDetail = onNavigateToCustomerDetail, 
+                        onDeleteCustomer = { customerToDelete ->
+                            customerToDeleteState = customerToDelete
+                            showDeleteConfirm = true
+                        }, 
+                        onIsolirCustomer = { customerToIsolir ->
+                            coroutineScope.launch {
+                                try {
+                                    com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
+                                    android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }, 
+                        onEditCustomer = { id ->
+                            onNavigateToEditCustomer(id)
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -413,16 +547,16 @@ fun CustomersScreen(
 
 data class Customer(
     val id: String = "",
-    val name: String,
-    val phone: String,
-    val area: String,
+    val name: String = "",
+    val phone: String = "",
+    val area: String = "",
     val address: String? = null,
     val alamat: String? = null,
-    val username: String,
-    val billingDate: String,
-    val status: String,
-    val price: String,
-    val discount: String,
+    val username: String = "",
+    val billingDate: String = "",
+    val status: String = "",
+    val price: String = "",
+    val discount: String = "",
     @Json(name = "register_date") val registerDate: String? = null,
     val register_date: String? = null,
     @Json(name = "isolate_date") val isolateDate: String? = null,
