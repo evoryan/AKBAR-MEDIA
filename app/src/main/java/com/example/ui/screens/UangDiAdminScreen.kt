@@ -9,6 +9,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,6 +59,19 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
     val currentMonthYear = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.forLanguageTag("id-ID")))
     }
+    val currentYear = remember { LocalDate.now().year }
+    val monthOptions = remember {
+        val monthNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+        val list = mutableListOf<String>()
+        for (m in monthNames) {
+            list.add("$m $currentYear")
+        }
+        list.add("Semua Waktu")
+        list
+    }
+
+    var selectedMonthYear by remember { mutableStateOf(currentMonthYear) }
+    var monthDropdownExpanded by remember { mutableStateOf(false) }
 
     var adminList by remember { mutableStateOf<List<AdminData>>(emptyList()) }
     var showDialog by remember { mutableStateOf(false) }
@@ -65,11 +81,22 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     var refreshTrigger by remember { mutableStateOf(0) }
 
-    LaunchedEffect(refreshTrigger) {
+    LaunchedEffect(refreshTrigger, selectedMonthYear) {
         try {
+            val parts = selectedMonthYear.trim().split(" ")
+            val mName = parts.getOrNull(0) ?: ""
+            val yStr = parts.getOrNull(1) ?: ""
+
             val admins = ApiClient.apiService.getAdmins()
-            val uangAdmin = try { ApiClient.apiService.getUangDiAdmin() } catch (e: Exception) { emptyList<com.example.ui.data.remote.UangAdminResponse>() }
-            val allPayments = try { ApiClient.apiService.getPembayaranHistory() } catch (e: Exception) { emptyList() }
+            val uangAdmin = try {
+                if (selectedMonthYear == "Semua Waktu") {
+                    ApiClient.apiService.getUangDiAdmin(all = "true")
+                } else {
+                    ApiClient.apiService.getUangDiAdmin(month = mName, year = yStr)
+                }
+            } catch (e: Exception) {
+                emptyList<com.example.ui.data.remote.UangAdminResponse>()
+            }
             
             val mapped = admins.map { admin ->
                 val record = uangAdmin.find { it.adminName == admin.name }
@@ -90,7 +117,7 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
                     setor = formattedSetor,
                     sisa = formattedSisa,
                     sisaColor = if (sisa < 0) errorRed else if (sisa == 0.0) successGreen else warningYellow,
-                    persentase = "100%", // could be calculated if we have a target
+                    persentase = "100%",
                     pengeluaran = formattedPengeluaran,
                     persentaseSisa = "100%",
                     jmlPlggn = jml.toString()
@@ -107,20 +134,99 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
         topBar = {
             Column(modifier = Modifier.background(bgMain)) {
                 TopAppBar(
-                    title = { Text("Sisa Uang Bulan $currentMonthYear", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) },
+                    title = { 
+                        Text(
+                            text = if (selectedMonthYear == "Semua Waktu") "Sisa Uang (Semua Waktu)" else "Sisa Uang Bulan $selectedMonthYear", 
+                            color = textMain, 
+                            fontSize = 16.sp, 
+                            fontWeight = FontWeight.SemiBold
+                        ) 
+                    },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
                         }
                     },
+                    actions = {
+                        IconButton(onClick = { refreshTrigger++ }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = textMain)
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
                 )
+
+                // Month Selector Bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { monthDropdownExpanded = true },
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.DateRange,
+                                    contentDescription = "Pilih Bulan",
+                                    tint = primaryCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Periode: $selectedMonthYear",
+                                    color = primaryCyan,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Buka Pilihan Bulan",
+                                tint = primaryCyan
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = monthDropdownExpanded,
+                        onDismissRequest = { monthDropdownExpanded = false },
+                        modifier = Modifier.background(cardBg)
+                    ) {
+                        monthOptions.forEach { mOpt ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        mOpt,
+                                        color = if (mOpt == selectedMonthYear) primaryCyan else textMain,
+                                        fontWeight = if (mOpt == selectedMonthYear) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    selectedMonthYear = mOpt
+                                    monthDropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
                 Text(
-                    text = "Berikut List Sisa Uang Di Admin.\nPilih admin untuk menambahkan setoran",
-                    color = textMain,
+                    text = "Berikut List Sisa Uang Di Admin (Siklus Bulanan).\nPilih admin untuk menambahkan setoran",
+                    color = textSecondary,
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
         }
@@ -130,7 +236,7 @@ fun UangDiAdminScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 16.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {

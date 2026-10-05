@@ -424,7 +424,9 @@ data class Customer(
     val price: String,
     val discount: String,
     @Json(name = "register_date") val registerDate: String? = null,
+    val register_date: String? = null,
     @Json(name = "isolate_date") val isolateDate: String? = null,
+    val isolate_date: String? = null,
     @Json(name = "package_name") val packageName: String? = null,
     val additionalCost1: String? = null,
     val additionalCost2: String? = null,
@@ -438,6 +440,10 @@ data class Customer(
     @Json(name = "odp_id") val odpId: String? = null,
     @Json(name = "odp_port") val odpPort: String? = null
 ) {
+    fun getEffectiveRegisterDate(): String? {
+        return registerDate?.takeIf { it.isNotBlank() } ?: register_date?.takeIf { it.isNotBlank() }
+    }
+
     fun getEffectiveCost1(): String? {
         return additionalCost1?.takeIf { it.isNotBlank() } ?: additional_cost1?.takeIf { it.isNotBlank() }
     }

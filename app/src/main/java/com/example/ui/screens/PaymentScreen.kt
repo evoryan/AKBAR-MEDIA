@@ -51,7 +51,7 @@ fun getCustomerAllUnpaidMonths(
     monthsList: List<String>
 ): List<String> {
     val custId = customer.id.toIntOrNull() ?: return emptyList()
-    val regCal = parseCustomerRegistrationDate(customer.registerDate)
+    val regCal = parseCustomerRegistrationDate(customer.getEffectiveRegisterDate())
     val hasRegDate = regCal != null
     val regYear = regCal?.get(java.util.Calendar.YEAR) ?: 0
     val regMonthIdx = regCal?.get(java.util.Calendar.MONTH) ?: 0
@@ -89,8 +89,10 @@ fun getCustomerAllUnpaidMonths(
         val mIdx = monthsList.indexOfFirst { it.equals(t.bulan, ignoreCase = true) }
         val y = if (t.tahun > 0) t.tahun else currentYear
         if (mIdx >= 0) {
+            val isBeforeReg = hasRegDate && (y < regYear || (y == regYear && mIdx < regMonthIdx))
+            val isFuture = y > currentYear || (y == currentYear && mIdx > currentMonthIdx)
             val p = Pair(mIdx, y)
-            if (!candidateMonths.contains(p) && y <= currentYear) {
+            if (!candidateMonths.contains(p) && !isBeforeReg && !isFuture) {
                 candidateMonths.add(p)
             }
         }
@@ -101,6 +103,10 @@ fun getCustomerAllUnpaidMonths(
 
     val unpaidMonths = mutableListOf<String>()
     for ((mIdx, y) in sortedCandidates) {
+        val isBeforeReg = hasRegDate && (y < regYear || (y == regYear && mIdx < regMonthIdx))
+        val isFuture = y > currentYear || (y == currentYear && mIdx > currentMonthIdx)
+        if (isBeforeReg || isFuture) continue
+
         val mName = monthsList.getOrElse(mIdx) { "" }
         if (mName.isEmpty()) continue
         val yStr = y.toString()
@@ -113,12 +119,69 @@ fun getCustomerAllUnpaidMonths(
     return unpaidMonths
 }
 
+enum class MonthPaymentStatus {
+    NO_BILL,   // Sebelum bulan pelanggan registrasi -> "Tidak Ada Tagihan"
+    PAID,      // Dimulai dari bulan registrasi sampai bulan saat ini (jika lunas) -> "Lunas"
+    UNPAID,    // Dimulai dari bulan registrasi sampai bulan saat ini (jika belum lunas) -> "Tunggakan"
+    NONE       // Bulan yang belum berjalan -> Tanpa status (kosong)
+}
+
+fun getMonthPaymentStatus(
+    monthYearStr: String,
+    customer: Customer?,
+    tagihanList: List<TagihanEntity>,
+    monthsList: List<String>
+): MonthPaymentStatus {
+    val parts = monthYearStr.trim().split(" ")
+    val monthName = parts.getOrNull(0) ?: ""
+    val nowCal = java.util.Calendar.getInstance()
+    val curYear = nowCal.get(java.util.Calendar.YEAR)
+    val curMonthIdx = nowCal.get(java.util.Calendar.MONTH)
+
+    val targetYear = parts.getOrNull(1)?.toIntOrNull() ?: curYear
+    val targetMonthIdx = monthsList.indexOfFirst { it.equals(monthName, ignoreCase = true) }
+        .takeIf { it >= 0 } ?: curMonthIdx
+
+    // 1. Bulan yang belum berjalan (masa depan) -> Tanpa status (kosong)
+    if (targetYear > curYear || (targetYear == curYear && targetMonthIdx > curMonthIdx)) {
+        return MonthPaymentStatus.NONE
+    }
+
+    // 2. Status sebelum bulan pelanggan registrasi -> Tidak ada tagihan
+    val regCal = parseCustomerRegistrationDate(customer?.getEffectiveRegisterDate())
+    if (regCal != null) {
+        val regYear = regCal.get(java.util.Calendar.YEAR)
+        val regMonthIdx = regCal.get(java.util.Calendar.MONTH)
+        if (targetYear < regYear || (targetYear == regYear && targetMonthIdx < regMonthIdx)) {
+            return MonthPaymentStatus.NO_BILL
+        }
+    }
+
+    // 3. Status lunas/tunggakan dimulai dari bulan pelanggan teregistrasi sampai bulan saat ini
+    val isPaid = customer?.let {
+        isCustomerPaidForMonth(it, monthName, targetYear.toString(), tagihanList, monthsList)
+    } ?: false
+
+    return if (isPaid) MonthPaymentStatus.PAID else MonthPaymentStatus.UNPAID
+}
+
 fun getAmountForMonth(
     monthYearStr: String,
     customer: Customer?,
     tagihanList: List<TagihanEntity>,
     monthsList: List<String>
 ): Long {
+    // Samakan nilai rincian bulan tagihan dengan nilai Biaya Perbulannya (harga paket - diskon + biaya tambahan 1 + biaya tambahan 2)
+    val monthlyBill = customer?.getTotalBillAmount() ?: 0L
+    if (monthlyBill > 0L) {
+        return monthlyBill
+    }
+
+    val parsedPrice = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(customer?.price)
+    if (parsedPrice > 0L) {
+        return parsedPrice
+    }
+
     val parts = monthYearStr.trim().split(" ")
     val monthName = parts.getOrNull(0) ?: ""
     val yearStr = parts.getOrNull(1) ?: java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
@@ -134,7 +197,7 @@ fun getAmountForMonth(
     return if (amt != null && amt > 0L) {
         amt
     } else {
-        customer?.getTotalBillAmount() ?: 0L
+        0L
     }
 }
 
@@ -201,7 +264,17 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
     
     var dropdownExpanded by remember { mutableStateOf(false) }
     
-    val availableMonths by remember(customer, localTagihanList) {
+    val resolvedCustomer = remember(customer, localPelangganList, customerId) {
+        customer ?: localPelangganList.find { it.id.toString() == customerId }?.toCustomer()
+    }
+
+    val customerMonthlyFee = remember(resolvedCustomer) {
+        val totalBill = resolvedCustomer?.getTotalBillAmount() ?: 0L
+        if (totalBill > 0L) totalBill
+        else com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(resolvedCustomer?.price)
+    }
+
+    val availableMonths by remember(resolvedCustomer, localTagihanList) {
         derivedStateOf {
             val list = mutableListOf<String>()
             val cal = java.util.Calendar.getInstance()
@@ -211,15 +284,22 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 list.add(sdf.format(cal.time))
                 cal.add(java.util.Calendar.MONTH, 1)
             }
-            if (customer != null) {
-                val unpaid = getCustomerAllUnpaidMonths(customer!!, localTagihanList, monthsList)
+            if (resolvedCustomer != null) {
+                val unpaid = getCustomerAllUnpaidMonths(resolvedCustomer, localTagihanList, monthsList)
                 for (m in unpaid) {
                     if (!list.contains(m)) {
                         list.add(0, m)
                     }
                 }
             }
-            list.distinct()
+            list.distinct().sortedWith(compareBy({
+                val parts = it.trim().split(" ")
+                parts.getOrNull(1)?.toIntOrNull() ?: 2026
+            }, {
+                val parts = it.trim().split(" ")
+                val mName = parts.getOrNull(0) ?: ""
+                monthsList.indexOfFirst { m -> m.equals(mName, ignoreCase = true) }.takeIf { idx -> idx >= 0 } ?: 0
+            }))
         }
     }
     
@@ -233,16 +313,21 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
         }
     }
     
-    val baseTotalAmount = remember(monthsToPay.toList(), customer, localTagihanList) {
-        monthsToPay.sumOf { getAmountForMonth(it, customer, localTagihanList, monthsList) }
+    val baseTotalAmount = remember(monthsToPay.toList(), resolvedCustomer, localTagihanList, customerMonthlyFee) {
+        val perMonth = if (customerMonthlyFee > 0L) customerMonthlyFee else (monthsToPay.firstOrNull()?.let { getAmountForMonth(it, resolvedCustomer, localTagihanList, monthsList) } ?: 0L)
+        if (monthsToPay.isEmpty()) {
+            perMonth
+        } else {
+            monthsToPay.size * perMonth
+        }
     }
 
-    val prorataDaysCount by remember(isProrataEnabled, prorataCustomDays, customer) {
+    val prorataDaysCount by remember(isProrataEnabled, prorataCustomDays, resolvedCustomer) {
         derivedStateOf {
             if (!isProrataEnabled) null
             else {
                 prorataCustomDays ?: run {
-                    val regCal = parseCustomerRegistrationDate(customer?.registerDate)
+                    val regCal = parseCustomerRegistrationDate(resolvedCustomer?.getEffectiveRegisterDate())
                     if (regCal != null) {
                         val maxD = regCal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
                         val regD = regCal.get(java.util.Calendar.DAY_OF_MONTH)
@@ -255,9 +340,9 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
         }
     }
 
-    val prorataTotalDaysInMonth by remember(customer) {
+    val prorataTotalDaysInMonth by remember(resolvedCustomer) {
         derivedStateOf {
-            val regCal = parseCustomerRegistrationDate(customer?.registerDate) ?: java.util.Calendar.getInstance()
+            val regCal = parseCustomerRegistrationDate(resolvedCustomer?.getEffectiveRegisterDate()) ?: java.util.Calendar.getInstance()
             regCal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
         }
     }
@@ -369,37 +454,13 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
 
     androidx.compose.runtime.LaunchedEffect(localPelangganList, customerId) {
         if (customer == null) {
-            val localCust = localPelangganList.find { it.id.toString() == customerId }
-            if (localCust != null) {
-                val resolvedAddress = localCust.address?.takeIf { it.isNotBlank() } ?: localCust.alamat
-                customer = Customer(
-                    id = localCust.id.toString(),
-                    name = localCust.name,
-                    phone = localCust.phone,
-                    area = localCust.area,
-                    address = resolvedAddress,
-                    alamat = resolvedAddress,
-                    username = localCust.username,
-                    billingDate = localCust.billingDate,
-                    status = localCust.status,
-                    price = localCust.price,
-                    discount = localCust.discount,
-                    registerDate = localCust.register_date,
-                    isolateDate = localCust.isolate_date,
-                    packageName = localCust.package_name,
-                    additionalCost1 = localCust.additionalCost1,
-                    additionalCost2 = localCust.additionalCost2,
-                    pppoeSecret = localCust.pppoe_secret,
-                    odpId = localCust.odp_id?.toString(),
-                    odpPort = localCust.odp_port
-                )
-            }
+            customer = localPelangganList.find { it.id.toString() == customerId }?.toCustomer()
         }
     }
 
     // Ambil data bulan tagihan dari riwayat tagihan pelanggan (belum lunas bulan sebelumnya & bulan ini)
-    androidx.compose.runtime.LaunchedEffect(customer, localTagihanList, isBackgroundLoading) {
-        val cust = customer
+    androidx.compose.runtime.LaunchedEffect(resolvedCustomer, localTagihanList, isBackgroundLoading) {
+        val cust = resolvedCustomer
         if (cust != null && !hasAutoLoadedMonths) {
             if (localTagihanList.isNotEmpty() || !isBackgroundLoading) {
                 val unpaid = getCustomerAllUnpaidMonths(cust, localTagihanList, monthsList)
@@ -414,13 +475,6 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 }
                 hasAutoLoadedMonths = true
             }
-        }
-    }
-    
-    androidx.compose.runtime.LaunchedEffect(customer) {
-        if (customer != null) {
-            val parsed = customer?.discount?.replace(Regex("[^0-9]"), "")?.toIntOrNull() ?: 0
-            customDiscount = parsed
         }
     }
     
@@ -532,11 +586,11 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 Text("Pembayaran", color = textSecondary, fontSize = 12.sp)
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(customer?.packageName ?: "Reguler", color = textMain, fontSize = 14.sp)
-                    Text(customer?.price ?: "Rp. 0", color = textMain, fontSize = 14.sp)
+                    Text(resolvedCustomer?.packageName ?: "Reguler", color = textMain, fontSize = 14.sp)
+                    Text(resolvedCustomer?.price ?: "Rp. 0", color = textMain, fontSize = 14.sp)
                 }
-                val add1 = customer?.getAdditionalCost1Amount() ?: 0L
-                val desc1 = customer?.additionalCostDesc1
+                val add1 = resolvedCustomer?.getAdditionalCost1Amount() ?: 0L
+                val desc1 = resolvedCustomer?.additionalCostDesc1
                 if (add1 > 0L) {
                     val lbl1 = if (!desc1.isNullOrBlank()) "Biaya Tambahan 1 ($desc1)" else "Biaya Tambahan 1"
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -544,8 +598,8 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                         Text("+ Rp. ${formatter.format(add1)}", color = neonCyan, fontSize = 14.sp)
                     }
                 }
-                val add2 = customer?.getAdditionalCost2Amount() ?: 0L
-                val desc2 = customer?.additionalCostDesc2
+                val add2 = resolvedCustomer?.getAdditionalCost2Amount() ?: 0L
+                val desc2 = resolvedCustomer?.additionalCostDesc2
                 if (add2 > 0L) {
                     val lbl2 = if (!desc2.isNullOrBlank()) "Biaya Tambahan 2 ($desc2)" else "Biaya Tambahan 2"
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -563,7 +617,7 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Biaya Perbulannya", color = textSecondary, fontSize = 14.sp)
-                    val basePrice = customer?.getFormattedTotalBill() ?: customer?.price ?: "Rp. 0"
+                    val basePrice = "Rp. ${formatter.format(customerMonthlyFee)}"
                     Text(basePrice, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
@@ -670,8 +724,8 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                             val parts = month.trim().split(" ")
                             val mName = parts.getOrNull(0) ?: ""
                             val yStr = parts.getOrNull(1) ?: currentYearStr
-                            val isPaid = customer?.let { isCustomerPaidForMonth(it, mName, yStr, localTagihanList, monthsList) } ?: false
-                            val monthAmt = getAmountForMonth(month, customer, localTagihanList, monthsList)
+                            val isPaid = resolvedCustomer?.let { isCustomerPaidForMonth(it, mName, yStr, localTagihanList, monthsList) } ?: false
+                            val monthAmt = getAmountForMonth(month, resolvedCustomer, localTagihanList, monthsList)
                             val monthAmtFormatted = "Rp. ${formatter.format(monthAmt)}"
 
                             DropdownMenuItem(
@@ -703,32 +757,40 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                                                     fontWeight = if (isCurrent || isSelected) FontWeight.Bold else FontWeight.Normal,
                                                     fontSize = 14.sp
                                                 )
-                                                if (isPaid) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(4.dp))
-                                                            .background(successGreen.copy(alpha = 0.15f))
-                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text("Lunas", color = successGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                val statusType = getMonthPaymentStatus(month, resolvedCustomer, localTagihanList, monthsList)
+                                                when (statusType) {
+                                                    MonthPaymentStatus.NO_BILL -> {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(4.dp))
+                                                                .background(Color.Gray.copy(alpha = 0.15f))
+                                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        ) {
+                                                            Text("Tidak Ada Tagihan", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFAAAAAA) else Color(0xFF666666), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                                        }
                                                     }
-                                                } else if (!isCurrent) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(4.dp))
-                                                            .background(Color(0xFFFF003C).copy(alpha = 0.15f))
-                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text("Belum Lunas", color = Color(0xFFFF003C), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    MonthPaymentStatus.PAID -> {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(4.dp))
+                                                                .background(successGreen.copy(alpha = 0.15f))
+                                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        ) {
+                                                            Text("Lunas", color = successGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                        }
                                                     }
-                                                } else {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(4.dp))
-                                                            .background(neonCyan.copy(alpha = 0.15f))
-                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text("Bulan Ini", color = neonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    MonthPaymentStatus.UNPAID -> {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(4.dp))
+                                                                .background(Color(0xFFFF003C).copy(alpha = 0.15f))
+                                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        ) {
+                                                            Text("Tunggakan", color = Color(0xFFFF003C), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                        }
+                                                    }
+                                                    MonthPaymentStatus.NONE -> {
+                                                        // Bulan yang belum berjalan: tanpa status (kosong)
                                                     }
                                                 }
                                             }
@@ -767,7 +829,7 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 }
                 
                 if (monthsToPay.isEmpty()) {
-                    val allPaid = customer != null && getCustomerAllUnpaidMonths(customer!!, localTagihanList, monthsList).isEmpty()
+                    val allPaid = resolvedCustomer != null && getCustomerAllUnpaidMonths(resolvedCustomer, localTagihanList, monthsList).isEmpty()
                     if (allPaid) {
                         Text(
                             "✓ Semua tagihan bulan sebelumnya dan bulan ini sudah lunas.",
@@ -789,9 +851,9 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                         val parts = month.trim().split(" ")
                         val mName = parts.getOrNull(0) ?: ""
                         val yStr = parts.getOrNull(1) ?: currentYearStr
-                        val isPaid = customer?.let { isCustomerPaidForMonth(it, mName, yStr, localTagihanList, monthsList) } ?: false
+                        val isPaid = resolvedCustomer?.let { isCustomerPaidForMonth(it, mName, yStr, localTagihanList, monthsList) } ?: false
                         val isCurrent = month.equals(currentMonth, ignoreCase = true)
-                        val monthAmt = getAmountForMonth(month, customer, localTagihanList, monthsList)
+                        val monthAmt = getAmountForMonth(month, resolvedCustomer, localTagihanList, monthsList)
                         val monthAmtStr = "Rp. ${formatter.format(monthAmt)}"
 
                         Row(
@@ -807,32 +869,40 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("• $month", color = textMain, fontSize = 14.sp)
-                                if (isPaid) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(successGreen.copy(alpha = 0.15f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text("LUNAS", color = successGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                val statusType = getMonthPaymentStatus(month, resolvedCustomer, localTagihanList, monthsList)
+                                when (statusType) {
+                                    MonthPaymentStatus.NO_BILL -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color.Gray.copy(alpha = 0.15f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("TIDAK ADA TAGIHAN", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFAAAAAA) else Color(0xFF666666), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                                        }
                                     }
-                                } else if (!isCurrent) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFFFF003C).copy(alpha = 0.15f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text("TUNGGAKAN", color = Color(0xFFFF003C), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    MonthPaymentStatus.PAID -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(successGreen.copy(alpha = 0.15f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("LUNAS", color = successGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(neonCyan.copy(alpha = 0.15f))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text("BULAN INI", color = neonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    MonthPaymentStatus.UNPAID -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(0xFFFF003C).copy(alpha = 0.15f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("TUNGGAKAN", color = Color(0xFFFF003C), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    MonthPaymentStatus.NONE -> {
+                                        // Bulan yang belum berjalan: tanpa status (kosong)
                                     }
                                 }
                             }
@@ -858,8 +928,8 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                 }
 
                 // Notifikasi rekomendasi jika ada bulan tunggakan sebelumnya yang belum dipilih
-                if (customer != null) {
-                    val unpaidMonths = getCustomerAllUnpaidMonths(customer!!, localTagihanList, monthsList)
+                if (resolvedCustomer != null) {
+                    val unpaidMonths = getCustomerAllUnpaidMonths(resolvedCustomer, localTagihanList, monthsList)
                     val unselectedUnpaid = unpaidMonths.filter { !monthsToPay.contains(it) }
                     if (unselectedUnpaid.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -907,7 +977,8 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Tagihan Dasar (${monthsToPay.size} Bulan)", color = textSecondary, fontSize = 14.sp)
+                    val billMonthCount = if (monthsToPay.isEmpty()) 1 else monthsToPay.size
+                    Text("Tagihan Dasar ($billMonthCount Bulan)", color = textSecondary, fontSize = 14.sp)
                     Text("Rp. ${formatter.format(baseTotalAmount)}", color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
 

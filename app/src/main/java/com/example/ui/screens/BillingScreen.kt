@@ -226,6 +226,7 @@ fun calculateTotalPaidBills(
 
 fun parseCustomerRegistrationDate(dateStr: String?): java.util.Calendar? {
     if (dateStr.isNullOrBlank()) return null
+    val clean = dateStr.trim().substringBefore('T').trim()
     val formats = listOf(
         "dd/MM/yyyy",
         "d/M/yyyy",
@@ -233,22 +234,44 @@ fun parseCustomerRegistrationDate(dateStr: String?): java.util.Calendar? {
         "dd-MM-yyyy",
         "d-M-yyyy",
         "yyyy/MM/dd",
+        "d MMMM yyyy",
+        "dd MMMM yyyy",
+        "MMMM yyyy",
+        "yyyy-MM",
+        "yyyy/MM"
+    )
+    for (fmt in formats) {
+        for (loc in listOf(java.util.Locale("id", "ID"), java.util.Locale.US, java.util.Locale.getDefault())) {
+            try {
+                val sdf = java.text.SimpleDateFormat(fmt, loc)
+                sdf.isLenient = false
+                val d = sdf.parse(clean)
+                if (d != null) {
+                    val cal = java.util.Calendar.getInstance()
+                    cal.time = d
+                    return cal
+                }
+            } catch (e: Exception) {
+                // try next format
+            }
+        }
+    }
+    val fullFormats = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.SSS",
         "yyyy-MM-dd'T'HH:mm:ss",
         "yyyy-MM-dd HH:mm:ss"
     )
-    for (fmt in formats) {
+    for (fmt in fullFormats) {
         try {
-            val sdf = java.text.SimpleDateFormat(fmt, java.util.Locale.getDefault())
-            sdf.isLenient = false
+            val sdf = java.text.SimpleDateFormat(fmt, java.util.Locale.US)
             val d = sdf.parse(dateStr.trim())
             if (d != null) {
                 val cal = java.util.Calendar.getInstance()
                 cal.time = d
                 return cal
             }
-        } catch (e: Exception) {
-            // try next format
-        }
+        } catch (e: Exception) {}
     }
     return null
 }
@@ -556,7 +579,24 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                     val custId = customerToCancel!!.id.toIntOrNull()
                                     if (custId != null) {
                                         db.pelangganDao().updateStatus(custId, "BELUM BAYAR")
+                                        db.tagihanDao().updateStatusByCustomer(custId, "BELUM BAYAR")
                                     }
+                                    try {
+                                        val syncData = ApiClient.apiService.syncData()
+                                        val tagihanMapped = syncData.tagihan.map { item: com.example.ui.data.remote.TagihanSyncItem ->
+                                            com.example.ui.data.local.TagihanEntity(
+                                                id = item.id.toIntOrNull() ?: 0,
+                                                customer_id = item.customer_id?.toIntOrNull() ?: 0,
+                                                bulan = item.bulan ?: "",
+                                                tahun = item.tahun ?: 0,
+                                                amount = item.amount?.toDoubleOrNull() ?: 0.0,
+                                                status = item.status ?: "BELUM BAYAR",
+                                                admin_name = item.admin_name,
+                                                created_at = item.created_at
+                                            )
+                                        }
+                                        db.tagihanDao().insertAll(tagihanMapped)
+                                    } catch (e: Exception) {}
                                     Toast.makeText(context, "Pembayaran dibatalkan", Toast.LENGTH_SHORT).show()
                                     showCancelDialog = false
                                     cancelPassword = ""

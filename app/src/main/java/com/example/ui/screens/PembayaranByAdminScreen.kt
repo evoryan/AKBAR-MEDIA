@@ -47,6 +47,7 @@ data class PembayaranData(
     val phone: String,
     val payDate: String,
     val payMonth: String,
+    val payYear: Int = 0,
     val amountVal: Double,
     val amountFormatted: String,
     val area: String,
@@ -68,12 +69,19 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
 
     val currentUser by UserSession.currentUser.collectAsState()
 
+    val currentMonthName = remember {
+        val cal = java.util.Calendar.getInstance()
+        val sdf = java.text.SimpleDateFormat("MMMM", java.util.Locale("id", "ID"))
+        sdf.format(cal.time)
+    }
+    val currentYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+
     var realData by remember { mutableStateOf<List<PembayaranData>>(emptyList()) }
     var registeredAdmins by remember { mutableStateOf<List<String>>(emptyList()) }
     var registeredAreas by remember { mutableStateOf<List<String>>(emptyList()) }
     
     var selectedAdmin by remember { mutableStateOf("Semua Admin") }
-    var selectedBulan by remember { mutableStateOf("Bulan") }
+    var selectedBulan by remember { mutableStateOf(currentMonthName) }
     var selectedArea by remember { mutableStateOf("Semua Area") }
     var isLoading by remember { mutableStateOf(false) }
     
@@ -102,6 +110,7 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                         3 -> Color(0xFFFFCC80)
                         else -> Color(0xFFFFCDD2)
                     }
+                    val itemYear = item.tahun ?: (item.created_at?.take(4)?.toIntOrNull() ?: currentYear)
                     PembayaranData(
                         id = item.id,
                         name = cName,
@@ -110,6 +119,7 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                         phone = item.phone ?: "-",
                         payDate = item.created_at?.take(10) ?: "",
                         payMonth = item.bulan ?: "Unknown",
+                        payYear = itemYear,
                         amountVal = item.amount ?: 0.0,
                         amountFormatted = "Rp. ${String.format("%,d", (item.amount ?: 0.0).toLong()).replace(",", ".")}",
                         area = item.area ?: "-",
@@ -136,7 +146,7 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
     }
     val filterOptionsBulan = remember {
         listOf(
-            "Bulan", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+            "Semua Bulan", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
             "Juli", "Agustus", "September", "Oktober", "November", "Desember"
         )
     }
@@ -146,14 +156,15 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
         }
     }
 
-    // Real-time Reactive Filtering
+    // Real-time Reactive Filtering with monthly cycle support
     val displayedData by remember(realData, selectedAdmin, selectedBulan, selectedArea) {
         derivedStateOf {
             realData.filter { item ->
                 val matchAdmin = (selectedAdmin == "Semua Admin" || item.adminName == selectedAdmin)
-                val matchBulan = (selectedBulan == "Bulan" || item.payMonth.equals(selectedBulan, ignoreCase = true))
+                val matchBulan = (selectedBulan == "Semua Bulan" || selectedBulan == "Bulan" || item.payMonth.equals(selectedBulan, ignoreCase = true))
+                val matchYear = (selectedBulan == "Semua Bulan" || item.payYear == 0 || item.payYear == currentYear)
                 val matchArea = (selectedArea == "Semua Area" || item.area == selectedArea)
-                matchAdmin && matchBulan && matchArea
+                matchAdmin && matchBulan && matchYear && matchArea
             }
         }
     }

@@ -139,6 +139,12 @@ interface TagihanDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(tagihan: List<TagihanEntity>)
 
+    @Query("UPDATE tagihan SET status = :status, admin_name = NULL WHERE customer_id = :customerId")
+    suspend fun updateStatusByCustomer(customerId: Int, status: String)
+
+    @Query("DELETE FROM tagihan WHERE customer_id = :customerId")
+    suspend fun deleteByCustomer(customerId: Int)
+
     @Query("DELETE FROM tagihan")
     suspend fun deleteAll()
 }

@@ -913,34 +913,44 @@ app.post('/api/billing/delete', async (req, res) => {
             FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
         )`).catch(e=>{});
 
-        // Find last paid bill
-        const [tagihan] = await req.pool.query('SELECT id, amount, bulan, tahun, admin_name FROM tagihan_bulanan WHERE customer_id = ? AND status = "LUNAS CASH" ORDER BY id DESC LIMIT 1', [customerId]);
+        // Find all paid bills for this customer
+        const [tagihanRows] = await req.pool.query(
+            'SELECT id, amount, bulan, tahun, admin_name FROM tagihan_bulanan WHERE customer_id = ? AND (status = "LUNAS CASH" OR status LIKE "%LUNAS%")',
+            [customerId]
+        );
         let refundAmount = 0;
-        let desc = `Pembatalan pembayaran pelanggan ${customerName}`;
-        let originalAdminName = null;
-        
-        if (tagihan.length > 0) {
-            await req.pool.query('UPDATE tagihan_bulanan SET status = "BELUM BAYAR", admin_name = NULL WHERE id = ?', [tagihan[0].id]);
-            refundAmount = tagihan[0].amount;
-            desc = `Pembatalan pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
-            originalAdminName = tagihan[0].admin_name;
-        } else {
-            // fallback amount if no tagihan_bulanan found
-            const [pembukuanRows] = await req.pool.query('SELECT amount, admin_name FROM pembukuan WHERE type = "pemasukan" AND description LIKE ? ORDER BY id DESC LIMIT 1', [`%${customerName}%`]);
-            if (pembukuanRows.length > 0) {
-                refundAmount = pembukuanRows[0].amount;
-                originalAdminName = pembukuanRows[0].admin_name;
-            }
-        }
+        tagihanRows.forEach(t => {
+            refundAmount += Number(t.amount) || 0;
+        });
+
+        // Revert all paid bills for this customer back to BELUM BAYAR and clear admin_name
+        await req.pool.query(
+            'UPDATE tagihan_bulanan SET status = "BELUM BAYAR", admin_name = NULL WHERE customer_id = ? AND (status = "LUNAS CASH" OR status LIKE "%LUNAS%")',
+            [customerId]
+        );
 
         // Revert customer status
         await req.pool.query('UPDATE customers SET status = "BELUM BAYAR" WHERE id = ?', [customerId]);
 
-        // Delete the original payment from pembukuan (remove from count and data in uang di admin)
+        // Delete the payment records from pembukuan (sync & remove from uang di admin and semua pembukuan)
         try {
-            await req.pool.query('DELETE FROM pembukuan WHERE type = "pemasukan" AND description LIKE ? ORDER BY id DESC LIMIT 1', [`%${customerName}%`]);
+            const trimmedName = customerName.trim();
+            await req.pool.query(
+                'DELETE FROM pembukuan WHERE type = "pemasukan" AND (description LIKE ? OR description LIKE ? OR description LIKE ?)',
+                [`%tagihan pelanggan ${trimmedName}%`, `%${trimmedName}%`, `%pelanggan ${customerId}%`]
+            );
         } catch (e) {
             console.error("Warning: failed to delete from pembukuan", e.message);
+        }
+
+        // Also adjust pemasukan summary if applicable
+        if (refundAmount > 0) {
+            try {
+                await req.pool.query(
+                    'UPDATE pemasukan SET amount = GREATEST(0, amount - ?) WHERE category = "Transaksi Cash"',
+                    [refundAmount]
+                );
+            } catch (e) {}
         }
         
         res.json({ message: "Pembatalan berhasil, data pembayaran telah dihapus dari pembukuan dan status tagihan direset" });
@@ -1291,32 +1301,71 @@ app.delete('/api/gangguan/:id', async (req, res) => {
 
 app.get('/api/uang-di-admin', async (req, res) => {
     try {
-        const [pemasukan] = await req.pool.query(`
-            SELECT p.admin_name as adminName, SUM(p.amount) as totalAmount, 
-            (SELECT COUNT(*) FROM pembukuan p2 WHERE p2.admin_name = p.admin_name AND p2.type = 'pemasukan') as jmlPlggn
-            FROM pembukuan p
-            WHERE p.type = 'pemasukan' AND p.admin_name IS NOT NULL
-            GROUP BY p.admin_name
-        `);
-        const [setoran] = await req.pool.query(`
-            SELECT admin_name as adminName, SUM(amount) as totalAmount
-            FROM pembukuan 
-            WHERE type = 'setor' AND admin_name IS NOT NULL
-            GROUP BY admin_name
-        `);
-        const [pengeluaran] = await req.pool.query(`
-            SELECT admin_name as adminName, SUM(amount) as totalAmount
-            FROM pembukuan 
-            WHERE type = 'pengeluaran' AND admin_name IS NOT NULL
-            GROUP BY admin_name
-        `);
+        const { month, year, all } = req.query;
+        let pemasukanQuery, setoranQuery, pengeluaranQuery;
+        let pemasukanParams = [], setoranParams = [], pengeluaranParams = [];
+
+        if (all === 'true' || month === 'Semua Waktu' || month === 'all' || month === 'ALL') {
+            pemasukanQuery = `
+                SELECT p.admin_name as adminName, SUM(p.amount) as totalAmount, 
+                (SELECT COUNT(*) FROM pembukuan p2 WHERE p2.admin_name = p.admin_name AND p2.type = 'pemasukan') as jmlPlggn
+                FROM pembukuan p
+                WHERE p.type = 'pemasukan' AND p.admin_name IS NOT NULL
+                GROUP BY p.admin_name
+            `;
+            setoranQuery = `
+                SELECT admin_name as adminName, SUM(amount) as totalAmount
+                FROM pembukuan 
+                WHERE type = 'setor' AND admin_name IS NOT NULL
+                GROUP BY admin_name
+            `;
+            pengeluaranQuery = `
+                SELECT admin_name as adminName, SUM(amount) as totalAmount
+                FROM pembukuan 
+                WHERE type = 'pengeluaran' AND admin_name IS NOT NULL
+                GROUP BY admin_name
+            `;
+        } else {
+            const filter = parseMonthYearFilter(month, year);
+            const tMonth = filter.targetMonth;
+            const tYear = filter.targetYear;
+
+            pemasukanQuery = `
+                SELECT p.admin_name as adminName, SUM(p.amount) as totalAmount, 
+                (SELECT COUNT(*) FROM pembukuan p2 WHERE p2.admin_name = p.admin_name AND p2.type = 'pemasukan' AND MONTH(p2.created_at) = ? AND YEAR(p2.created_at) = ?) as jmlPlggn
+                FROM pembukuan p
+                WHERE p.type = 'pemasukan' AND p.admin_name IS NOT NULL AND MONTH(p.created_at) = ? AND YEAR(p.created_at) = ?
+                GROUP BY p.admin_name
+            `;
+            pemasukanParams = [tMonth, tYear, tMonth, tYear];
+
+            setoranQuery = `
+                SELECT admin_name as adminName, SUM(amount) as totalAmount
+                FROM pembukuan 
+                WHERE type = 'setor' AND admin_name IS NOT NULL AND MONTH(created_at) = ? AND YEAR(created_at) = ?
+                GROUP BY admin_name
+            `;
+            setoranParams = [tMonth, tYear];
+
+            pengeluaranQuery = `
+                SELECT admin_name as adminName, SUM(amount) as totalAmount
+                FROM pembukuan 
+                WHERE type = 'pengeluaran' AND admin_name IS NOT NULL AND MONTH(created_at) = ? AND YEAR(created_at) = ?
+                GROUP BY admin_name
+            `;
+            pengeluaranParams = [tMonth, tYear];
+        }
+
+        const [pemasukan] = await req.pool.query(pemasukanQuery, pemasukanParams);
+        const [setoran] = await req.pool.query(setoranQuery, setoranParams);
+        const [pengeluaran] = await req.pool.query(pengeluaranQuery, pengeluaranParams);
         
         let result = {};
         pemasukan.forEach(row => {
             result[row.adminName] = { 
                 adminName: row.adminName, 
-                totalDiterima: Number(row.totalAmount), 
-                jmlPlggn: row.jmlPlggn,
+                totalDiterima: Number(row.totalAmount) || 0, 
+                jmlPlggn: Number(row.jmlPlggn) || 0,
                 setor: 0,
                 pengeluaran: 0
             };
@@ -1325,13 +1374,13 @@ app.get('/api/uang-di-admin', async (req, res) => {
             if (!result[row.adminName]) {
                 result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
             }
-            result[row.adminName].setor = Number(row.totalAmount);
+            result[row.adminName].setor = Number(row.totalAmount) || 0;
         });
         pengeluaran.forEach(row => {
             if (!result[row.adminName]) {
                 result[row.adminName] = { adminName: row.adminName, totalDiterima: 0, jmlPlggn: 0, setor: 0, pengeluaran: 0 };
             }
-            result[row.adminName].pengeluaran = Number(row.totalAmount);
+            result[row.adminName].pengeluaran = Number(row.totalAmount) || 0;
         });
         
         res.json(Object.values(result));
@@ -1435,15 +1484,32 @@ app.get('/api/pembukuan', async (req, res) => {
 app.get('/api/pembayaran', async (req, res) => {
     try {
         await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
-        const [rows] = await req.pool.query(`
+        const { month, year, all } = req.query;
+        let query = `
             SELECT 
                 t.id, t.bulan, t.tahun, t.amount, t.admin_name, t.created_at,
                 c.name as customer_name, c.phone, c.address as area
             FROM tagihan_bulanan t
             JOIN customers c ON t.customer_id = c.id
-            WHERE t.status = 'LUNAS CASH'
-            ORDER BY t.created_at DESC
-        `);
+            WHERE (t.status = 'LUNAS CASH' OR t.status LIKE '%LUNAS%')
+        `;
+        const params = [];
+
+        if (all !== 'true' && month && month !== 'Semua Bulan' && month !== 'Semua Waktu' && month !== 'all' && month !== 'ALL') {
+            const filter = parseMonthYearFilter(month, year);
+            if (!filter.isAll && filter.targetMonth !== null) {
+                const monthNames = [
+                    'januari', 'februari', 'maret', 'april', 'mei', 'juni',
+                    'juli', 'agustus', 'september', 'oktober', 'november', 'desember'
+                ];
+                const mName = monthNames[filter.targetMonth - 1];
+                query += ` AND (LOWER(t.bulan) = ? OR (MONTH(t.created_at) = ? AND YEAR(t.created_at) = ?))`;
+                params.push(mName, filter.targetMonth, filter.targetYear);
+            }
+        }
+
+        query += ` ORDER BY t.created_at DESC`;
+        const [rows] = await req.pool.query(query, params);
         res.json(rows);
     } catch (error) {
         console.error(error);
@@ -1457,7 +1523,7 @@ app.get('/api/pembukuan/all', async (req, res) => {
         let query = 'SELECT * FROM pembukuan';
         const params = [];
 
-        if (all !== 'true' && month && month !== 'Semua Waktu' && month !== 'all' && month !== 'ALL') {
+        if (all !== 'true' && month !== 'Semua Waktu' && month !== 'all' && month !== 'ALL') {
             const filter = parseMonthYearFilter(month, year);
             if (!filter.isAll && filter.targetMonth !== null) {
                 query += ' WHERE MONTH(created_at) = ? AND YEAR(created_at) = ?';
@@ -1491,6 +1557,22 @@ app.put('/api/pembukuan/:id', async (req, res) => {
 
 app.delete('/api/pembukuan/:id', async (req, res) => {
     try {
+        const [rows] = await req.pool.query('SELECT * FROM pembukuan WHERE id = ?', [req.params.id]);
+        if (rows.length > 0) {
+            const item = rows[0];
+            if (item.type === 'pemasukan' && item.description && item.description.includes('Pembayaran tagihan pelanggan')) {
+                const match = item.description.match(/Pembayaran tagihan pelanggan\s+(.*?)\s+\(/);
+                if (match) {
+                    const custName = match[1].trim();
+                    const [custs] = await req.pool.query('SELECT id FROM customers WHERE name = ?', [custName]);
+                    if (custs.length > 0) {
+                        const custId = custs[0].id;
+                        await req.pool.query('UPDATE customers SET status = "BELUM BAYAR" WHERE id = ?', [custId]);
+                        await req.pool.query('UPDATE tagihan_bulanan SET status = "BELUM BAYAR", admin_name = NULL WHERE customer_id = ?', [custId]);
+                    }
+                }
+            }
+        }
         await req.pool.query('DELETE FROM pembukuan WHERE id = ?', [req.params.id]);
         res.json({ message: "Pembukuan dihapus" });
     } catch (error) {

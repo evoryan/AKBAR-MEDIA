@@ -236,7 +236,11 @@ interface ApiService {
     ): List<PembukuanItem>
 
     @GET("api/pembayaran")
-    suspend fun getPembayaranHistory(): List<PembayaranHistoryItem>
+    suspend fun getPembayaranHistory(
+        @Query("month") month: String? = null,
+        @Query("year") year: String? = null,
+        @Query("all") all: String? = null
+    ): List<PembayaranHistoryItem>
 
     @POST("api/pembukuan")
     suspend fun addPembukuan(@Body request: PembukuanRequest): ApiResponse
@@ -251,7 +255,11 @@ interface ApiService {
     suspend fun addSetoran(@Body request: SetoranRequest): ApiResponse
 
     @GET("api/uang-di-admin")
-    suspend fun getUangDiAdmin(): List<UangAdminResponse>
+    suspend fun getUangDiAdmin(
+        @Query("month") month: String? = null,
+        @Query("year") year: String? = null,
+        @Query("all") all: String? = null
+    ): List<UangAdminResponse>
 
     @GET("api/pengeluaran")
     suspend fun getPengeluaranDetail(): List<PengeluaranItem>
