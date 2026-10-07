@@ -163,6 +163,221 @@ async function runWithMikrotik(area, action, res, actionName = "Mikrotik operati
     }
 }
 
+/**
+ * Logika Isolir Pelanggan di Mikrotik:
+ * 1. Cari secret pelanggan terkait di ppp/secret mikrotik, jadikan disable
+ * 2. Cari secret pelanggan terkait di ppp/active connection, hapus dari active connection
+ * 3. Update status pelanggan di MySQL jadi 'ISOLIR'
+ */
+async function isolateCustomerInMikrotik(pool, customerId) {
+    if (!pool || !customerId) return { success: false, error: "Parameter tidak lengkap" };
+    
+    const [custRows] = await pool.query('SELECT * FROM customers WHERE id = ?', [customerId]).catch(() => [[]]);
+    if (!custRows || custRows.length === 0) {
+        return { success: false, error: "Pelanggan tidak ditemukan" };
+    }
+    const customer = custRows[0];
+
+    // Kandidat nama secret di Mikrotik
+    const candidateNames = [];
+    if (customer.pppoe_secret && String(customer.pppoe_secret).trim()) {
+        candidateNames.push(String(customer.pppoe_secret).trim());
+    }
+    if (customer.pppoeSecret && String(customer.pppoeSecret).trim() && !candidateNames.includes(String(customer.pppoeSecret).trim())) {
+        candidateNames.push(String(customer.pppoeSecret).trim());
+    }
+    if (customer.username && String(customer.username).trim() && !candidateNames.includes(String(customer.username).trim())) {
+        candidateNames.push(String(customer.username).trim());
+    }
+    if (candidateNames.length === 0 && customer.name && String(customer.name).trim()) {
+        candidateNames.push(String(customer.name).trim().toLowerCase().replace(/\s+/g, ''));
+    }
+
+    // Cari router di area yang sesuai
+    let candidateAreas = [];
+    if (customer.area && String(customer.area).trim()) {
+        const areaStr = String(customer.area).trim();
+        const [matchedAreas] = await pool.query(
+            'SELECT * FROM areas WHERE (id = ? OR LOWER(name) = LOWER(?)) AND routerIp IS NOT NULL AND routerIp != "" AND mikrotikUser IS NOT NULL AND mikrotikUser != ""',
+            [areaStr, areaStr.toLowerCase()]
+        ).catch(() => [[]]);
+        if (matchedAreas && matchedAreas.length > 0) {
+            candidateAreas = matchedAreas;
+        }
+    }
+
+    if (candidateAreas.length === 0) {
+        const [allAreas] = await pool.query(
+            'SELECT * FROM areas WHERE routerIp IS NOT NULL AND routerIp != "" AND mikrotikUser IS NOT NULL AND mikrotikUser != ""'
+        ).catch(() => [[]]);
+        if (allAreas && allAreas.length > 0) {
+            candidateAreas = allAreas;
+        }
+    }
+
+    let secretDisabled = false;
+    let activeKicked = false;
+    let matchedSecretName = null;
+    let mikrotikError = null;
+
+    for (const area of candidateAreas) {
+        try {
+            await runWithMikrotik(area, async (api) => {
+                const secretMenu = api.menu('/ppp/secret');
+                for (const name of candidateNames) {
+                    const secrets = await secretMenu.where('name', name).get();
+                    if (secrets && secrets.length > 0) {
+                        const sId = secrets[0]['.id'] || secrets[0]['id'];
+                        await secretMenu.set({ disabled: 'yes' }, sId);
+                        secretDisabled = true;
+                        matchedSecretName = name;
+                        console.log(`[ISOLIR] Secret "${name}" berhasil di-disable pada Mikrotik area "${area.name || area.id}"`);
+
+                        // Cari secret pelanggan terkait di ppp/active connection, hapus dari active connection
+                        try {
+                            const activeMenu = api.menu('/ppp/active');
+                            const actives = await activeMenu.where('name', name).get();
+                            if (actives && actives.length > 0) {
+                                for (const act of actives) {
+                                    const actId = act['.id'] || act['id'];
+                                    if (actId) {
+                                        await activeMenu.remove(actId);
+                                        activeKicked = true;
+                                        console.log(`[ISOLIR] Active connection "${name}" berhasil dihapus dari Mikrotik area "${area.name || area.id}"`);
+                                    }
+                                }
+                            }
+                        } catch (actErr) {
+                            console.error("[ISOLIR] Error removing active connection:", actErr.message);
+                        }
+                        break;
+                    }
+                }
+            });
+            if (secretDisabled) break;
+        } catch (err) {
+            console.error(`[ISOLIR] Gagal konek Mikrotik area ${area.name || area.id}:`, err.message);
+            mikrotikError = err.message;
+        }
+    }
+
+    // Update status customer di database MySQL
+    const today = new Date().toISOString().split('T')[0];
+    await pool.query(
+        'UPDATE customers SET status = "ISOLIR", isolate_date = ? WHERE id = ?',
+        [today, customerId]
+    ).catch(e => console.error("Error updating customer status to ISOLIR:", e.message));
+    await pool.query(
+        'UPDATE tagihan_bulanan SET status = "ISOLIR" WHERE customer_id = ? AND status != "LUNAS CASH" AND status NOT LIKE "%LUNAS%"',
+        [customerId]
+    ).catch(e => console.error("Error updating tagihan_bulanan status to ISOLIR:", e.message));
+
+    let message = "Pelanggan berhasil diisolir";
+    if (secretDisabled) {
+        message += ` (Secret "${matchedSecretName}" di-disable di Mikrotik`;
+        message += activeKicked ? ` & koneksi aktif diputus)` : `)`;
+    } else if (candidateAreas.length === 0) {
+        message += " di database (Router Mikrotik belum disetting)";
+    } else if (mikrotikError) {
+        message += ` di database (Mikrotik offline: ${mikrotikError})`;
+    } else {
+        message += " di database (Secret tidak ditemukan di router Mikrotik)";
+    }
+
+    return {
+        success: true,
+        secretDisabled,
+        activeKicked,
+        secretName: matchedSecretName,
+        message
+    };
+}
+
+/**
+ * Logika Buka Isolir pada Pembayaran Tagihan:
+ * Ketika ada pembayaran masuk, cari secret terkait di mikrotik ppp/secret,
+ * apabila secret disable, jadikan enable.
+ */
+async function enableMikrotikSecretForCustomer(pool, customerId) {
+    if (!pool || !customerId) return { success: false, error: "Parameter tidak lengkap" };
+
+    const [custRows] = await pool.query('SELECT * FROM customers WHERE id = ?', [customerId]).catch(() => [[]]);
+    if (!custRows || custRows.length === 0) return { success: false, error: "Pelanggan tidak ditemukan" };
+    const customer = custRows[0];
+
+    const candidateNames = [];
+    if (customer.pppoe_secret && String(customer.pppoe_secret).trim()) {
+        candidateNames.push(String(customer.pppoe_secret).trim());
+    }
+    if (customer.pppoeSecret && String(customer.pppoeSecret).trim() && !candidateNames.includes(String(customer.pppoeSecret).trim())) {
+        candidateNames.push(String(customer.pppoeSecret).trim());
+    }
+    if (customer.username && String(customer.username).trim() && !candidateNames.includes(String(customer.username).trim())) {
+        candidateNames.push(String(customer.username).trim());
+    }
+    if (candidateNames.length === 0 && customer.name && String(customer.name).trim()) {
+        candidateNames.push(String(customer.name).trim().toLowerCase().replace(/\s+/g, ''));
+    }
+
+    let candidateAreas = [];
+    if (customer.area && String(customer.area).trim()) {
+        const areaStr = String(customer.area).trim();
+        const [matchedAreas] = await pool.query(
+            'SELECT * FROM areas WHERE (id = ? OR LOWER(name) = LOWER(?)) AND routerIp IS NOT NULL AND routerIp != "" AND mikrotikUser IS NOT NULL AND mikrotikUser != ""',
+            [areaStr, areaStr.toLowerCase()]
+        ).catch(() => [[]]);
+        if (matchedAreas && matchedAreas.length > 0) {
+            candidateAreas = matchedAreas;
+        }
+    }
+
+    if (candidateAreas.length === 0) {
+        const [allAreas] = await pool.query(
+            'SELECT * FROM areas WHERE routerIp IS NOT NULL AND routerIp != "" AND mikrotikUser IS NOT NULL AND mikrotikUser != ""'
+        ).catch(() => [[]]);
+        if (allAreas && allAreas.length > 0) {
+            candidateAreas = allAreas;
+        }
+    }
+
+    let secretReEnabled = false;
+    let matchedSecretName = null;
+
+    for (const area of candidateAreas) {
+        try {
+            await runWithMikrotik(area, async (api) => {
+                const secretMenu = api.menu('/ppp/secret');
+                for (const name of candidateNames) {
+                    const secrets = await secretMenu.where('name', name).get();
+                    if (secrets && secrets.length > 0) {
+                        const secret = secrets[0];
+                        const sId = secret['.id'] || secret['id'];
+                        const isDisabled = secret['disabled'] === 'yes' || secret['disabled'] === 'true' || secret['disabled'] === true;
+                        if (isDisabled) {
+                            await secretMenu.set({ disabled: 'no' }, sId);
+                            secretReEnabled = true;
+                            matchedSecretName = name;
+                            console.log(`[BUKA ISOLIR] Secret "${name}" berhasil di-enable di Mikrotik area "${area.name || area.id}"`);
+                        } else {
+                            console.log(`[BUKA ISOLIR] Secret "${name}" sudah dalam keadaan aktif di Mikrotik area "${area.name || area.id}"`);
+                        }
+                        break;
+                    }
+                }
+            });
+            if (secretReEnabled) break;
+        } catch (err) {
+            console.error(`[BUKA ISOLIR] Gagal konek Mikrotik area ${area.name || area.id}:`, err.message);
+        }
+    }
+
+    return {
+        success: true,
+        secretReEnabled,
+        secretName: matchedSecretName
+    };
+}
+
 // Auto-create all tenant base tables if they don't exist
 async function ensureTenantTables(pool) {
     if (!pool) return;
@@ -744,6 +959,13 @@ app.post('/api/billing/pay', async (req, res) => {
         // Update customer status to LUNAS CASH
         await req.pool.query('UPDATE customers SET status = "LUNAS CASH" WHERE id = ?', [customerId]);
 
+        // Buka isolir di Mikrotik jika secret dalam status disable
+        try {
+            await enableMikrotikSecretForCustomer(req.pool, customerId);
+        } catch (mErr) {
+            console.error("Gagal membuka isolir di Mikrotik:", mErr.message);
+        }
+
         // Add to pembukuan
         try {
             await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
@@ -851,6 +1073,13 @@ app.post('/api/billing/pay-bulk', async (req, res) => {
             }
 
             await req.pool.query('UPDATE customers SET status = "LUNAS CASH" WHERE id = ?', [customerId]);
+
+            // Buka isolir di Mikrotik jika secret dalam status disable
+            try {
+                await enableMikrotikSecretForCustomer(req.pool, customerId);
+            } catch (mErr) {
+                console.error("Gagal membuka isolir di Mikrotik (bulk):", mErr.message);
+            }
 
             try {
                 await req.pool.query('INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)', 
@@ -2034,23 +2263,29 @@ app.delete('/api/customers/:id', async (req, res) => {
 app.post('/api/customers/:id/isolir', async (req, res) => {
     try {
         const customerId = req.params.id;
-        const [rows] = await req.pool.query('SELECT * FROM customers WHERE id = ?', [customerId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ error: "Pelanggan tidak ditemukan" });
+        const result = await isolateCustomerInMikrotik(req.pool, customerId);
+        if (!result.success) {
+            return res.status(404).json({ error: result.error || "Pelanggan tidak ditemukan" });
         }
-        
-        const today = new Date();
-        const formattedDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
-        
-        await req.pool.query(
-            'UPDATE customers SET status = "ISOLIR", isolate_date = ? WHERE id = ?',
-            [formattedDate, customerId]
-        );
-        
-        res.json({ message: "Pelanggan berhasil diisolir" });
+        res.json({ message: result.message, mikrotikDisabled: result.secretDisabled });
     } catch (error) {
         console.error("Error isolating customer:", error);
-        res.status(500).json({ error: "Terjadi kesalahan saat mengisolir pelanggan" });
+        res.status(500).json({ error: "Terjadi kesalahan saat mengisolir pelanggan: " + error.message });
+    }
+});
+
+app.post('/api/customers/:id/buka-isolir', async (req, res) => {
+    try {
+        const customerId = req.params.id;
+        const result = await enableMikrotikSecretForCustomer(req.pool, customerId);
+        if (!result.success) {
+            return res.status(404).json({ error: result.error || "Pelanggan tidak ditemukan" });
+        }
+        await req.pool.query('UPDATE customers SET status = "LUNAS CASH" WHERE id = ?', [customerId]).catch(()=>{});
+        res.json({ message: "Isolir pelanggan berhasil dibuka", secretReEnabled: result.secretReEnabled });
+    } catch (error) {
+        console.error("Error un-isolating customer:", error);
+        res.status(500).json({ error: "Terjadi kesalahan saat membuka isolir: " + error.message });
     }
 });
 

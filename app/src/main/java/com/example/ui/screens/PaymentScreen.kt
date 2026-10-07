@@ -1290,6 +1290,7 @@ $monthsDetailText
                                     // Perbarui langsung status tagihan di Room DB agar sinkron seketika
                                     val custIdInt = customerId.toIntOrNull()
                                     if (custIdInt != null) {
+                                        db.pelangganDao().updateStatus(custIdInt, "LUNAS CASH")
                                         val perMonthAmount = if (monthsToPay.isNotEmpty()) finalAmount.toDouble() / monthsToPay.size else finalAmount.toDouble()
                                         val updatedTagihans = localTagihanList.map { t ->
                                             if (t.customer_id == custIdInt && monthsToPay.any { m ->

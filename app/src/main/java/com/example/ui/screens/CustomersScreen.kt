@@ -526,8 +526,12 @@ fun CustomersScreen(
                         onIsolirCustomer = { customerToIsolir ->
                             coroutineScope.launch {
                                 try {
-                                    com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
-                                    android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                                    val resp = com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
+                                    val custIdInt = customerToIsolir.id.toIntOrNull() ?: 0
+                                    if (custIdInt > 0) {
+                                        db.pelangganDao().updateStatus(custIdInt, "ISOLIR")
+                                    }
+                                    android.widget.Toast.makeText(context, resp.message ?: "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
                                 } catch (e: Exception) {
                                     android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                 }

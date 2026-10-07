@@ -195,6 +195,10 @@ fun CustomerDetailScreen(
                             try {
                                 val amount = customer?.getTotalBillAmount()?.toDouble() ?: 0.0
                                 ApiClient.apiService.payBilling(PaymentRequest(customerId, "Admin", amount))
+                                val custIdInt = customerId.toIntOrNull()
+                                if (custIdInt != null) {
+                                    com.example.ui.data.local.AppDatabase.getDatabase(context).pelangganDao().updateStatus(custIdInt, "LUNAS CASH")
+                                }
                                 Toast.makeText(context, "Pembayaran berhasil!", Toast.LENGTH_SHORT).show()
                                 showPaymentDialog = false
                             } catch (e: Exception) {

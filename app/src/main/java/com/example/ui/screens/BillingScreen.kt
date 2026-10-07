@@ -1132,12 +1132,35 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "Daftar Pelanggan Belum Bayar (${unpaidCustomers.size})", 
-                            color = textMain, 
-                            fontWeight = FontWeight.Bold, 
-                            fontSize = 15.sp
-                        )
+                        val isolirCount = remember(unpaidCustomers) {
+                            unpaidCustomers.count { it.status.contains("ISOLIR", ignoreCase = true) }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "Daftar Pelanggan Belum Bayar (${unpaidCustomers.size})", 
+                                color = textMain, 
+                                fontWeight = FontWeight.Bold, 
+                                fontSize = 15.sp
+                            )
+                            if (isolirCount > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFFF3B30).copy(alpha = 0.2f),
+                                    border = BorderStroke(1.dp, Color(0xFFFF3B30))
+                                ) {
+                                    Text(
+                                        "$isolirCount Terisolir",
+                                        color = Color(0xFFFF3B30),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
                         if (unpaidCustomers.isNotEmpty() && !isBulkPayMode) {
                             FilledTonalButton(
                                 onClick = {
@@ -1210,9 +1233,19 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(unpaidCustomers) { customer ->
+                            val custId = customer.id.toIntOrNull()
+                            val tagihanRecord = if (custId != null) {
+                                localTagihanList.firstOrNull { t ->
+                                    t.customer_id == custId && isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)
+                                }
+                            } else null
+                            val isCustomerIsolir = customer.status.contains("ISOLIR", ignoreCase = true) ||
+                                                   tagihanRecord?.status?.contains("ISOLIR", ignoreCase = true) == true
+
                             BillingCustomerItem(
                                 customer = customer, 
                                 isPaid = false,
+                                tagihanStatus = tagihanRecord?.status,
                                 isSelectionMode = isBulkPayMode,
                                 isSelected = selectedCustomerIdsForBulk.contains(customer.id),
                                 onToggleSelect = {
@@ -1231,13 +1264,18 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 onPayClick = { onNavigateToPayment(customer.id) },
                                 onDetailClick = {
                                     val amount = customer.getTotalBillAmount().toString()
-                                    onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", "BELUM BAYAR")
+                                    onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", if (isCustomerIsolir) "ISOLIR" else "BELUM BAYAR")
                                 },
                                 onIsolirClick = {
                                     coroutineScope.launch {
                                         try {
-                                            com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customer.id)
-                                            android.widget.Toast.makeText(context, "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                                            val resp = com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customer.id)
+                                            val custIdInt = customer.id.toIntOrNull() ?: 0
+                                            if (custIdInt > 0) {
+                                                db.pelangganDao().updateStatus(custIdInt, "ISOLIR")
+                                                db.tagihanDao().updateStatusByCustomer(custIdInt, "ISOLIR")
+                                            }
+                                            android.widget.Toast.makeText(context, resp.message ?: "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
                                         } catch (e: Exception) {
                                             android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                         }
@@ -1250,6 +1288,8 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                     val add2 = customer.getAdditionalCost2Amount()
                                     val add1Text = if (add1 > 0) "- Biaya Tambahan 1: Rp ${currencyFmt.format(add1)}" + (if (!customer.additionalCostDesc1.isNullOrBlank()) " (${customer.additionalCostDesc1})" else "") + "\n" else ""
                                     val add2Text = if (add2 > 0) "- Biaya Tambahan 2: Rp ${currencyFmt.format(add2)}" + (if (!customer.additionalCostDesc2.isNullOrBlank()) " (${customer.additionalCostDesc2})" else "") + "\n" else ""
+                                    val statusWaText = if (isCustomerIsolir) "*TERISOLIR (BELUM BAYAR)*" else "*BELUM BAYAR*"
+                                    val isolirWaAlert = if (isCustomerIsolir) "\n\n*Pemberitahuan: Layanan internet Anda saat ini sedang dinonaktifkan (TERISOLIR). Segera lakukan pembayaran agar akses internet otomatis diaktifkan kembali.*" else ""
 
                                     val message = """
                                         Halo *${customer.name}*,
@@ -1260,7 +1300,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                         - Area: ${customer.area}
                                         - Paket: ${customer.packageName ?: "-"} (${customer.price})
                                         $add1Text$add2Text- Total Tagihan: ${customer.getFormattedTotalBill()}
-                                        - Status: *BELUM BAYAR*
+                                        - Status: $statusWaText$isolirWaAlert
 
                                         Mohon segera melakukan pembayaran. Terima kasih.
                                     """.trimIndent()
@@ -1335,9 +1375,18 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(paidCustomers) { customer ->
+                            val custId = customer.id.toIntOrNull()
+                            val tagihanRecord = if (custId != null) {
+                                localTagihanList.firstOrNull { t ->
+                                    t.customer_id == custId &&
+                                    (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
+                                    isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)
+                                }
+                            } else null
                             BillingCustomerItem(
                                 customer = customer, 
                                 isPaid = true,
+                                tagihanStatus = tagihanRecord?.status,
                                 cardBg = cardBg, 
                                 cardBorder = cardBorder, 
                                 textMain = textMain, 
@@ -1346,14 +1395,6 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 neonPink = neonPink, 
                                 onPayClick = {},
                                 onDetailClick = {
-                                    val custId = customer.id.toIntOrNull()
-                                    val tagihanRecord = if (custId != null) {
-                                        localTagihanList.firstOrNull { t ->
-                                            t.customer_id == custId &&
-                                            (t.status.contains("LUNAS", ignoreCase = true) || t.status.contains("SUDAH", ignoreCase = true)) &&
-                                            isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)
-                                        }
-                                    } else null
                                     val amount = tagihanRecord?.amount?.toLong()?.toString()
                                         ?: customer.getTotalBillAmount().toString()
                                     onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", "LUNAS")
@@ -1377,6 +1418,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
 fun BillingCustomerItem(
     customer: Customer,
     isPaid: Boolean,
+    tagihanStatus: String? = null,
     cardBg: Color,
     cardBorder: Color,
     textMain: Color,
@@ -1393,15 +1435,28 @@ fun BillingCustomerItem(
     isSelected: Boolean = false,
     onToggleSelect: () -> Unit = {}
 ) {
-    val itemBg = if (isSelectionMode && isSelected) neonCyan.copy(alpha = 0.12f) else cardBg
-    val itemBorderColor = if (isSelectionMode && isSelected) neonCyan else cardBorder
+    val isIsolir = !isPaid && (
+        customer.status.contains("ISOLIR", ignoreCase = true) ||
+        tagihanStatus?.contains("ISOLIR", ignoreCase = true) == true
+    )
+
+    val itemBg = when {
+        isSelectionMode && isSelected -> neonCyan.copy(alpha = 0.12f)
+        isIsolir -> Color(0xFFFF3B30).copy(alpha = 0.08f)
+        else -> cardBg
+    }
+    val itemBorderColor = when {
+        isSelectionMode && isSelected -> neonCyan
+        isIsolir -> Color(0xFFFF3B30)
+        else -> cardBorder
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(itemBg)
-            .border(if (isSelectionMode && isSelected) 1.5.dp else 1.dp, itemBorderColor, RoundedCornerShape(16.dp))
+            .border(if (isIsolir || (isSelectionMode && isSelected)) 1.5.dp else 1.dp, itemBorderColor, RoundedCornerShape(16.dp))
             .then(
                 if (isSelectionMode) Modifier.clickable { onToggleSelect() }
                 else Modifier.clickable { onDetailClick() }
@@ -1427,9 +1482,44 @@ fun BillingCustomerItem(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(customer.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(customer.name, color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    if (isIsolir) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFFFF3B30).copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, Color(0xFFFF3B30))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFFF3B30), modifier = Modifier.size(11.dp))
+                                Text("ISOLIR", color = Color(0xFFFF3B30), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+
                 Text(customer.phone, color = textSecondary, fontSize = 11.sp)
                 Text("Area: ${customer.area}", color = textSecondary, fontSize = 11.sp)
+
+                if (isIsolir) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Status: ", color = textSecondary, fontSize = 11.sp)
+                        Text("TERISOLIR", color = Color(0xFFFF3B30), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        if (!customer.isolateDate.isNullOrBlank() && customer.isolateDate != "-") {
+                            Text("• Tgl: ${customer.isolateDate}", color = textSecondary, fontSize = 10.sp)
+                        }
+                    }
+                }
                 
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(customer.getFormattedTotalBill(), color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -1451,20 +1541,49 @@ fun BillingCustomerItem(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Status Badge
+                val badgeBg = when {
+                    isPaid -> neonCyan.copy(alpha = 0.2f)
+                    isIsolir -> Color(0xFFFF3B30).copy(alpha = 0.25f)
+                    else -> Color(0xFFFF003C).copy(alpha = 0.15f)
+                }
+                val badgeBorder = when {
+                    isPaid -> neonCyan
+                    isIsolir -> Color(0xFFFF3B30)
+                    else -> Color(0xFFFF003C).copy(alpha = 0.4f)
+                }
+                val badgeText = when {
+                    isPaid -> "LUNAS CASH"
+                    isIsolir -> "ISOLIR"
+                    else -> "BELUM BAYAR"
+                }
+                val badgeColor = when {
+                    isPaid -> neonCyan
+                    isIsolir -> Color(0xFFFF3B30)
+                    else -> Color(0xFFFF003C)
+                }
                 Box(
                     modifier = Modifier
                         .width(110.dp)
                         .height(32.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (!isPaid) Color(0xFFFF003C).copy(alpha = 0.2f) else neonCyan.copy(alpha = 0.2f)),
+                        .background(badgeBg)
+                        .border(1.dp, badgeBorder, RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        if (isPaid) "LUNAS CASH" else "BELUM BAYAR",
-                        color = if (!isPaid) Color(0xFFFF003C) else neonCyan,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (isIsolir) {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = badgeColor, modifier = Modifier.size(12.dp))
+                        }
+                        Text(
+                            badgeText,
+                            color = badgeColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 // WhatsApp Button (Only for unpaid bills)
@@ -1499,7 +1618,11 @@ fun BillingCustomerItem(
                             Icon(Icons.Default.Receipt, contentDescription = "Lihat Faktur Invoice", tint = neonCyan)
                         }
                         IconButton(onClick = onIsolirClick, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Default.Lock, contentDescription = "Isolir", tint = Color(0xFFD4AF37))
+                            Icon(
+                                Icons.Default.Lock, 
+                                contentDescription = if (isIsolir) "Pelanggan Terisolir" else "Isolir Pelanggan", 
+                                tint = if (isIsolir) Color(0xFFFF5252) else Color(0xFFD4AF37)
+                            )
                         }
                         IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color(0xFFFF003C))
