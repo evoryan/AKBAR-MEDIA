@@ -314,6 +314,9 @@ interface ApiService {
     @POST("api/customers/{id}/isolir")
     suspend fun isolateCustomer(@Path("id") id: String): ApiResponse
 
+    @POST("api/customers/{id}/buka-isolir")
+    suspend fun unIsolateCustomer(@Path("id") id: String): ApiResponse
+
     @DELETE("api/customers/{id}")
     suspend fun deleteCustomer(@Path("id") id: String)
 

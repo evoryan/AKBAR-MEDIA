@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -526,14 +527,25 @@ fun CustomersScreen(
                         onIsolirCustomer = { customerToIsolir ->
                             coroutineScope.launch {
                                 try {
-                                    val resp = com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
-                                    val custIdInt = customerToIsolir.id.toIntOrNull() ?: 0
-                                    if (custIdInt > 0) {
-                                        db.pelangganDao().updateStatus(custIdInt, "ISOLIR")
+                                    val isCustIsolir = customerToIsolir.status.contains("ISOLIR", ignoreCase = true) ||
+                                                       (!customerToIsolir.isolateDate.isNullOrBlank() && customerToIsolir.isolateDate != "-")
+                                    if (isCustIsolir) {
+                                        val resp = com.example.ui.data.remote.ApiClient.apiService.unIsolateCustomer(customerToIsolir.id)
+                                        val custIdInt = customerToIsolir.id.toIntOrNull() ?: 0
+                                        if (custIdInt > 0) {
+                                            db.pelangganDao().updateStatus(custIdInt, "BELUM BAYAR")
+                                        }
+                                        android.widget.Toast.makeText(context, resp.message ?: "Berhasil membuka isolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val resp = com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customerToIsolir.id)
+                                        val custIdInt = customerToIsolir.id.toIntOrNull() ?: 0
+                                        if (custIdInt > 0) {
+                                            db.pelangganDao().updateStatus(custIdInt, "ISOLIR")
+                                        }
+                                        android.widget.Toast.makeText(context, resp.message ?: "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
                                     }
-                                    android.widget.Toast.makeText(context, resp.message ?: "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
                                 } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }, 
@@ -549,6 +561,7 @@ fun CustomersScreen(
 }
 }
 
+@JsonClass(generateAdapter = true)
 data class Customer(
     val id: String = "",
     val name: String = "",
@@ -562,9 +575,7 @@ data class Customer(
     val price: String = "",
     val discount: String = "",
     @Json(name = "register_date") val registerDate: String? = null,
-    val register_date: String? = null,
     @Json(name = "isolate_date") val isolateDate: String? = null,
-    val isolate_date: String? = null,
     @Json(name = "package_name") val packageName: String? = null,
     val additionalCost1: String? = null,
     val additionalCost2: String? = null,
@@ -578,8 +589,11 @@ data class Customer(
     @Json(name = "odp_id") val odpId: String? = null,
     @Json(name = "odp_port") val odpPort: String? = null
 ) {
+    val register_date: String? get() = registerDate
+    val isolate_date: String? get() = isolateDate
+
     fun getEffectiveRegisterDate(): String? {
-        return registerDate?.takeIf { it.isNotBlank() } ?: register_date?.takeIf { it.isNotBlank() }
+        return registerDate?.takeIf { it.isNotBlank() }
     }
 
     fun getEffectiveCost1(): String? {

@@ -1240,7 +1240,8 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 }
                             } else null
                             val isCustomerIsolir = customer.status.contains("ISOLIR", ignoreCase = true) ||
-                                                   tagihanRecord?.status?.contains("ISOLIR", ignoreCase = true) == true
+                                                   tagihanRecord?.status?.contains("ISOLIR", ignoreCase = true) == true ||
+                                                   (!customer.isolateDate.isNullOrBlank() && customer.isolateDate != "-" && !customer.status.contains("LUNAS", ignoreCase = true))
 
                             BillingCustomerItem(
                                 customer = customer, 
@@ -1269,15 +1270,26 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 onIsolirClick = {
                                     coroutineScope.launch {
                                         try {
-                                            val resp = com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customer.id)
-                                            val custIdInt = customer.id.toIntOrNull() ?: 0
-                                            if (custIdInt > 0) {
-                                                db.pelangganDao().updateStatus(custIdInt, "ISOLIR")
-                                                db.tagihanDao().updateStatusByCustomer(custIdInt, "ISOLIR")
+                                            if (isCustomerIsolir) {
+                                                val resp = com.example.ui.data.remote.ApiClient.apiService.unIsolateCustomer(customer.id)
+                                                val custIdInt = customer.id.toIntOrNull() ?: 0
+                                                if (custIdInt > 0) {
+                                                    db.pelangganDao().updateStatus(custIdInt, "BELUM BAYAR")
+                                                    db.tagihanDao().updateStatusByCustomer(custIdInt, "BELUM BAYAR")
+                                                }
+                                                android.widget.Toast.makeText(context, resp.message ?: "Berhasil membuka isolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                val resp = com.example.ui.data.remote.ApiClient.apiService.isolateCustomer(customer.id)
+                                                val custIdInt = customer.id.toIntOrNull() ?: 0
+                                                if (custIdInt > 0) {
+                                                    db.pelangganDao().updateStatus(custIdInt, "ISOLIR")
+                                                    db.tagihanDao().updateStatusByCustomer(custIdInt, "ISOLIR")
+                                                }
+                                                android.widget.Toast.makeText(context, resp.message ?: "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
                                             }
-                                            android.widget.Toast.makeText(context, resp.message ?: "Berhasil mengisolir pelanggan", android.widget.Toast.LENGTH_SHORT).show()
                                         } catch (e: Exception) {
-                                            android.widget.Toast.makeText(context, "Gagal mengisolir pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                            val act = if (isCustomerIsolir) "membuka isolir" else "mengisolir"
+                                            android.widget.Toast.makeText(context, "Gagal $act pelanggan: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },
@@ -1437,7 +1449,8 @@ fun BillingCustomerItem(
 ) {
     val isIsolir = !isPaid && (
         customer.status.contains("ISOLIR", ignoreCase = true) ||
-        tagihanStatus?.contains("ISOLIR", ignoreCase = true) == true
+        tagihanStatus?.contains("ISOLIR", ignoreCase = true) == true ||
+        (!customer.isolateDate.isNullOrBlank() && customer.isolateDate != "-" && !customer.status.contains("LUNAS", ignoreCase = true))
     )
 
     val itemBg = when {
@@ -1620,7 +1633,7 @@ fun BillingCustomerItem(
                         IconButton(onClick = onIsolirClick, modifier = Modifier.size(32.dp)) {
                             Icon(
                                 Icons.Default.Lock, 
-                                contentDescription = if (isIsolir) "Pelanggan Terisolir" else "Isolir Pelanggan", 
+                                contentDescription = if (isIsolir) "Buka Isolir Pelanggan" else "Isolir Pelanggan", 
                                 tint = if (isIsolir) Color(0xFFFF5252) else Color(0xFFD4AF37)
                             )
                         }
