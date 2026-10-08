@@ -161,8 +161,8 @@ object UserSession {
 
     var cachedAreas: List<com.example.ui.screens.Area> = emptyList()
 
-    suspend fun getOrFetchAreas(): List<com.example.ui.screens.Area> {
-        if (cachedAreas.isEmpty()) {
+    suspend fun getOrFetchAreas(forceRefresh: Boolean = false): List<com.example.ui.screens.Area> {
+        if (cachedAreas.isEmpty() || forceRefresh) {
             try {
                 cachedAreas = com.example.ui.data.remote.ApiClient.apiService.getAreas()
             } catch (e: Exception) {

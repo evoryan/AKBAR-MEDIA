@@ -69,18 +69,26 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
     var isBackgroundLoading by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var selectedArea by remember { mutableStateOf<com.example.ui.screens.Area?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    fun loadAcsDevices() {
+        coroutineScope.launch {
+            try {
+                isBackgroundLoading = true
+                errorMsg = null
+                com.example.ui.data.UserSession.getOrFetchAreas()
+                val raw = ApiClient.apiService.getAcsDevices()
+                allDevices = raw.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.areaName ?: "") }
+            } catch(e: Exception) {
+                errorMsg = "Gagal memuat data ACS: ${e.message}"
+            } finally {
+                isBackgroundLoading = false
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
-        try {
-            isBackgroundLoading = true
-            com.example.ui.data.UserSession.getOrFetchAreas()
-            val raw = ApiClient.apiService.getAcsDevices()
-            allDevices = raw.filter { com.example.ui.data.UserSession.isAreaNameAllowed(it.areaName ?: "") }
-        } catch(e: Exception) {
-            errorMsg = "Gagal memuat data ACS: ${e.message}"
-        } finally {
-            isBackgroundLoading = false
-        }
+        loadAcsDevices()
     }
 
     val displayedDevices = allDevices.filter { 
@@ -104,6 +112,11 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textMain)
                     }
                 },
+                actions = {
+                    IconButton(onClick = { loadAcsDevices() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh ACS", tint = textMain)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = headerBg)
             )
         }
@@ -125,7 +138,49 @@ fun AcsScreen(onBack: () -> Unit, initialSearchQuery: String = "") {
             
             if (errorMsg != null) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(errorMsg!!, color = errorRed, fontSize = 16.sp)
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
+                        shape = RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, errorRed.copy(alpha = 0.5f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = errorRed, modifier = Modifier.size(40.dp))
+                            Text(
+                                "Gagal Terhubung ke ACS (NBI Service)",
+                                color = textMain,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Text(
+                                errorMsg!!,
+                                color = errorRed,
+                                fontSize = 13.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Text(
+                                "Tips: Pastikan service 'genieacs-nbi' aktif di port 7557 pada VPS Anda dan URL ACS pada menu 'Kelola Area' mengarah ke port NBI (contoh: http://ip-vps:7557).",
+                                color = textSecondary,
+                                fontSize = 11.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = { loadAcsDevices() },
+                                colors = ButtonDefaults.buttonColors(containerColor = primaryCyan, contentColor = Color.Black),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Coba Lagi", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
                 return@Scaffold
             }

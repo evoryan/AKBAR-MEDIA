@@ -1239,8 +1239,9 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                     t.customer_id == custId && isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)
                                 }
                             } else null
-                            val isCustomerIsolir = customer.status.contains("ISOLIR", ignoreCase = true) ||
-                                                   tagihanRecord?.status?.contains("ISOLIR", ignoreCase = true) == true ||
+                            val isCustomerIsolir = customer.status.contains("ISOL", ignoreCase = true) ||
+                                                   customer.status.contains("NONAKTIF", ignoreCase = true) ||
+                                                   tagihanRecord?.status?.contains("ISOL", ignoreCase = true) == true ||
                                                    (!customer.isolateDate.isNullOrBlank() && customer.isolateDate != "-" && !customer.status.contains("LUNAS", ignoreCase = true))
 
                             BillingCustomerItem(
@@ -1448,8 +1449,9 @@ fun BillingCustomerItem(
     onToggleSelect: () -> Unit = {}
 ) {
     val isIsolir = !isPaid && (
-        customer.status.contains("ISOLIR", ignoreCase = true) ||
-        tagihanStatus?.contains("ISOLIR", ignoreCase = true) == true ||
+        customer.status.contains("ISOL", ignoreCase = true) ||
+        customer.status.contains("NONAKTIF", ignoreCase = true) ||
+        tagihanStatus?.contains("ISOL", ignoreCase = true) == true ||
         (!customer.isolateDate.isNullOrBlank() && customer.isolateDate != "-" && !customer.status.contains("LUNAS", ignoreCase = true))
     )
 

@@ -834,6 +834,15 @@ async function initAllDatabases() {
             await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
+
+            await tPool.query(`ALTER TABLE areas ADD COLUMN description VARCHAR(255) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE areas ADD COLUMN customerCount INT DEFAULT 0`).catch(e=>{});
+            await tPool.query(`ALTER TABLE areas ADD COLUMN routerIp VARCHAR(50) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE areas ADD COLUMN apiDomain VARCHAR(100) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE areas ADD COLUMN mikrotikUser VARCHAR(255) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE areas ADD COLUMN mikrotikPassword VARCHAR(255) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE areas ADD COLUMN acsUser VARCHAR(255) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE areas ADD COLUMN acsPassword VARCHAR(255) DEFAULT ''`).catch(e=>{});
         }
         console.log("Schema update complete!");
     } catch (e) {
@@ -2087,6 +2096,52 @@ app.delete('/api/areas/:id', async (req, res) => {
     }
 });
 
+const handleUpdateArea = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description, routerIp, apiDomain, customerCount, mikrotikUser, mikrotikPassword, acsUser, acsPassword } = req.body;
+
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN description VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN customerCount INT DEFAULT 0`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN routerIp VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN apiDomain VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN mikrotikUser VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN mikrotikPassword VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN acsUser VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN acsPassword VARCHAR(255) DEFAULT ''`).catch(e=>{});
+
+        const [oldRows] = await req.pool.query('SELECT name FROM areas WHERE id = ?', [id]).catch(() => [[]]);
+        const oldName = (oldRows && oldRows[0]) ? oldRows[0].name : null;
+
+        try {
+            await req.pool.query(
+                'UPDATE areas SET name = ?, description = ?, routerIp = ?, apiDomain = ?, customerCount = ?, mikrotikUser = ?, mikrotikPassword = ?, acsUser = ?, acsPassword = ? WHERE id = ?',
+                [name || '', description || '', routerIp || '', apiDomain || '', customerCount || 0, mikrotikUser || '', mikrotikPassword || '', acsUser || '', acsPassword || '', id]
+            );
+        } catch (updateErr) {
+            console.warn("Full area update error, falling back to core columns:", updateErr.message);
+            await req.pool.query(
+                'UPDATE areas SET name = ?, description = ? WHERE id = ?',
+                [name || '', description || '', id]
+            );
+        }
+
+        if (oldName && name && oldName !== name) {
+            await req.pool.query('UPDATE customers SET area = ? WHERE area = ?', [name, oldName]).catch(() => {});
+            await req.pool.query('UPDATE odc_list SET area = ? WHERE area = ?', [name, oldName]).catch(() => {});
+            await req.pool.query('UPDATE odp_list SET area = ? WHERE area = ?', [name, oldName]).catch(() => {});
+        }
+
+        res.json({ message: "Area berhasil diperbarui", id });
+    } catch (error) {
+        console.error("Error updating area:", error.message);
+        res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan saat memperbarui area" });
+    }
+};
+
+app.put('/api/areas/:id', handleUpdateArea);
+app.post('/api/areas/:id', handleUpdateArea);
+
 app.get('/api/admins', async (req, res) => {
     try {
         const db_name = req.user ? req.user.db_name : 'app_db';
@@ -2554,34 +2609,143 @@ app.delete('/api/packages/:id', async (req, res) => {
 
 // also for area we need add/edit ? We already have /api/areas
 
+function resolveAcsCandidates(apiDomain, acsUser, acsPassword) {
+    let raw = (apiDomain || '').trim();
+    if (!raw) return { rawBaseUrl: '', candidateUrls: [], axiosConfig: {} };
+    if (!/^https?:\/\//i.test(raw)) raw = 'http://' + raw;
+    raw = raw.replace(/\/+$/, '');
+    if (raw.toLowerCase().endsWith('/devices')) {
+        raw = raw.substring(0, raw.length - 8).replace(/\/+$/, '');
+    }
+
+    const candidateUrls = [
+        `${raw}/devices/`,
+        `${raw}/devices`,
+        `${raw}/api/devices/`,
+        `${raw}/api/devices`,
+        `${raw}/nbi/devices/`,
+        `${raw}/nbi/devices`
+    ];
+
+    if (raw.includes(':3000')) {
+        const nbi = raw.replace(':3000', ':7557');
+        candidateUrls.push(`${nbi}/devices/`, `${nbi}/devices`);
+    } else if (raw.includes(':7547')) {
+        const nbi = raw.replace(':7547', ':7557');
+        candidateUrls.push(`${nbi}/devices/`, `${nbi}/devices`);
+    } else {
+        try {
+            const parsed = new URL(raw);
+            if (!parsed.port || parsed.port === '80' || parsed.port === '443') {
+                const nbi = `${parsed.protocol}//${parsed.hostname}:7557`;
+                candidateUrls.push(`${nbi}/devices/`, `${nbi}/devices`);
+            }
+        } catch(e) {}
+    }
+
+    let axiosConfig = { timeout: 6000 };
+    const headers = {};
+    if (acsUser && String(acsUser).trim() !== '') {
+        axiosConfig.auth = {
+            username: String(acsUser).trim(),
+            password: acsPassword ? String(acsPassword) : ''
+        };
+        headers['x-api-key'] = acsPassword || acsUser;
+    } else if (acsPassword && String(acsPassword).trim() !== '') {
+        headers['x-api-key'] = String(acsPassword).trim();
+    }
+    axiosConfig.headers = headers;
+
+    return { rawBaseUrl: raw, candidateUrls, axiosConfig };
+}
+
+app.post('/api/acs/test', async (req, res) => {
+    try {
+        const { apiDomain, acsUser, acsPassword } = req.body;
+        if (!apiDomain || !apiDomain.trim()) {
+            return res.status(400).json({ success: false, error: "Alamat ACS (URL) tidak boleh kosong" });
+        }
+        const { rawBaseUrl, candidateUrls, axiosConfig } = resolveAcsCandidates(apiDomain, acsUser, acsPassword);
+
+        let lastErr = null;
+        let response = null;
+        let workingUrl = null;
+
+        for (const testUrl of candidateUrls) {
+            try {
+                const r = await axios.get(testUrl, axiosConfig);
+                if (r && (Array.isArray(r.data) || typeof r.data === 'object')) {
+                    response = r;
+                    workingUrl = testUrl;
+                    break;
+                }
+            } catch (err) {
+                lastErr = err;
+            }
+        }
+
+        if (response && response.data) {
+            const count = Array.isArray(response.data) ? response.data.length : 0;
+            return res.json({
+                success: true,
+                message: `Koneksi ke GenieACS NBI berhasil! Ditemukan ${count} perangkat (${workingUrl}).`,
+                deviceCount: count
+            });
+        }
+
+        let errMsg = lastErr ? lastErr.message : "Tidak dapat terhubung ke ACS";
+        if (lastErr && lastErr.response) {
+            if (lastErr.response.status === 404) {
+                errMsg = `HTTP 404: Endpoint NBI tidak ditemukan pada ${rawBaseUrl}. Pastikan service genieacs-nbi aktif di port 7557 (contoh: http://ip:7557)`;
+            } else {
+                errMsg += ` (HTTP ${lastErr.response.status})`;
+            }
+        } else if (lastErr && lastErr.request) {
+            errMsg = `Timeout / Host tidak merespon di ${rawBaseUrl}. Pastikan port :7557 terbuka di firewall.`;
+        }
+
+        res.json({ success: false, error: errMsg });
+    } catch (e) {
+        res.json({ success: false, error: e.message });
+    }
+});
+
 app.get('/api/acs/devices', async (req, res) => {
     try {
         const [areas] = await req.pool.query('SELECT * FROM areas WHERE apiDomain IS NOT NULL AND apiDomain != ""');
         let allDevices = [];
         
         for (const area of areas) {
-            let baseUrl = area.apiDomain.trim();
-            if (!/^https?:\/\//i.test(baseUrl)) {
-                baseUrl = 'http://' + baseUrl;
-            }
-            if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+            const { rawBaseUrl, candidateUrls, axiosConfig } = resolveAcsCandidates(area.apiDomain, area.acsUser, area.acsPassword);
+            if (!rawBaseUrl) continue;
+
+            let response = null;
+            let lastErr = null;
+            let workingUrl = null;
 
             try {
-                console.log(`[ACS] Fetching devices for area "${area.name}" from URL: ${baseUrl}/devices`);
-                let axiosConfig = { timeout: 5000 };
-                if (area.acsUser && area.acsUser.trim() !== '') {
-                    console.log(`[ACS] Using credentials for "${area.name}": user=${area.acsUser}`);
-                    axiosConfig.auth = {
-                        username: area.acsUser,
-                        password: area.acsPassword || ''
-                    };
-                } else {
-                    console.log(`[ACS] No credentials configured for "${area.name}", sending unauthenticated request`);
+                for (const testUrl of candidateUrls) {
+                    try {
+                        const r = await axios.get(testUrl, axiosConfig);
+                        if (r && (Array.isArray(r.data) || typeof r.data === 'object')) {
+                            response = r;
+                            workingUrl = testUrl;
+                            break;
+                        }
+                    } catch (probeErr) {
+                        lastErr = probeErr;
+                        if (probeErr.response && probeErr.response.status === 404) {
+                            continue;
+                        }
+                    }
                 }
 
-                const response = await axios.get(`${baseUrl}/devices`, axiosConfig);
+                if (!response) {
+                    throw (lastErr || new Error("Gagal terhubung ke service NBI GenieACS"));
+                }
                 
-                if (response.data && Array.isArray(response.data)) {
+                const rawData = Array.isArray(response.data) ? response.data : (response.data.devices || []);
+                if (Array.isArray(rawData)) {
                     const devices = response.data.map(d => {
                         const getVal = (path) => {
                             if (d[path] && d[path]._value !== undefined) return d[path]._value;
@@ -2729,17 +2893,20 @@ app.get('/api/acs/devices', async (req, res) => {
                     allDevices = allDevices.concat(devices);
                 }
             } catch (err) {
-                console.error(`[ACS Error] Failed to fetch ACS devices for area "${area.name}" at URL: ${baseUrl}/devices`);
+                console.error(`[ACS Error] Failed to fetch ACS devices for area "${area.name}" at URL: ${rawBaseUrl}`);
                 console.error(`[ACS Error] Error Message: ${err.message}`);
                 
                 let errorDetails = err.message;
                 if (err.response) {
                     console.error(`[ACS Error] HTTP Status: ${err.response.status}`);
-                    console.error(`[ACS Error] Response Data:`, typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : err.response.data);
-                    errorDetails += ` (HTTP ${err.response.status}: ${typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : String(err.response.data).substring(0, 150)})`;
+                    if (err.response.status === 404) {
+                        errorDetails = `HTTP 404: Endpoint NBI tidak ditemukan pada ${rawBaseUrl}. Pastikan service genieacs-nbi aktif di port 7557 dan URL mengarah ke port NBI (contoh: http://ip:7557)`;
+                    } else {
+                        errorDetails += ` (HTTP ${err.response.status}: ${typeof err.response.data === 'object' ? JSON.stringify(err.response.data) : String(err.response.data).substring(0, 150)})`;
+                    }
                 } else if (err.request) {
                     console.error(`[ACS Error] No response received from server. Request timed out or host unreachable.`);
-                    errorDetails += ` (Server tidak merespon, pastikan port :7557 sudah terbuka atau host dapat dijangkau)`;
+                    errorDetails = `Server tidak merespon di ${rawBaseUrl}. Pastikan port :7557 sudah terbuka di firewall VPS.`;
                 } else {
                     console.error(`[ACS Error] Error Stack:`, err.stack || err);
                 }
@@ -2750,7 +2917,7 @@ app.get('/api/acs/devices', async (req, res) => {
                     username: `⚠️ Gagal Terhubung ACS: ${area.name}`,
                     isOnline: false,
                     ssid: `Detail Kesalahan: ${errorDetails}`,
-                    wifiPassword: "Periksa IP, Port, dan Kredensial di pengaturan area.",
+                    wifiPassword: "Periksa IP, Port NBI (:7557), dan Kredensial di Kelola Area.",
                     connectedUsers: 0,
                     customerNumber: '-',
                     rxPower: '-',
@@ -2787,26 +2954,26 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
             return res.status(400).json({ error: "Server Area tidak ditemukan atau URL API kosong" });
         }
         
-        let baseUrl = areaRow.apiDomain.trim();
-        if (!/^https?:\/\//i.test(baseUrl)) {
-            baseUrl = 'http://' + baseUrl;
-        }
-        if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
-        
+        const { rawBaseUrl, candidateUrls, axiosConfig: resolvedConfig } = resolveAcsCandidates(areaRow.apiDomain, areaRow.acsUser, areaRow.acsPassword);
+        let baseUrl = rawBaseUrl;
+        let axiosConfig = { ...resolvedConfig, timeout: 10000 };
+        let axiosConfigForDev = { ...resolvedConfig, timeout: 10000 };
+
         // Fetch specific device from GenieACS to see its supported parameters
         let deviceData = null;
-        let axiosConfigForDev = { timeout: 10000 };
-        if (areaRow.acsUser && areaRow.acsUser.trim() !== '') {
-            axiosConfigForDev.auth = {
-                username: areaRow.acsUser,
-                password: areaRow.acsPassword || ''
-            };
-        }
-
         try {
             console.log(`[ACS] Fetching device ${deviceId} to resolve parameter paths...`);
-            const devRes = await axios.get(`${baseUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: deviceId }))}`, axiosConfigForDev);
-            if (devRes.data && devRes.data.length > 0) {
+            let devRes = null;
+            const queryParam = encodeURIComponent(JSON.stringify({ _id: deviceId }));
+            for (const prefix of [`${baseUrl}/devices?query=${queryParam}`, `${baseUrl}/devices/?query=${queryParam}`]) {
+                try {
+                    devRes = await axios.get(prefix, axiosConfigForDev);
+                    if (devRes && devRes.data && devRes.data.length > 0) break;
+                } catch(e) {
+                    if (e.response && e.response.status === 404) continue;
+                }
+            }
+            if (devRes && devRes.data && devRes.data.length > 0) {
                 deviceData = devRes.data[0];
                 console.log(`[ACS] Successfully fetched device data for ${deviceId}`);
             }
@@ -2882,14 +3049,6 @@ app.post('/api/acs/devices/:id/action', async (req, res) => {
             return res.status(400).json({ error: "Aksi tidak dikenal" });
         }
         
-        let axiosConfig = { timeout: 10000 };
-        if (areaRow.acsUser && areaRow.acsUser.trim() !== '') {
-            axiosConfig.auth = {
-                username: areaRow.acsUser,
-                password: areaRow.acsPassword || ''
-            };
-        }
-
         let response;
         let lastError = null;
 
@@ -2944,9 +3103,18 @@ app.post('/api/areas', async (req, res) => {
         }
 
         const { name, description, routerIp, apiDomain, customerCount, mikrotikUser, mikrotikPassword, acsUser, acsPassword } = req.body;
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN description VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN customerCount INT DEFAULT 0`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN routerIp VARCHAR(50) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN apiDomain VARCHAR(100) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN mikrotikUser VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN mikrotikPassword VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN acsUser VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE areas ADD COLUMN acsPassword VARCHAR(255) DEFAULT ''`).catch(e=>{});
+
         const [result] = await req.pool.query(
             'INSERT INTO areas (name, description, routerIp, apiDomain, customerCount, mikrotikUser, mikrotikPassword, acsUser, acsPassword) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, description, routerIp, apiDomain, customerCount || 0, mikrotikUser || '', mikrotikPassword || '', acsUser || '', acsPassword || '']
+            [name, description || '', routerIp || '', apiDomain || '', customerCount || 0, mikrotikUser || '', mikrotikPassword || '', acsUser || '', acsPassword || '']
         );
         res.json({ message: "Area ditambahkan", id: result.insertId.toString() });
     } catch (error) {

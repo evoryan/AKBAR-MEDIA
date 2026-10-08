@@ -35,13 +35,17 @@ import com.example.ui.data.UserSession
 import com.example.ui.data.UserRole
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.squareup.moshi.JsonClass
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+@JsonClass(generateAdapter = true)
 data class Area(
-    val id: String,
-    val name: String,
+    val id: String = "",
+    val name: String = "",
     val description: String = "",
     val customerCount: Int = 0,
     val routerIp: String = "",
@@ -55,6 +59,7 @@ data class Area(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AreaScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     val currentUser by UserSession.currentUser.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
@@ -71,14 +76,20 @@ fun AreaScreen(onBack: () -> Unit) {
     var areaToEdit by remember { mutableStateOf<Area?>(null) }
 
     val areas = remember { mutableStateListOf<Area>() }
-    LaunchedEffect(Unit) {
-        try {
-            val res = ApiClient.apiService.getAreas()
-            areas.clear()
-            areas.addAll(res)
-        } catch (e: Exception) {
-            // Handle error
+    fun loadAreas() {
+        coroutineScope.launch {
+            try {
+                val res = ApiClient.apiService.getAreas()
+                areas.clear()
+                areas.addAll(res)
+            } catch (e: Exception) {
+                // Handle error
+            }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        loadAreas()
     }
 
     Scaffold(containerColor = bgMain,
@@ -134,8 +145,10 @@ fun AreaScreen(onBack: () -> Unit) {
                                 try {
                                     ApiClient.apiService.deleteArea(area.id)
                                     areas.remove(area)
+                                    UserSession.cachedAreas = emptyList()
+                                    Toast.makeText(context, "Area '${area.name}' berhasil dihapus", Toast.LENGTH_SHORT).show()
                                 } catch (e: Exception) {
-                                    // Handle error
+                                    Toast.makeText(context, "Gagal menghapus area: ${e.message}", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -153,23 +166,31 @@ fun AreaScreen(onBack: () -> Unit) {
                     areaToEdit = null
                 },
                 onSave = { newArea ->
-                    if (areaToEdit != null) {
-                        val index = areas.indexOfFirst { it.id == areaToEdit!!.id }
-                        if (index != -1) {
-                            areas[index] = newArea.copy(id = areaToEdit!!.id)
-                        }
-                    } else {
-                        coroutineScope.launch {
-                            try {
-                                com.example.ui.data.remote.ApiClient.apiService.addArea(newArea)
-                                val res = com.example.ui.data.remote.ApiClient.apiService.getAreas()
-                                areas.clear()
-                                areas.addAll(res)
-                            } catch(e: Exception) {}
+                    val editing = areaToEdit
+                    coroutineScope.launch {
+                        try {
+                            val areaId = newArea.id.ifBlank { editing?.id ?: "" }
+                            if (areaId.isNotBlank()) {
+                                val updated = newArea.copy(id = areaId)
+                                ApiClient.apiService.updateArea(areaId, updated)
+                                Toast.makeText(context, "Area '${updated.name}' berhasil diperbarui", Toast.LENGTH_SHORT).show()
+                            } else {
+                                ApiClient.apiService.addArea(newArea)
+                                Toast.makeText(context, "Area '${newArea.name}' berhasil ditambahkan", Toast.LENGTH_SHORT).show()
+                            }
+                            UserSession.cachedAreas = emptyList()
+                            val res = ApiClient.apiService.getAreas()
+                            areas.clear()
+                            areas.addAll(res)
+                            UserSession.cachedAreas = res
+                        } catch (e: Exception) {
+                            val action = if (newArea.id.isNotBlank() || editing != null) "memperbarui" else "menambahkan"
+                            Toast.makeText(context, "Gagal $action area: ${e.message}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            showAddDialog = false
+                            areaToEdit = null
                         }
                     }
-                    showAddDialog = false
-                    areaToEdit = null
                 },
                 bgMain = bgMain,
                 textMain = textMain,
@@ -260,6 +281,12 @@ fun AreaItem(
                         Text("API Mikrotik", color = textSecondary, fontSize = 12.sp)
                         Text(if(area.routerIp.isEmpty()) "-" else area.routerIp, color = textMain, fontSize = 12.sp)
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Alamat ACS (GenieACS)", color = textSecondary, fontSize = 12.sp)
+                        Text(if(area.apiDomain.isEmpty()) "-" else area.apiDomain, color = textMain, fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -304,16 +331,19 @@ fun AreaFormDialog(
     neonCyan: Color,
     primaryPurple: Color
 ) {
-    var name by remember { mutableStateOf(initialArea?.name ?: "") }
-    var description by remember { mutableStateOf(initialArea?.description ?: "") }
-    var mikrotikApi by remember { mutableStateOf(initialArea?.routerIp ?: "") }
-    var mikrotikUser by remember { mutableStateOf(initialArea?.mikrotikUser ?: "") }
-    var mikrotikPassword by remember { mutableStateOf(initialArea?.mikrotikPassword ?: "") }
-    var acsApi by remember { mutableStateOf(initialArea?.apiDomain ?: "") }
-    var acsUser by remember { mutableStateOf(initialArea?.acsUser ?: "") }
-    var acsPassword by remember { mutableStateOf(initialArea?.acsPassword ?: "") }
+    var name by remember(initialArea) { mutableStateOf(initialArea?.name ?: "") }
+    var description by remember(initialArea) { mutableStateOf(initialArea?.description ?: "") }
+    var mikrotikApi by remember(initialArea) { mutableStateOf(initialArea?.routerIp ?: "") }
+    var mikrotikUser by remember(initialArea) { mutableStateOf(initialArea?.mikrotikUser ?: "") }
+    var mikrotikPassword by remember(initialArea) { mutableStateOf(initialArea?.mikrotikPassword ?: "") }
+    var acsApi by remember(initialArea) { mutableStateOf(initialArea?.apiDomain ?: "") }
+    var acsUser by remember(initialArea) { mutableStateOf(initialArea?.acsUser ?: "") }
+    var acsPassword by remember(initialArea) { mutableStateOf(initialArea?.acsPassword ?: "") }
+    var nameError by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isTesting by remember { mutableStateOf(false) }
+    var testAcsResult by remember { mutableStateOf<String?>(null) }
+    var isTestingAcs by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val title = if (initialArea == null) "Tambah Area Baru" else "Edit Area"
@@ -357,12 +387,18 @@ fun AreaFormDialog(
                 ) {
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it },
-                        label = { Text("Nama Area", color = textSecondary) },
+                        onValueChange = { 
+                            name = it
+                            if (nameError && it.isNotBlank()) nameError = false
+                        },
+                        label = { Text("Nama Area", color = if (nameError) Color(0xFFFF003C) else textSecondary) },
+                        isError = nameError,
+                        supportingText = if (nameError) { { Text("Nama area tidak boleh kosong", color = Color(0xFFFF003C), fontSize = 11.sp) } } else null,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary,
-                            focusedTextColor = textMain, unfocusedTextColor = textMain
+                            focusedTextColor = textMain, unfocusedTextColor = textMain,
+                            errorBorderColor = Color(0xFFFF003C)
                         ),
                         singleLine = true
                     )
@@ -480,6 +516,54 @@ fun AreaFormDialog(
                         singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
                     )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = {
+                                isTestingAcs = true
+                                testAcsResult = null
+                                coroutineScope.launch {
+                                    try {
+                                        val req = mapOf(
+                                            "apiDomain" to acsApi,
+                                            "acsUser" to acsUser,
+                                            "acsPassword" to acsPassword
+                                        )
+                                        val res = ApiClient.apiService.testAcs(req)
+                                        testAcsResult = res.message
+                                    } catch (e: Exception) {
+                                        testAcsResult = "Koneksi ACS gagal: ${e.message}"
+                                    } finally {
+                                        isTestingAcs = false
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = neonCyan),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan),
+                            enabled = !isTestingAcs
+                        ) {
+                            if (isTestingAcs) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = neonCyan, strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Menguji ACS...", fontSize = 12.sp)
+                            } else {
+                                Text("Test ACS NBI", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    if (testAcsResult != null) {
+                        val isSuccess = testAcsResult!!.contains("berhasil", ignoreCase = true)
+                        Text(
+                            text = testAcsResult!!,
+                            color = if (isSuccess) Color(0xFF00FF00) else Color(0xFFFF003C),
+                            fontSize = 12.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     
                     OutlinedTextField(
                         value = description,
@@ -506,16 +590,20 @@ fun AreaFormDialog(
                         Spacer(modifier = Modifier.width(16.dp))
                         Button(
                             onClick = {
+                                if (name.isBlank()) {
+                                    nameError = true
+                                    return@Button
+                                }
                                 onSave(Area(
-                                    id = "",
-                                    name = name,
-                                    description = description,
-                                    routerIp = mikrotikApi,
-                                    apiDomain = acsApi,
+                                    id = initialArea?.id ?: "",
+                                    name = name.trim(),
+                                    description = description.trim(),
+                                    routerIp = mikrotikApi.trim(),
+                                    apiDomain = acsApi.trim(),
                                     customerCount = initialArea?.customerCount ?: 0,
-                                    mikrotikUser = mikrotikUser,
+                                    mikrotikUser = mikrotikUser.trim(),
                                     mikrotikPassword = mikrotikPassword,
-                                    acsUser = acsUser,
+                                    acsUser = acsUser.trim(),
                                     acsPassword = acsPassword
                                 ))
                             },

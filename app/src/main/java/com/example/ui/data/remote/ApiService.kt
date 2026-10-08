@@ -346,6 +346,9 @@ interface ApiService {
     @POST("api/areas")
     suspend fun addArea(@Body area: com.example.ui.screens.Area): ApiResponse
 
+    @PUT("api/areas/{id}")
+    suspend fun updateArea(@Path("id") id: String, @Body area: com.example.ui.screens.Area): ApiResponse
+
     @POST("api/odc")
     suspend fun addOdc(@Body item: com.example.ui.data.OdcItem): ApiResponse
     @POST("api/rasio")
@@ -444,6 +447,10 @@ interface ApiService {
     
     @POST("api/acs/devices/{id}/action")
     suspend fun acsAction(@Path("id") id: String, @Body request: Map<String, String>): ApiResponse
+
+    @POST("api/acs/test")
+    suspend fun testAcs(@Body request: Map<String, String>): ApiResponse
+
     @GET("api/ping")
     suspend fun ping(): PingResponse
 }
