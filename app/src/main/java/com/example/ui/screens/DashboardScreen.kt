@@ -91,12 +91,10 @@ fun DashboardScreen(
             if (!UserSession.hasCheckedForUpdate) {
                 UserSession.hasCheckedForUpdate = true
                 try {
-                    val currentVersion = mContext.packageManager.getPackageInfo(mContext.packageName, 0).versionName ?: "1.0.0"
+                    val currentVersion = com.example.ui.data.SettingsManager.getEffectiveAppVersion(mContext)
                     val api = com.example.data.GithubApiService.create()
                     val release = api.getLatestRelease("evoryan", "AKBAR-MEDIA")
-                    val latestVersion = release.tag_name.trimStart('v', 'V')
-                    val currVerNum = currentVersion.trimStart('v', 'V')
-                    if (isVersionNewer(latestVersion, currVerNum)) {
+                    if (isVersionNewer(release.tag_name, currentVersion)) {
                         android.widget.Toast.makeText(mContext, "Update baru (${release.tag_name}) tersedia: ${release.name}", android.widget.Toast.LENGTH_LONG).show()
                     }
                 } catch (e: Exception) {

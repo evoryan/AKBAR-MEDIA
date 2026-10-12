@@ -127,13 +127,8 @@ fun SettingScreen(
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var latestReleaseTag by remember { mutableStateOf<String?>(null) }
     
-    val currentVersion = remember {
-        try {
-            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            pInfo.versionName
-        } catch (e: Exception) {
-            "1.0"
-        }
+    var currentVersion by remember {
+        mutableStateOf(com.example.ui.data.SettingsManager.getEffectiveAppVersion(context))
     }
 
     LaunchedEffect(Unit) {
@@ -429,11 +424,16 @@ fun SettingScreen(
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             ) {
                 Column {
-                    val displayVersion = latestReleaseTag ?: currentVersion
+                    val isNewerAvailable = latestReleaseTag?.let { isVersionNewer(it, currentVersion) } == true
+                    val displaySubtitle = when {
+                        isCheckingUpdate -> "Memeriksa..."
+                        isNewerAvailable -> "Versi $currentVersion (Update $latestReleaseTag tersedia)"
+                        else -> "Versi $currentVersion (Terbaru)"
+                    }
                     SettingItem(
                         icon = Icons.Default.SystemUpdate, 
                         title = "Cek Update", 
-                        subtitle = if (isCheckingUpdate) "Memeriksa..." else "Versi $displayVersion", 
+                        subtitle = displaySubtitle, 
                         iconTint = textMain, 
                         onClick = {
                             if (!isCheckingUpdate) {
@@ -467,17 +467,23 @@ fun SettingScreen(
 
     if (showUpdateDialog && updateInfo != null) {
         val latestTag = updateInfo!!.tag_name
-        val latestVersion = latestTag.trimStart('v', 'V')
-        val currentClean = (currentVersion ?: "1.0").trimStart('v', 'V')
-        val isNewer = isVersionNewer(latestVersion, currentClean)
+        val isNewer = isVersionNewer(latestTag, currentVersion)
         var isDownloading by remember { mutableStateOf(false) }
         var downloadProgress by remember { mutableStateOf(0f) }
         var downloadError by remember { mutableStateOf<String?>(null) }
         
         val apkDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
-        val existingApk = remember(showUpdateDialog) {
+        val existingApk = remember(showUpdateDialog, latestTag) {
             val f = File(apkDir, "update.apk")
-            if (f.exists() && f.length() > 500000L) f else null
+            if (f.exists() && f.length() > 500000L) {
+                val apkVer = getApkVersion(context, f)
+                if (apkVer != null && !isVersionNewer(apkVer, currentVersion)) {
+                    f.delete()
+                    null
+                } else {
+                    f
+                }
+            } else null
         }
         var downloadedFile by remember { mutableStateOf<File?>(existingApk) }
 
@@ -503,6 +509,9 @@ fun SettingScreen(
                     isDownloading = false
                     if (file != null) {
                         downloadedFile = file
+                        val apkVer = getApkVersion(context, file) ?: latestTag
+                        com.example.ui.data.SettingsManager.appliedAppVersion = apkVer
+                        currentVersion = com.example.ui.data.SettingsManager.getEffectiveAppVersion(context)
                         installApk(context, file)
                     } else {
                         downloadError = "Gagal mengunduh update. Periksa koneksi internet atau gunakan opsi browser."
@@ -584,7 +593,7 @@ fun SettingScreen(
                         if (isNewer) {
                             Text("Apakah Anda ingin mengunduh dan memasang versi terbaru sekarang?", fontSize = 13.sp)
                         } else {
-                            Text("Aplikasi sudah di versi terbaru. Anda dapat mengunduh ulang jika diperlukan.", fontSize = 13.sp)
+                            Text("Aplikasi sudah di versi terbaru ($currentVersion). Anda dapat mengunduh ulang jika diperlukan.", fontSize = 13.sp)
                         }
                     }
 
@@ -605,6 +614,9 @@ fun SettingScreen(
                     if (downloadedFile != null && downloadedFile!!.exists() && !isDownloading) {
                         Button(
                             onClick = {
+                                val apkVer = getApkVersion(context, downloadedFile!!) ?: latestTag
+                                com.example.ui.data.SettingsManager.appliedAppVersion = apkVer
+                                currentVersion = com.example.ui.data.SettingsManager.getEffectiveAppVersion(context)
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !hasInstallPermission(context)) {
                                     openInstallPermissionSettings(context)
                                 } else {
@@ -735,9 +747,34 @@ fun SettingItem(
 }
 
 
+fun getApkVersion(context: android.content.Context, apkFile: File?): String? {
+    if (apkFile == null || !apkFile.exists()) return null
+    return try {
+        val pm = context.packageManager
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageArchiveInfo(apkFile.absolutePath, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageArchiveInfo(apkFile.absolutePath, 0)
+        }
+        info?.versionName
+    } catch (_: Exception) {
+        null
+    }
+}
+
 fun isVersionNewer(latest: String, current: String): Boolean {
-    val lParts = latest.removePrefix("v").split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
-    val cParts = current.removePrefix("v").split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+    fun parseVersionParts(v: String): List<Int> {
+        val cleaned = v.trim().trimStart('v', 'V', '.').trim()
+        val parts = cleaned.split(".").filter { it.isNotBlank() }
+        val nums = parts.map { part ->
+            part.filter { it.isDigit() }.toIntOrNull() ?: 0
+        }
+        return if (nums.isEmpty()) listOf(0) else nums
+    }
+
+    val lParts = parseVersionParts(latest)
+    val cParts = parseVersionParts(current)
     val maxLen = maxOf(lParts.size, cParts.size)
     for (i in 0 until maxLen) {
         val l = lParts.getOrElse(i) { 0 }

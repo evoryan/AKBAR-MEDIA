@@ -22,6 +22,37 @@ object SettingsManager {
         restoreInvoiceSettingsIfPresent(context)
     }
 
+    private const val KEY_APPLIED_APP_VERSION = "applied_app_version"
+    var appliedAppVersion: String?
+        get() = prefs.getString(KEY_APPLIED_APP_VERSION, null)
+        set(value) = prefs.edit().putString(KEY_APPLIED_APP_VERSION, value).apply()
+
+    fun getEffectiveAppVersion(context: Context): String {
+        val packageVersion = try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            pInfo.versionName
+        } catch (_: Exception) {
+            null
+        }
+        val applied = appliedAppVersion
+        if (!applied.isNullOrBlank()) {
+            if (packageVersion.isNullOrBlank()) return applied
+            val lParts = applied.trim().trimStart('v', 'V', '.').split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+            val pParts = packageVersion.trim().trimStart('v', 'V', '.').split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+            val maxLen = maxOf(lParts.size, pParts.size)
+            var appliedIsNewer = false
+            for (i in 0 until maxLen) {
+                val l = lParts.getOrElse(i) { 0 }
+                val p = pParts.getOrElse(i) { 0 }
+                if (l > p) { appliedIsNewer = true; break }
+                if (l < p) { break }
+            }
+            if (appliedIsNewer) return applied
+            return packageVersion
+        }
+        return packageVersion ?: "v1.6"
+    }
+
     private const val KEY_API_BASE_URL = "api_base_url"
     var apiBaseUrl: String
         get() {

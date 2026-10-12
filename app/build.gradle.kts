@@ -21,8 +21,8 @@ android {
     applicationId = "com.akbarmedia.bill"
     minSdk = 24
     targetSdk = 36
-    versionCode = 6
-    versionName = "v1.5"
+    versionCode = 7
+    versionName = "v1.6"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
