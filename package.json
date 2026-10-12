@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "PORT=3000 node WEB/server.js",
-    "postinstall": "node patch-routeros.js",
+    "postinstall": "node -e 'process.exit(0)'",
     "manage-tenant": "bash add_tenant.sh",
     "dev": "PORT=3000 nodemon WEB/server.js"
   },
