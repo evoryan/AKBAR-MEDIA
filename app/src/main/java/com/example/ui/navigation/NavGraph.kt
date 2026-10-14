@@ -329,6 +329,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToInvoiceSettings = { navController.navigate(InvoiceSettingsRoute) },
                     onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) },
                     onNavigateToSinkronisasi = { navController.navigate(SinkronisasiRoute) },
+                    onNavigateToBotWa = { navController.navigate(BotWaRoute) },
                     onLogout = {
                         val context = navController.context
                         com.example.ui.data.UserSession.clearSession(context)

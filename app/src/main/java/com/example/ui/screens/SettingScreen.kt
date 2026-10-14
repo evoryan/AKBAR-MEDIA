@@ -60,6 +60,7 @@ fun SettingScreen(
     onNavigateToInvoiceSettings: () -> Unit,
     onNavigateToInfoTenant: () -> Unit,
     onNavigateToSinkronisasi: () -> Unit,
+    onNavigateToBotWa: () -> Unit = {},
     onLogout: () -> Unit
 ) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
@@ -127,14 +128,24 @@ fun SettingScreen(
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var latestReleaseTag by remember { mutableStateOf<String?>(null) }
     
-    var currentVersion by remember {
-        mutableStateOf(com.example.ui.data.SettingsManager.getEffectiveAppVersion(context))
+    val currentVersion by com.example.ui.data.SettingsManager.appVersionFlow.collectAsState()
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                com.example.ui.data.SettingsManager.refreshAppVersion(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LaunchedEffect(Unit) {
         try {
-            val api = GithubApiService.create()
-            val release = api.getLatestRelease("evoryan", "AKBAR-MEDIA")
+            val release = fetchLatestGithubRelease()
             updateInfo = release
             latestReleaseTag = release.tag_name
         } catch (_: Exception) {
@@ -309,6 +320,15 @@ fun SettingScreen(
                             HorizontalDivider(color = cardBorder)
                             SettingItem(icon = Icons.Default.Receipt, title = "Pengaturan Invoice", subtitle = "Kop logo & identitas faktur", iconTint = textMain, onClick = onNavigateToInvoiceSettings)
                             shownItems++
+                            HorizontalDivider(color = cardBorder)
+                            SettingItem(
+                                icon = Icons.Default.Chat,
+                                title = "Pengaturan WhatsApp",
+                                subtitle = "WA Gateway, notifikasi otomatis & template pesan",
+                                iconTint = textMain,
+                                onClick = onNavigateToBotWa
+                            )
+                            shownItems++
                         }
                         
                         if (currentUser?.role == UserRole.SUPER_ADMIN || currentUser?.role == UserRole.ADMIN) {
@@ -440,14 +460,13 @@ fun SettingScreen(
                                 isCheckingUpdate = true
                                 coroutineScope.launch {
                                     try {
-                                        val api = GithubApiService.create()
-                                        val release = api.getLatestRelease("evoryan", "AKBAR-MEDIA")
+                                        val release = fetchLatestGithubRelease()
                                         updateInfo = release
                                         latestReleaseTag = release.tag_name
                                         showUpdateDialog = true
                                     } catch (e: retrofit2.HttpException) {
                                         if (e.code() == 404) {
-                                            Toast.makeText(context, "Belum ada update (404 Not Found)", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Belum ada update di GitHub (404 Not Found)", Toast.LENGTH_SHORT).show()
                                         } else {
                                             Toast.makeText(context, "Gagal memeriksa update: ${e.message}", Toast.LENGTH_SHORT).show()
                                         }
@@ -472,54 +491,66 @@ fun SettingScreen(
         var downloadProgress by remember { mutableStateOf(0f) }
         var downloadError by remember { mutableStateOf<String?>(null) }
         
+        val cleanTag = latestTag.trim().trimStart('v', 'V').replace(Regex("[^a-zA-Z0-9.-]"), "_")
+        val apkFileName = "akbarmedia_v${cleanTag}.apk"
         val apkDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+        val targetAsset = selectBestApkAsset(updateInfo!!)
+        val url = targetAsset?.browser_download_url
+
         val existingApk = remember(showUpdateDialog, latestTag) {
-            val f = File(apkDir, "update.apk")
-            if (f.exists() && f.length() > 500000L) {
+            val f = File(apkDir, apkFileName)
+            if (f.exists() && f.length() > 1000000L) {
                 val apkVer = getApkVersion(context, f)
-                if (apkVer != null && !isVersionNewer(apkVer, currentVersion)) {
+                if (apkVer != null && (apkVer.contains(cleanTag) || compareAppVersions(apkVer, currentVersion) > 0)) {
+                    f
+                } else {
                     f.delete()
                     null
-                } else {
-                    f
                 }
             } else null
         }
         var downloadedFile by remember { mutableStateOf<File?>(existingApk) }
-
-        val targetAsset = if (BuildConfig.DEBUG) {
-            updateInfo!!.assets.firstOrNull { it.browser_download_url.contains("debug", ignoreCase = true) }
-                ?: updateInfo!!.assets.firstOrNull { it.browser_download_url.endsWith(".apk") }
-                ?: updateInfo!!.assets.firstOrNull()
-        } else {
-            updateInfo!!.assets.firstOrNull { it.browser_download_url.contains("release", ignoreCase = true) }
-                ?: updateInfo!!.assets.firstOrNull { it.browser_download_url.endsWith(".apk") }
-                ?: updateInfo!!.assets.firstOrNull()
-        }
-        val url = targetAsset?.browser_download_url
 
         val startDownload = {
             if (url != null) {
                 isDownloading = true
                 downloadError = null
                 coroutineScope.launch {
-                    val file = downloadApk(context, url) { progress ->
+                    try {
+                        apkDir.listFiles()?.forEach { file ->
+                            if (file.name.endsWith(".apk") || file.name.endsWith(".tmp")) {
+                                file.delete()
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    val file = downloadApk(
+                        context = context,
+                        url = url,
+                        fileName = apkFileName,
+                        expectedSize = targetAsset.size
+                    ) { progress ->
                         downloadProgress = progress
                     }
                     isDownloading = false
-                    if (file != null) {
+                    if (file != null && file.exists()) {
                         downloadedFile = file
-                        val apkVer = getApkVersion(context, file) ?: latestTag
-                        com.example.ui.data.SettingsManager.appliedAppVersion = apkVer
-                        currentVersion = com.example.ui.data.SettingsManager.getEffectiveAppVersion(context)
+                        val parsedApkVer = getApkVersion(context, file)
+                        val verToApply = if (parsedApkVer != null && compareAppVersions(parsedApkVer, latestTag) > 0) {
+                            parsedApkVer
+                        } else {
+                            latestTag
+                        }
+                        com.example.ui.data.SettingsManager.appliedAppVersion = verToApply
+                        com.example.ui.data.SettingsManager.refreshAppVersion(context)
                         installApk(context, file)
                     } else {
-                        downloadError = "Gagal mengunduh update. Periksa koneksi internet atau gunakan opsi browser."
+                        downloadError = "Gagal mengunduh file update dari GitHub. Periksa koneksi internet atau gunakan opsi browser."
                         Toast.makeText(context, "Gagal mengunduh update", Toast.LENGTH_SHORT).show()
                     }
                 }
             } else {
-                Toast.makeText(context, "Link download tidak ditemukan", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Link file APK tidak ditemukan pada rilis GitHub", Toast.LENGTH_SHORT).show()
             }
         }
         
@@ -539,6 +570,11 @@ fun SettingScreen(
                 Column {
                     Text("Versi saat ini: $currentVersion", fontSize = 14.sp)
                     Text("Versi rilis (GitHub Tag): $latestTag", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = primaryBg)
+                    if (targetAsset != null) {
+                        val sizeMb = (targetAsset.size ?: 0L).toFloat() / (1024f * 1024f)
+                        val sizeStr = if (sizeMb > 0f) String.format(java.util.Locale.US, " (%.1f MB)", sizeMb) else ""
+                        Text("File: ${targetAsset.name ?: "app-release.apk"}$sizeStr", fontSize = 12.sp, color = textSecondary)
+                    }
                     
                     if (updateInfo!!.body?.isNotBlank() == true) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -566,7 +602,7 @@ fun SettingScreen(
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 Text(
-                                    "✓ File update telah siap dipasang (${(downloadedFile!!.length() / (1024 * 1024))} MB)",
+                                    "✓ File update siap dipasang (${(downloadedFile!!.length() / (1024 * 1024))} MB)",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = Color(0xFF10B981)
@@ -591,7 +627,7 @@ fun SettingScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                         if (isNewer) {
-                            Text("Apakah Anda ingin mengunduh dan memasang versi terbaru sekarang?", fontSize = 13.sp)
+                            Text("Tekan tombol di bawah untuk mengunduh dan memasang versi terbaru langsung dari GitHub:", fontSize = 13.sp)
                         } else {
                             Text("Aplikasi sudah di versi terbaru ($currentVersion). Anda dapat mengunduh ulang jika diperlukan.", fontSize = 13.sp)
                         }
@@ -599,7 +635,7 @@ fun SettingScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Tips: Jika muncul 'Aplikasi tidak terinstall', pastikan izin instalasi aktif atau hapus versi lama jika berasal dari build dev/debug berbeda.",
+                        text = "Tips: Pastikan izin instalasi sumber tidak dikenal aktif di Pengaturan Android.",
                         fontSize = 11.sp,
                         color = textSecondary.copy(alpha = 0.7f),
                         lineHeight = 14.sp
@@ -614,9 +650,10 @@ fun SettingScreen(
                     if (downloadedFile != null && downloadedFile!!.exists() && !isDownloading) {
                         Button(
                             onClick = {
-                                val apkVer = getApkVersion(context, downloadedFile!!) ?: latestTag
-                                com.example.ui.data.SettingsManager.appliedAppVersion = apkVer
-                                currentVersion = com.example.ui.data.SettingsManager.getEffectiveAppVersion(context)
+                                val parsedApkVer = getApkVersion(context, downloadedFile!!)
+                                val verToApply = if (parsedApkVer != null && compareAppVersions(parsedApkVer, latestTag) > 0) parsedApkVer else latestTag
+                                com.example.ui.data.SettingsManager.appliedAppVersion = verToApply
+                                com.example.ui.data.SettingsManager.refreshAppVersion(context)
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !hasInstallPermission(context)) {
                                     openInstallPermissionSettings(context)
                                 } else {
@@ -637,7 +674,7 @@ fun SettingScreen(
                             onClick = { startDownload() },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Unduh Ulang", fontSize = 12.sp)
+                            Text("Unduh Ulang dari GitHub", fontSize = 12.sp)
                         }
                     } else {
                         Button(
@@ -646,13 +683,14 @@ fun SettingScreen(
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = primaryBg)
                         ) {
-                            Text(if (isDownloading) "Mengunduh..." else if (isNewer) "Download & Pasang Update" else "Unduh Ulang")
+                            Text(if (isDownloading) "Mengunduh..." else if (isNewer) "Download & Pasang Update" else "Unduh Ulang dari GitHub")
                         }
                     }
 
                     if (url != null && !isDownloading) {
                         OutlinedButton(
                             onClick = {
+                                com.example.ui.data.SettingsManager.appliedAppVersion = latestTag
                                 try {
                                     val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -763,7 +801,7 @@ fun getApkVersion(context: android.content.Context, apkFile: File?): String? {
     }
 }
 
-fun isVersionNewer(latest: String, current: String): Boolean {
+fun compareAppVersions(v1: String, v2: String): Int {
     fun parseVersionParts(v: String): List<Int> {
         val cleaned = v.trim().trimStart('v', 'V', '.').trim()
         val parts = cleaned.split(".").filter { it.isNotBlank() }
@@ -773,16 +811,56 @@ fun isVersionNewer(latest: String, current: String): Boolean {
         return if (nums.isEmpty()) listOf(0) else nums
     }
 
-    val lParts = parseVersionParts(latest)
-    val cParts = parseVersionParts(current)
-    val maxLen = maxOf(lParts.size, cParts.size)
+    val p1 = parseVersionParts(v1)
+    val p2 = parseVersionParts(v2)
+    val maxLen = maxOf(p1.size, p2.size)
     for (i in 0 until maxLen) {
-        val l = lParts.getOrElse(i) { 0 }
-        val c = cParts.getOrElse(i) { 0 }
-        if (l > c) return true
-        if (l < c) return false
+        val l = p1.getOrElse(i) { 0 }
+        val c = p2.getOrElse(i) { 0 }
+        if (l > c) return 1
+        if (l < c) return -1
     }
-    return false
+    return 0
+}
+
+fun isVersionNewer(latest: String, current: String): Boolean {
+    return compareAppVersions(latest, current) > 0
+}
+
+suspend fun fetchLatestGithubRelease(): com.example.data.GithubRelease {
+    val api = com.example.data.GithubApiService.create()
+    return try {
+        val allReleases = api.getAllReleases("evoryan", "AKBAR-MEDIA")
+        val candidates = allReleases.filter { 
+            it.draft != true && it.assets.any { asset -> 
+                asset.browser_download_url.endsWith(".apk", ignoreCase = true) || 
+                asset.name?.endsWith(".apk", ignoreCase = true) == true 
+            }
+        }
+        if (candidates.isNotEmpty()) {
+            candidates.maxWithOrNull { a, b ->
+                compareAppVersions(a.tag_name, b.tag_name)
+            } ?: candidates.first()
+        } else {
+            api.getLatestRelease("evoryan", "AKBAR-MEDIA")
+        }
+    } catch (_: Exception) {
+        api.getLatestRelease("evoryan", "AKBAR-MEDIA")
+    }
+}
+
+fun selectBestApkAsset(release: com.example.data.GithubRelease): com.example.data.GithubAsset? {
+    val apkAssets = release.assets.filter {
+        it.browser_download_url.endsWith(".apk", ignoreCase = true) ||
+        it.name?.endsWith(".apk", ignoreCase = true) == true
+    }
+    if (apkAssets.isEmpty()) return release.assets.firstOrNull()
+    if (apkAssets.size == 1) return apkAssets.first()
+    
+    return apkAssets.firstOrNull { 
+        it.name?.contains("release", ignoreCase = true) == true || 
+        it.browser_download_url.contains("release", ignoreCase = true) 
+    } ?: apkAssets.first()
 }
 
 fun hasInstallPermission(context: android.content.Context): Boolean {
@@ -813,6 +891,8 @@ fun openInstallPermissionSettings(context: android.content.Context) {
 suspend fun downloadApk(
     context: android.content.Context,
     url: String,
+    fileName: String,
+    expectedSize: Long? = null,
     onProgress: (Float) -> Unit
 ): File? {
     return withContext(Dispatchers.IO) {
@@ -829,18 +909,19 @@ suspend fun downloadApk(
                 val u = java.net.URL(currentUrl)
                 connection = (u.openConnection() as java.net.HttpURLConnection).apply {
                     instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                    useCaches = false
+                    defaultUseCaches = false
+                    setRequestProperty("User-Agent", "AkbarMedia-Android-Client/1.0")
                     setRequestProperty("Accept", "*/*")
-                    connectTimeout = 20000
-                    readTimeout = 30000
+                    setRequestProperty("Cache-Control", "no-cache, no-store, must-revalidate")
+                    setRequestProperty("Pragma", "no-cache")
+                    connectTimeout = 30000
+                    readTimeout = 45000
                 }
                 connection.connect()
 
                 val code = connection.responseCode
-                if ((code == java.net.HttpURLConnection.HTTP_MOVED_PERM ||
-                     code == java.net.HttpURLConnection.HTTP_MOVED_TEMP ||
-                     code == java.net.HttpURLConnection.HTTP_SEE_OTHER ||
-                     code == 307 || code == 308) && redirectCount < 10) {
+                if ((code in 300..308) && redirectCount < 10) {
                     val location = connection.getHeaderField("Location")
                     connection.disconnect()
                     if (!location.isNullOrEmpty()) {
@@ -856,32 +937,32 @@ suspend fun downloadApk(
                 break
             }
 
-            val fileLength = connection.contentLength
+            val fileLength = if (connection.contentLengthLong > 0) connection.contentLengthLong else (expectedSize ?: -1L)
             val downloadDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
                 ?: context.cacheDir
             if (!downloadDir.exists()) {
                 downloadDir.mkdirs()
             }
-            tempFile = File(downloadDir, "update_download.apk.tmp")
+            tempFile = File(downloadDir, "${fileName}.tmp")
             if (tempFile.exists()) {
                 tempFile.delete()
             }
-            val apkFile = File(downloadDir, "update.apk")
-            if (apkFile.exists()) {
-                apkFile.delete()
+            val destinationFile = File(downloadDir, fileName)
+            if (destinationFile.exists()) {
+                destinationFile.delete()
             }
 
             inputStream = connection.inputStream
             outputStream = java.io.FileOutputStream(tempFile)
 
-            val data = ByteArray(8192)
+            val data = ByteArray(16384)
             var total: Long = 0
             var count: Int
 
             while (inputStream.read(data).also { count = it } != -1) {
                 total += count
                 if (fileLength > 0) {
-                    onProgress(total.toFloat() / fileLength.toFloat())
+                    onProgress((total.toFloat() / fileLength.toFloat()).coerceIn(0f, 1f))
                 }
                 outputStream.write(data, 0, count)
             }
@@ -892,17 +973,26 @@ suspend fun downloadApk(
             inputStream = null
             connection.disconnect()
 
-            if (!tempFile.exists() || tempFile.length() < 100000L) {
+            if (!tempFile.exists() || tempFile.length() < 1000000L) {
                 tempFile.delete()
                 return@withContext null
             }
 
-            if (tempFile.renameTo(apkFile)) {
-                apkFile
-            } else {
-                tempFile.copyTo(apkFile, overwrite = true)
+            // Verify package integrity using packageManager
+            val pm = context.packageManager
+            val archiveInfo = pm.getPackageArchiveInfo(tempFile.absolutePath, 0)
+            if (archiveInfo == null) {
+                android.util.Log.e("DownloadApk", "Downloaded file is not a valid APK package")
                 tempFile.delete()
-                apkFile
+                return@withContext null
+            }
+
+            if (tempFile.renameTo(destinationFile)) {
+                destinationFile
+            } else {
+                tempFile.copyTo(destinationFile, overwrite = true)
+                tempFile.delete()
+                destinationFile
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -917,7 +1007,7 @@ suspend fun downloadApk(
 }
 
 fun installApk(context: android.content.Context, apkFile: File) {
-    if (!apkFile.exists() || apkFile.length() < 100000L) {
+    if (!apkFile.exists() || apkFile.length() < 1000000L) {
         Toast.makeText(context, "File update rusak atau tidak lengkap", Toast.LENGTH_LONG).show()
         return
     }

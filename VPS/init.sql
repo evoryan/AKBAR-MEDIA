@@ -196,3 +196,24 @@ CREATE TABLE IF NOT EXISTS notifications (
     message VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    setting_key VARCHAR(100) PRIMARY KEY,
+    setting_value TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+INSERT INTO app_settings (setting_key, setting_value) VALUES
+('company_name', 'Akbar Media'),
+('company_slogan', 'PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS'),
+('company_address', 'Jln. Raya Akbar Media, Indonesia'),
+('company_contact', 'WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id'),
+('invoice_header', 'Akbar Media\nPENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS\nJln. Raya Akbar Media, Indonesia\nWhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id'),
+('invoice_footer', 'L U N A S'),
+('invoice_help_text', 'Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890'),
+('support_by', 'Toko Ana, PT.Telkom, PT.Citra Selaras Terabit'),
+('dashboard_info', 'Pemeliharaan server pada 12 Agustus 2026'),
+('dashboard_info_2', 'Tersedia update router firmware'),
+('wa_gateway_enabled', 'true')
+ON DUPLICATE KEY UPDATE setting_key=setting_key;
+

@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.Image
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 fun decodeBase64ToImageBitmap(base64Str: String): ImageBitmap? {
     return try {
@@ -108,10 +110,21 @@ fun BotWaScreen(onBack: () -> Unit) {
     var isLoadingQr by remember { mutableStateOf(false) }
     var qrSecondsLeft by remember { mutableStateOf(45) }
 
-    // Initial check status on load
+    // Initial check status and sync settings from MySQL on load
     LaunchedEffect(currentUser) {
         val tId = currentUser?.id ?: return@LaunchedEffect
         try {
+            com.example.ui.data.SettingsManager.syncSettingsFromRemote(context)
+            waGatewayEnabled = com.example.ui.data.SettingsManager.waGatewayEnabled
+            waNotifyNewBilling = com.example.ui.data.SettingsManager.waNotifyNewBilling
+            waNotifyPaymentSuccess = com.example.ui.data.SettingsManager.waNotifyPaymentSuccess
+            waNotifyIsolir = com.example.ui.data.SettingsManager.waNotifyIsolir
+            waNotifyOtp = com.example.ui.data.SettingsManager.waNotifyOtp
+            waTemplateNewBilling = com.example.ui.data.SettingsManager.waTemplateNewBilling
+            waTemplatePaymentSuccess = com.example.ui.data.SettingsManager.waTemplatePaymentSuccess
+            waTemplateIsolir = com.example.ui.data.SettingsManager.waTemplateIsolir
+            waTemplateOtp = com.example.ui.data.SettingsManager.waTemplateOtp
+
             val statusResponse = com.example.ui.data.remote.ApiClient.apiService.getWaStatus(tId)
             isWaLinked = statusResponse.connected
             botNumber = statusResponse.botNumber.orEmpty()
@@ -1058,8 +1071,19 @@ fun BotWaPackageQrScreen() {
     
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+    val amberOrange = Color(0xFFD97706) // Background warna baru untuk tombol Ganti Gambar
+    val dangerRed = Color(0xFFEF4444)
+
+    fun resolvePackageQrUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) return url
+        val base = com.example.ui.data.SettingsManager.apiBaseUrl.trimEnd('/')
+        val clean = url.trimStart('/')
+        return "$base/$clean"
+    }
 
     fun loadPackages() {
         coroutineScope.launch {
@@ -1099,13 +1123,15 @@ fun BotWaPackageQrScreen() {
                 Text(
                     text = "Gambar ini akan dikirimkan secara otomatis bersama dengan pesan WA (Notifikasi Tagihan/Isolir) untuk pelanggan yang menggunakan paket tersebut.",
                     fontSize = 13.sp,
-                    color = textMain.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                    color = textSecondary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
                 )
             }
 
             items(packages) { pkg ->
                 var isUploading by remember { mutableStateOf(false) }
+                var isDeleting by remember { mutableStateOf(false) }
+                var showDeleteConfirmDialog by remember { mutableStateOf(false) }
                 
                 val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
                     androidx.activity.result.contract.ActivityResultContracts.GetContent()
@@ -1123,7 +1149,7 @@ fun BotWaPackageQrScreen() {
                                     val part = okhttp3.MultipartBody.Part.createFormData("image", "qr_${pkg.id}.jpg", requestBody)
                                     com.example.ui.data.remote.ApiClient.apiService.uploadPackageImage(pkg.id, part)
                                     android.widget.Toast.makeText(context, "QR Gambar Berhasil Diupload", android.widget.Toast.LENGTH_SHORT).show()
-                                    loadPackages() // Refresh packages to get new URL
+                                    loadPackages()
                                 }
                             } catch (e: Exception) {
                                 android.widget.Toast.makeText(context, "Gagal upload: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
@@ -1134,6 +1160,62 @@ fun BotWaPackageQrScreen() {
                     }
                 }
 
+                if (showDeleteConfirmDialog) {
+                    AlertDialog(
+                        onDismissRequest = { if (!isDeleting) showDeleteConfirmDialog = false },
+                        containerColor = cardBg,
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = dangerRed)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Hapus Gambar QR?", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                        },
+                        text = {
+                            Text(
+                                "Apakah Anda yakin ingin menghapus gambar QR pembayaran untuk paket \"${pkg.name}\"?",
+                                color = textSecondary,
+                                fontSize = 13.sp
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    isDeleting = true
+                                    coroutineScope.launch {
+                                        try {
+                                            com.example.ui.data.remote.ApiClient.apiService.deletePackageImage(pkg.id)
+                                            android.widget.Toast.makeText(context, "Gambar QR berhasil dihapus", android.widget.Toast.LENGTH_SHORT).show()
+                                            showDeleteConfirmDialog = false
+                                            loadPackages()
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "Gagal menghapus: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            isDeleting = false
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = dangerRed, contentColor = Color.White),
+                                enabled = !isDeleting
+                            ) {
+                                if (isDeleting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Text("Hapus", fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showDeleteConfirmDialog = false },
+                                enabled = !isDeleting
+                            ) {
+                                Text("Batal", color = textSecondary)
+                            }
+                        }
+                    )
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
@@ -1141,30 +1223,127 @@ fun BotWaPackageQrScreen() {
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(pkg.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
-                        Text("Harga: Rp ${java.text.NumberFormat.getInstance(java.util.Locale("id", "ID")).format(pkg.price)}", fontSize = 14.sp, color = textMain.copy(alpha=0.7f))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(pkg.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textMain)
+                                Text("Harga: Rp ${java.text.NumberFormat.getInstance(java.util.Locale("id", "ID")).format(pkg.price)}", fontSize = 14.sp, color = textSecondary)
+                            }
+                            if (!pkg.qr_image_url.isNullOrBlank()) {
+                                Surface(
+                                    color = Color(0xFF10B981).copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        "✓ QR Terpasang",
+                                        color = Color(0xFF10B981),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    color = dangerRed.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        "Belum Ada QR",
+                                        color = dangerRed,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
                         
                         Spacer(modifier = Modifier.height(12.dp))
                         
-                        if (pkg.qr_image_url != null) {
-                            Text("✓ Gambar QR Terpasang", color = Color(0xFF28A745), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                        } else {
-                            Text("Belum ada gambar QR", color = Color.Red, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                        }
-                        
-                        Button(
-                            onClick = { launcher.launch("image/*") },
-                            colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.White),
-                            shape = RoundedCornerShape(8.dp),
-                            enabled = !isUploading
-                        ) {
-                            if (isUploading) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
+                        // QR Code Preview (jika ada gambar QR)
+                        val fullQrUrl = resolvePackageQrUrl(pkg.qr_image_url)
+                        if (!fullQrUrl.isNullOrBlank()) {
+                            Text("Pratinjau QR Pembayaran:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textSecondary)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(150.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.White)
+                                    .border(1.5.dp, neonCyan.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                    .padding(8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = fullQrUrl,
+                                    contentDescription = "Pratinjau QR ${pkg.name}",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
                             }
-                            Text(if (pkg.qr_image_url != null) "Ganti Gambar" else "Upload Gambar", fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+
+                        // Action Buttons: Ganti Gambar / Upload Gambar & Hapus QR
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!pkg.qr_image_url.isNullOrBlank()) {
+                                // Tombol Ganti Gambar dengan background warna baru (Amber Orange)
+                                Button(
+                                    onClick = { launcher.launch("image/*") },
+                                    colors = ButtonDefaults.buttonColors(containerColor = amberOrange, contentColor = Color.White),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = !isUploading && !isDeleting,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    if (isUploading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    } else {
+                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+                                    Text("Ganti Gambar", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+
+                                // Tombol Hapus QR
+                                OutlinedButton(
+                                    onClick = { showDeleteConfirmDialog = true },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = dangerRed),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, dangerRed),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = !isUploading && !isDeleting,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Hapus QR", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            } else {
+                                // Belum ada QR: Tombol Upload Gambar
+                                Button(
+                                    onClick = { launcher.launch("image/*") },
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = !isUploading,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    if (isUploading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    } else {
+                                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+                                    Text("Upload Gambar QR", fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -1179,11 +1358,15 @@ fun BotWaHistoryScreen() {
     val coroutineScope = rememberCoroutineScope()
     var history by remember { mutableStateOf<List<com.example.ui.data.remote.WaHistoryItem>>(emptyList()) }
     var isBackgroundLoading by remember { mutableStateOf(true) }
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var isClearing by remember { mutableStateOf(false) }
 
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
+    val dangerRed = Color(0xFFEF4444)
 
     fun loadHistory() {
         coroutineScope.launch {
@@ -1201,6 +1384,62 @@ fun BotWaHistoryScreen() {
         loadHistory()
     }
 
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isClearing) showClearConfirmDialog = false },
+            containerColor = cardBg,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = dangerRed)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Bersihkan Riwayat?", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Text(
+                    "Apakah Anda yakin ingin menghapus seluruh catatan riwayat pesan WhatsApp? Data riwayat yang dibersihkan tidak dapat dikembalikan.",
+                    color = textSecondary,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isClearing = true
+                        coroutineScope.launch {
+                            try {
+                                com.example.ui.data.remote.ApiClient.apiService.clearWaHistory()
+                                history = emptyList()
+                                showClearConfirmDialog = false
+                                android.widget.Toast.makeText(context, "Riwayat pesan WhatsApp berhasil dibersihkan", android.widget.Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                android.widget.Toast.makeText(context, "Gagal membersihkan riwayat: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isClearing = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = dangerRed, contentColor = Color.White),
+                    enabled = !isClearing
+                ) {
+                    if (isClearing) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text("Bersihkan", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showClearConfirmDialog = false },
+                    enabled = !isClearing
+                ) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         if (isBackgroundLoading) {
             LinearProgressIndicator(
@@ -1213,9 +1452,66 @@ fun BotWaHistoryScreen() {
             modifier = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Riwayat Pesan WhatsApp",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = textMain
+                        )
+                        Text(
+                            text = if (history.isEmpty()) "Tidak ada pesan tersimpan" else "Total ${history.size} pesan tercatat",
+                            fontSize = 12.sp,
+                            color = textSecondary
+                        )
+                    }
+
+                    if (history.isNotEmpty()) {
+                        Button(
+                            onClick = { showClearConfirmDialog = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = dangerRed.copy(alpha = 0.15f),
+                                contentColor = dangerRed
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, dangerRed.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp),
+                            enabled = !isClearing
+                        ) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Bersihkan Riwayat", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
             if (history.isEmpty()) {
                 item {
-                    Text("Belum ada riwayat pesan.", color = textMain.copy(alpha=0.6f))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.ChatBubbleOutline, contentDescription = null, tint = textSecondary, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Belum ada riwayat pesan WhatsApp", color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Pesan notifikasi tagihan atau isolir yang terkirim akan muncul di sini.", color = textSecondary, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
                 }
             } else {
                 items(history) { item ->
@@ -1229,20 +1525,20 @@ fun BotWaHistoryScreen() {
                                 Text(item.customer_name ?: "Unknown", fontWeight = FontWeight.Bold, color = textMain)
                                 Text(
                                     text = item.status ?: "UNKNOWN", 
-                                    color = if (item.status == "TERKIRIM") Color(0xFF28A745) else Color.Red,
+                                    color = if (item.status == "TERKIRIM") Color(0xFF28A745) else dangerRed,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            Text(item.phone ?: "", color = textMain.copy(alpha=0.6f), fontSize = 12.sp)
+                            Text(item.phone ?: "", color = textSecondary, fontSize = 12.sp)
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(item.message ?: "", color = textMain, fontSize = 13.sp)
                             if (!item.media_url.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("✓ Mengandung Gambar QR", color = neonCyan, fontSize = 11.sp)
+                                Text("✓ Mengandung Gambar QR", color = neonCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(item.created_at ?: "", color = textMain.copy(alpha=0.5f), fontSize = 10.sp)
+                            Text(item.created_at ?: "", color = textSecondary.copy(alpha = 0.7f), fontSize = 10.sp)
                         }
                     }
                 }

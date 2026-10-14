@@ -824,6 +824,80 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Card: Pengaturan Aplikasi & Profil Perusahaan (Tersimpan di Database MySQL) -->
+                        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-6 flex flex-col gap-5">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                                        <i data-lucide="settings" class="w-5 h-5"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                            Pengaturan Aplikasi & Perusahaan
+                                            <span class="text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">MySQL Database</span>
+                                        </h3>
+                                        <p class="text-xs text-slate-400">Data pengaturan ini tersinkronisasi otomatis antara aplikasi Android dan Web Portal.</p>
+                                    </div>
+                                </div>
+                                <button type="button" onclick="loadAppSettings()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 self-start sm:self-auto border border-slate-700">
+                                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Muat Ulang
+                                </button>
+                            </div>
+
+                            <form id="form-app-settings" onsubmit="saveAppSettingsFromWeb(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-xs font-semibold text-slate-400">NAMA PERUSAHAAN</label>
+                                    <input type="text" id="setting-company-name" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Contoh: Akbar Media">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-xs font-semibold text-slate-400">SLOGAN PERUSAHAAN</label>
+                                    <input type="text" id="setting-company-slogan" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Slogan layanan internet...">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5 md:col-span-2">
+                                    <label class="text-xs font-semibold text-slate-400">ALAMAT KANTOR / OPERASIONAL</label>
+                                    <input type="text" id="setting-company-address" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Alamat perusahaan...">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-xs font-semibold text-slate-400">KONTAK & WHATSAPP CS</label>
+                                    <input type="text" id="setting-company-contact" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="WhatsApp / Email CS...">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-xs font-semibold text-slate-400">TEKS FOOTER INVOICE (STATUS)</label>
+                                    <input type="text" id="setting-invoice-footer" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="L U N A S">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5 md:col-span-2">
+                                    <label class="text-xs font-semibold text-slate-400">TEKS BANTUAN FOOTER INVOICE</label>
+                                    <input type="text" id="setting-invoice-help-text" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Layanan bantuan & konfirmasi...">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5 md:col-span-2">
+                                    <label class="text-xs font-semibold text-slate-400">SUPPORTED BY (REKANAN TEKNIS)</label>
+                                    <input type="text" id="setting-support-by" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Daftar mitra teknis...">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-xs font-semibold text-slate-400">PENGUMUMAN DASHBOARD 1</label>
+                                    <input type="text" id="setting-dashboard-info" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Info pengumuman 1...">
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-xs font-semibold text-slate-400">PENGUMUMAN DASHBOARD 2</label>
+                                    <input type="text" id="setting-dashboard-info-2" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Info pengumuman 2...">
+                                </div>
+
+                                <div class="md:col-span-2 flex justify-end gap-3 pt-2 border-t border-slate-800">
+                                    <button type="submit" class="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md">
+                                        <i data-lucide="save" class="w-4 h-4"></i> Simpan Pengaturan ke MySQL
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </section>
 
@@ -1259,19 +1333,74 @@
                                 </form>
                             </div>
 
-                            <!-- 3. Template Pesan WhatsApp Penagihan -->
+                            <!-- 3. Pengaturan WhatsApp Gateway & Template Pesan -->
                             <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-6 flex flex-col gap-4">
-                                <h3 class="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
-                                    <i data-lucide="message-square" class="w-5 h-5 text-green-400"></i> Format Pesan WhatsApp Tagihan
-                                </h3>
-                                <form id="form-setting-wa" onsubmit="saveWaTemplate(event)" class="flex flex-col gap-3.5">
-                                    <div class="flex flex-col gap-1">
-                                        <label class="text-xs font-semibold text-slate-400">TEMPLATE PESAN TAGIHAN BULANAN</label>
-                                        <textarea id="setting-wa-template" rows="4" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono" placeholder="Halo {nama}, tagihan internet {paket} Anda sebesar {nominal} jatuh tempo pada {tanggal}."></textarea>
-                                        <span class="text-[10px] text-slate-400">Variabel: {nama}, {paket}, {nominal}, {tanggal}, {bulan}</span>
+                                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                        <i data-lucide="message-square" class="w-5 h-5 text-green-400"></i> Pengaturan WhatsApp Gateway & Notifikasi
+                                    </h3>
+                                    <span class="text-xs bg-emerald-500/20 text-emerald-400 font-semibold px-2.5 py-1 rounded-lg border border-emerald-500/30">Sync MySQL</span>
+                                </div>
+                                <form id="form-setting-wa" onsubmit="saveWaSettings(event)" class="flex flex-col gap-4">
+                                    <!-- Gateway Switch -->
+                                    <div class="flex items-center justify-between p-3 bg-slate-900/80 rounded-xl border border-slate-800">
+                                        <div>
+                                            <label for="setting-wa-gateway-enabled" class="text-xs font-bold text-slate-200">AKTIFKAN LAYANAN WA GATEWAY</label>
+                                            <p class="text-[11px] text-slate-400">Kirim pesan WhatsApp otomatis dari sistem & bot</p>
+                                        </div>
+                                        <input type="checkbox" id="setting-wa-gateway-enabled" class="w-4 h-4 accent-emerald-500 rounded cursor-pointer" checked>
                                     </div>
-                                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition">
-                                        Simpan Template WhatsApp
+
+                                    <!-- Notifikasi Otomatis Toggles -->
+                                    <div class="flex flex-col gap-2 p-3 bg-slate-900/60 rounded-xl border border-slate-800">
+                                        <label class="text-xs font-bold text-slate-400 uppercase">Trigger Notifikasi Otomatis</label>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                            <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                                <input type="checkbox" id="setting-wa-notify-new-billing" class="accent-emerald-500 rounded" checked>
+                                                <span>Notifikasi Tagihan Baru</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                                <input type="checkbox" id="setting-wa-notify-payment-success" class="accent-emerald-500 rounded" checked>
+                                                <span>Notifikasi Pembayaran Sukses</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                                <input type="checkbox" id="setting-wa-notify-isolir" class="accent-emerald-500 rounded" checked>
+                                                <span>Notifikasi Isolir Layanan</span>
+                                            </label>
+                                            <label class="flex items-center gap-2 text-slate-300 cursor-pointer">
+                                                <input type="checkbox" id="setting-wa-notify-otp" class="accent-emerald-500 rounded" checked>
+                                                <span>Notifikasi Kode OTP</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Template Textareas -->
+                                    <div class="flex flex-col gap-1">
+                                        <label class="text-xs font-semibold text-slate-400">TEMPLATE NOTIFIKASI TAGIHAN BARU</label>
+                                        <textarea id="setting-wa-template" rows="3" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono" placeholder="Halo {nama}, tagihan internet {paket} Anda sebesar {nominal} jatuh tempo pada {tanggal} {bulan}."></textarea>
+                                        <span class="text-[10px] text-slate-500">Variabel: {nama}, {paket}, {nominal}, {tanggal}, {bulan}</span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-1">
+                                        <label class="text-xs font-semibold text-slate-400">TEMPLATE PEMBAYARAN SUKSES / LUNAS</label>
+                                        <textarea id="setting-wa-template-payment" rows="3" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono" placeholder="Halo {nama}, terima kasih pembayaran sejumlah {nominal} telah kami terima dan LUNAS."></textarea>
+                                        <span class="text-[10px] text-slate-500">Variabel: {nama}, {nominal}, {bulan}</span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-1">
+                                        <label class="text-xs font-semibold text-slate-400">TEMPLATE ISOLIR LAYANAN</label>
+                                        <textarea id="setting-wa-template-isolir" rows="3" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono" placeholder="Halo {nama}, layanan internet Anda sementara dinonaktifkan..."></textarea>
+                                        <span class="text-[10px] text-slate-500">Variabel: {nama}, {bulan}</span>
+                                    </div>
+
+                                    <div class="flex flex-col gap-1">
+                                        <label class="text-xs font-semibold text-slate-400">TEMPLATE KODE OTP</label>
+                                        <textarea id="setting-wa-template-otp" rows="2" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono" placeholder="Kode OTP Anda adalah: {otp}..."></textarea>
+                                        <span class="text-[10px] text-slate-500">Variabel: {otp}</span>
+                                    </div>
+
+                                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2">
+                                        <i data-lucide="save" class="w-4 h-4"></i> Simpan Pengaturan WhatsApp ke MySQL
                                     </button>
                                 </form>
                             </div>

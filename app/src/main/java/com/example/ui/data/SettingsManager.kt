@@ -2,6 +2,9 @@ package com.example.ui.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object SettingsManager {
     private const val PREFS_NAME = "app_settings"
@@ -14,23 +17,61 @@ object SettingsManager {
     private lateinit var prefs: SharedPreferences
     private var appContext: Context? = null
 
+    val appVersionFlow = kotlinx.coroutines.flow.MutableStateFlow("v1.6.1")
+
+    fun isVersionGreaterOrEqual(v1: String, v2: String): Boolean {
+        fun parseParts(v: String): List<Int> {
+            val cleaned = v.trim().trimStart('v', 'V', '.').trim()
+            val parts = cleaned.split(".").filter { it.isNotBlank() }
+            val nums = parts.map { part ->
+                part.filter { it.isDigit() }.toIntOrNull() ?: 0
+            }
+            return if (nums.isEmpty()) listOf(0) else nums
+        }
+        val p1 = parseParts(v1)
+        val p2 = parseParts(v2)
+        val maxLen = maxOf(p1.size, p2.size)
+        for (i in 0 until maxLen) {
+            val n1 = p1.getOrElse(i) { 0 }
+            val n2 = p2.getOrElse(i) { 0 }
+            if (n1 > n2) return true
+            if (n1 < n2) return false
+        }
+        return true
+    }
+
     fun init(context: Context) {
         appContext = context.applicationContext
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         themeStateFlow.value = appTheme
         fontScaleStateFlow.value = fontScale
+        appVersionFlow.value = getEffectiveAppVersion(context)
         restoreInvoiceSettingsIfPresent(context)
+        syncSettingsFromRemote(context)
     }
 
     private const val KEY_APPLIED_APP_VERSION = "applied_app_version"
     var appliedAppVersion: String?
         get() = prefs.getString(KEY_APPLIED_APP_VERSION, null)
-        set(value) = prefs.edit().putString(KEY_APPLIED_APP_VERSION, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_APPLIED_APP_VERSION, value).apply()
+            val effective = getEffectiveAppVersion(appContext)
+            appVersionFlow.value = effective
+            syncSettingsToRemote()
+        }
 
-    fun getEffectiveAppVersion(context: Context): String {
+    fun refreshAppVersion(context: Context) {
+        val effective = getEffectiveAppVersion(context)
+        appVersionFlow.value = effective
+    }
+
+    fun getEffectiveAppVersion(context: Context? = null): String {
+        val ctx = context ?: appContext
         val packageVersion = try {
-            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            pInfo.versionName
+            if (ctx != null) {
+                val pInfo = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+                pInfo.versionName
+            } else null
         } catch (_: Exception) {
             null
         }
@@ -40,17 +81,17 @@ object SettingsManager {
             val lParts = applied.trim().trimStart('v', 'V', '.').split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
             val pParts = packageVersion.trim().trimStart('v', 'V', '.').split(".").map { it.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }
             val maxLen = maxOf(lParts.size, pParts.size)
-            var appliedIsNewer = false
+            var packageIsStrictlyNewer = false
             for (i in 0 until maxLen) {
                 val l = lParts.getOrElse(i) { 0 }
                 val p = pParts.getOrElse(i) { 0 }
-                if (l > p) { appliedIsNewer = true; break }
-                if (l < p) { break }
+                if (p > l) { packageIsStrictlyNewer = true; break }
+                if (l > p) { packageIsStrictlyNewer = false; break }
             }
-            if (appliedIsNewer) return applied
-            return packageVersion
+            if (packageIsStrictlyNewer) return packageVersion
+            return applied
         }
-        return packageVersion ?: "v1.6"
+        return packageVersion ?: "v1.6.1"
     }
 
     private const val KEY_API_BASE_URL = "api_base_url"
@@ -251,8 +292,89 @@ object SettingsManager {
                     }
                 }
             }
+            syncSettingsToRemote()
         } catch (e: Exception) {
             android.util.Log.e("SettingsManager", "Error persisting invoice settings: ${e.message}")
+        }
+    }
+
+    fun syncSettingsToRemote() {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val settingsMap = mutableMapOf<String, String>()
+                settingsMap["company_name"] = companyName
+                settingsMap["company_slogan"] = companySlogan
+                settingsMap["company_address"] = companyAddress
+                settingsMap["company_contact"] = companyContact
+                settingsMap["invoice_header"] = invoiceHeader
+                settingsMap["invoice_footer"] = invoiceFooterText
+                settingsMap["invoice_help_text"] = invoiceHelpText
+                settingsMap["support_by"] = supportByText
+                settingsMap["dashboard_info"] = dashboardInfo1
+                settingsMap["dashboard_info_2"] = dashboardInfo2
+                settingsMap["app_theme"] = appTheme
+                settingsMap["font_scale"] = fontScale
+                settingsMap["use_invoice_logo"] = useInvoiceLogo.toString()
+                settingsMap["wa_gateway_enabled"] = waGatewayEnabled.toString()
+                settingsMap["wa_notify_new_billing"] = waNotifyNewBilling.toString()
+                settingsMap["wa_notify_payment_success"] = waNotifyPaymentSuccess.toString()
+                settingsMap["wa_notify_isolir"] = waNotifyIsolir.toString()
+                settingsMap["wa_notify_otp"] = waNotifyOtp.toString()
+                settingsMap["wa_template_new_billing"] = waTemplateNewBilling
+                settingsMap["wa_template_payment_success"] = waTemplatePaymentSuccess
+                settingsMap["wa_template_isolir"] = waTemplateIsolir
+                settingsMap["wa_template_otp"] = waTemplateOtp
+                appliedAppVersion?.let { settingsMap["applied_app_version"] = it }
+
+                com.example.ui.data.remote.ApiClient.apiService.saveAppSettings(settingsMap)
+                android.util.Log.d("SettingsManager", "Pengaturan aplikasi berhasil disimpan ke MySQL database")
+            } catch (e: Exception) {
+                android.util.Log.w("SettingsManager", "Gagal sync pengaturan ke MySQL: ${e.message}")
+            }
+        }
+    }
+
+    fun syncSettingsFromRemote(context: Context? = null) {
+        val ctx = context ?: appContext ?: return
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val remote = com.example.ui.data.remote.ApiClient.apiService.getAppSettings()
+                if (remote.isNotEmpty()) {
+                    val editor = prefs.edit()
+                    remote["company_name"]?.let { if (it.isNotBlank()) editor.putString(KEY_COMPANY_NAME, it) }
+                    remote["company_slogan"]?.let { if (it.isNotBlank()) editor.putString(KEY_COMPANY_SLOGAN, it) }
+                    remote["company_address"]?.let { if (it.isNotBlank()) editor.putString(KEY_COMPANY_ADDRESS, it) }
+                    remote["company_contact"]?.let { if (it.isNotBlank()) editor.putString(KEY_COMPANY_CONTACT, it) }
+                    remote["invoice_header"]?.let { if (it.isNotBlank()) editor.putString("invoice_header", it) }
+                    remote["invoice_footer"]?.let { if (it.isNotBlank()) editor.putString(KEY_INVOICE_FOOTER, it) }
+                    remote["invoice_help_text"]?.let { if (it.isNotBlank()) editor.putString(KEY_INVOICE_HELP_TEXT, it) }
+                    remote["support_by"]?.let { if (it.isNotBlank()) editor.putString(KEY_SUPPORT_BY, it) }
+                    remote["dashboard_info"]?.let { if (it.isNotBlank()) editor.putString(KEY_DASHBOARD_INFO, it) }
+                    remote["dashboard_info_2"]?.let { if (it.isNotBlank()) editor.putString(KEY_DASHBOARD_INFO_2, it) }
+                    remote["applied_app_version"]?.let {
+                        if (it.isNotBlank()) {
+                            val curr = appliedAppVersion
+                            if (curr == null || isVersionGreaterOrEqual(it, curr)) {
+                                editor.putString(KEY_APPLIED_APP_VERSION, it)
+                                appVersionFlow.value = it
+                            }
+                        }
+                    }
+                    remote["wa_gateway_enabled"]?.let { editor.putBoolean("wa_gateway_enabled", it.toBoolean()) }
+                    remote["wa_notify_new_billing"]?.let { editor.putBoolean("wa_notify_new_billing", it.toBoolean()) }
+                    remote["wa_notify_payment_success"]?.let { editor.putBoolean("wa_notify_payment_success", it.toBoolean()) }
+                    remote["wa_notify_isolir"]?.let { editor.putBoolean("wa_notify_isolir", it.toBoolean()) }
+                    remote["wa_notify_otp"]?.let { editor.putBoolean("wa_notify_otp", it.toBoolean()) }
+                    remote["wa_template_new_billing"]?.let { if (it.isNotBlank()) editor.putString("wa_template_new_billing", it) }
+                    remote["wa_template_payment_success"]?.let { if (it.isNotBlank()) editor.putString("wa_template_payment_success", it) }
+                    remote["wa_template_isolir"]?.let { if (it.isNotBlank()) editor.putString("wa_template_isolir", it) }
+                    remote["wa_template_otp"]?.let { if (it.isNotBlank()) editor.putString("wa_template_otp", it) }
+                    editor.apply()
+                    android.util.Log.d("SettingsManager", "Pengaturan aplikasi berhasil disinkronkan dari MySQL")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SettingsManager", "Gagal mengambil pengaturan dari MySQL: ${e.message}")
+            }
         }
     }
 
@@ -318,39 +440,66 @@ object SettingsManager {
     // WhatsApp Gateway Settings
     var waGatewayEnabled: Boolean
         get() = prefs.getBoolean("wa_gateway_enabled", true)
-        set(value) = prefs.edit().putBoolean("wa_gateway_enabled", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("wa_gateway_enabled", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waNotifyNewBilling: Boolean
         get() = prefs.getBoolean("wa_notify_new_billing", true)
-        set(value) = prefs.edit().putBoolean("wa_notify_new_billing", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("wa_notify_new_billing", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waNotifyPaymentSuccess: Boolean
         get() = prefs.getBoolean("wa_notify_payment_success", true)
-        set(value) = prefs.edit().putBoolean("wa_notify_payment_success", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("wa_notify_payment_success", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waNotifyIsolir: Boolean
         get() = prefs.getBoolean("wa_notify_isolir", true)
-        set(value) = prefs.edit().putBoolean("wa_notify_isolir", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("wa_notify_isolir", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waNotifyOtp: Boolean
         get() = prefs.getBoolean("wa_notify_otp", true)
-        set(value) = prefs.edit().putBoolean("wa_notify_otp", value).apply()
+        set(value) {
+            prefs.edit().putBoolean("wa_notify_otp", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waTemplateNewBilling: String
         get() = prefs.getString("wa_template_new_billing", "Halo {nama},\nTagihan internet AKBAR MEDIA Anda untuk bulan {bulan} telah terbit sebesar {nominal}.\n\nHarap segera melakukan pembayaran sebelum jatuh tempo.\n\nTerima kasih.") ?: ""
-        set(value) = prefs.edit().putString("wa_template_new_billing", value).apply()
+        set(value) {
+            prefs.edit().putString("wa_template_new_billing", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waTemplatePaymentSuccess: String
         get() = prefs.getString("wa_template_payment_success", "Halo {nama},\nTerima kasih, pembayaran tagihan internet AKBAR MEDIA untuk bulan {bulan} sejumlah {nominal} telah kami terima dan dinyatakan LUNAS.\n\nSalam,\nAKBAR MEDIA") ?: ""
-        set(value) = prefs.edit().putString("wa_template_payment_success", value).apply()
+        set(value) {
+            prefs.edit().putString("wa_template_payment_success", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waTemplateIsolir: String
         get() = prefs.getString("wa_template_isolir", "Halo {nama},\nLayanan internet Anda sementara dinonaktifkan karena belum melakukan pembayaran tagihan bulan {bulan}.\n\nSilakan lakukan pembayaran untuk mengaktifkan kembali layanan.\n\nTerima kasih.") ?: ""
-        set(value) = prefs.edit().putString("wa_template_isolir", value).apply()
+        set(value) {
+            prefs.edit().putString("wa_template_isolir", value).apply()
+            syncSettingsToRemote()
+        }
 
     var waTemplateOtp: String
         get() = prefs.getString("wa_template_otp", "Kode OTP Anda adalah: {otp}\n\nJangan membagikan kode ini kepada siapa pun.\n\nAKBAR MEDIA") ?: ""
-        set(value) = prefs.edit().putString("wa_template_otp", value).apply()
+        set(value) {
+            prefs.edit().putString("wa_template_otp", value).apply()
+            syncSettingsToRemote()
+        }
 
     var tenantInfos: List<String>
         get() {

@@ -173,11 +173,19 @@ interface ApiService {
     @GET("api/wa/history")
     suspend fun getWaHistory(): List<WaHistoryItem>
 
+    @DELETE("api/wa/history")
+    suspend fun clearWaHistory(): ApiResponse
+
     @Multipart
     @POST("api/packages/{id}/image")
     suspend fun uploadPackageImage(
         @Path("id") id: String,
         @Part image: okhttp3.MultipartBody.Part
+    ): ApiResponse
+
+    @DELETE("api/packages/{id}/image")
+    suspend fun deletePackageImage(
+        @Path("id") id: String
     ): ApiResponse
     @GET("api/dashboard/pppoe-offline")
     suspend fun getPppoeOffline(): List<OfflinePppoeUser>
@@ -453,6 +461,15 @@ interface ApiService {
 
     @GET("api/ping")
     suspend fun ping(): PingResponse
+
+    @GET("api/settings")
+    suspend fun getAppSettings(): Map<String, String>
+
+    @POST("api/settings")
+    suspend fun saveAppSettings(@Body settings: Map<String, String>): ApiResponse
+
+    @POST("api/settings/{key}")
+    suspend fun saveAppSetting(@Path("key") key: String, @Body body: Map<String, String>): ApiResponse
 }
 
 @kotlinx.serialization.Serializable

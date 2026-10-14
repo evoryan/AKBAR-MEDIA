@@ -625,6 +625,14 @@ function switchTab(tabId) {
         }
     }
 
+    if (tabId === 'konfigurasi') {
+        loadAppSettings();
+    }
+
+    if (tabId === 'setting') {
+        loadCompanySettings();
+    }
+
     if (window.lucide) lucide.createIcons();
 }
 
@@ -635,6 +643,7 @@ async function loadAllData() {
         await Promise.all([
             loadAreas(),
             loadPackages(),
+            loadAppSettings(),
             loadOdcList(),
             loadOdpList(),
             loadRasioList()
@@ -2989,11 +2998,51 @@ async function rebootAcsDevice(devId) {
 // SETTING & PENGATURAN MODULE
 // ==========================================
 
-function loadCompanySettings() {
-    const name = localStorage.getItem('company_name') || 'AKBAR MEDIA NETWORKS';
-    const addr = localStorage.getItem('company_address') || 'Jl. Raya Krian, Sidoarjo';
-    const phone = localStorage.getItem('company_phone') || '08123456789';
-    const web = localStorage.getItem('company_web') || 'https://akbarmedia.net';
+async function loadCompanySettings() {
+    let name = localStorage.getItem('company_name') || 'AKBAR MEDIA NETWORKS';
+    let addr = localStorage.getItem('company_address') || 'Jl. Raya Krian, Sidoarjo';
+    let phone = localStorage.getItem('company_phone') || '08123456789';
+    let web = localStorage.getItem('company_web') || 'https://akbarmedia.net';
+    let waTemplateBilling = localStorage.getItem('wa_template') || 
+`Halo {nama}, tagihan internet {paket} Anda sebesar {nominal} jatuh tempo pada {tanggal} {bulan}. Mohon lakukan pembayaran tepat waktu guna menjaga kelancaran koneksi internet Anda. Terima kasih.`;
+    let waTemplatePayment = `Halo {nama},\nTerima kasih, pembayaran tagihan internet AKBAR MEDIA untuk bulan {bulan} sejumlah {nominal} telah kami terima dan dinyatakan LUNAS.\n\nSalam,\nAKBAR MEDIA`;
+    let waTemplateIsolir = `Halo {nama},\nLayanan internet Anda sementara dinonaktifkan karena belum melakukan pembayaran tagihan bulan {bulan}.\n\nSilakan lakukan pembayaran untuk mengaktifkan kembali layanan.\n\nTerima kasih.`;
+    let waTemplateOtp = `Kode OTP Anda adalah: {otp}\n\nJangan membagikan kode ini kepada siapa pun.\n\nAKBAR MEDIA`;
+
+    let waGatewayEnabled = true;
+    let waNotifyBilling = true;
+    let waNotifyPayment = true;
+    let waNotifyIsolir = true;
+    let waNotifyOtp = true;
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/settings`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.company_name) name = data.company_name;
+            if (data.company_address) addr = data.company_address;
+            if (data.company_contact) phone = data.company_contact;
+            if (data.support_by) web = data.support_by;
+            if (data.wa_template_new_billing) waTemplateBilling = data.wa_template_new_billing;
+            if (data.wa_template_payment_success) waTemplatePayment = data.wa_template_payment_success;
+            if (data.wa_template_isolir) waTemplateIsolir = data.wa_template_isolir;
+            if (data.wa_template_otp) waTemplateOtp = data.wa_template_otp;
+
+            if (data.wa_gateway_enabled !== undefined) waGatewayEnabled = data.wa_gateway_enabled === 'true' || data.wa_gateway_enabled === true;
+            if (data.wa_notify_new_billing !== undefined) waNotifyBilling = data.wa_notify_new_billing === 'true' || data.wa_notify_new_billing === true;
+            if (data.wa_notify_payment_success !== undefined) waNotifyPayment = data.wa_notify_payment_success === 'true' || data.wa_notify_payment_success === true;
+            if (data.wa_notify_isolir !== undefined) waNotifyIsolir = data.wa_notify_isolir === 'true' || data.wa_notify_isolir === true;
+            if (data.wa_notify_otp !== undefined) waNotifyOtp = data.wa_notify_otp === 'true' || data.wa_notify_otp === true;
+
+            localStorage.setItem('company_name', name);
+            localStorage.setItem('company_address', addr);
+            localStorage.setItem('company_phone', phone);
+            localStorage.setItem('company_web', web);
+            localStorage.setItem('wa_template', waTemplateBilling);
+        }
+    } catch (e) {
+        console.warn('Gagal memuat pengaturan profil dari MySQL:', e);
+    }
 
     const nameEl = document.getElementById('setting-isp-name');
     if (nameEl) nameEl.value = name;
@@ -3004,13 +3053,28 @@ function loadCompanySettings() {
     const webEl = document.getElementById('setting-isp-web');
     if (webEl) webEl.value = web;
 
-    const waTemplate = localStorage.getItem('wa_template') || 
-`Halo {nama}, tagihan internet {paket} Anda sebesar {nominal} jatuh tempo pada {tanggal} {bulan}. Mohon lakukan pembayaran tepat waktu guna menjaga kelancaran koneksi internet Anda. Terima kasih.`;
-    const waEl = document.getElementById('setting-wa-template');
-    if (waEl) waEl.value = waTemplate;
+    const waGatewayEl = document.getElementById('setting-wa-gateway-enabled');
+    if (waGatewayEl) waGatewayEl.checked = waGatewayEnabled;
+    const waNotifyBillEl = document.getElementById('setting-wa-notify-new-billing');
+    if (waNotifyBillEl) waNotifyBillEl.checked = waNotifyBilling;
+    const waNotifyPayEl = document.getElementById('setting-wa-notify-payment-success');
+    if (waNotifyPayEl) waNotifyPayEl.checked = waNotifyPayment;
+    const waNotifyIsoEl = document.getElementById('setting-wa-notify-isolir');
+    if (waNotifyIsoEl) waNotifyIsoEl.checked = waNotifyIsolir;
+    const waNotifyOtpEl = document.getElementById('setting-wa-notify-otp');
+    if (waNotifyOtpEl) waNotifyOtpEl.checked = waNotifyOtp;
+
+    const waBillingEl = document.getElementById('setting-wa-template');
+    if (waBillingEl) waBillingEl.value = waTemplateBilling;
+    const waPaymentEl = document.getElementById('setting-wa-template-payment');
+    if (waPaymentEl) waPaymentEl.value = waTemplatePayment;
+    const waIsolirEl = document.getElementById('setting-wa-template-isolir');
+    if (waIsolirEl) waIsolirEl.value = waTemplateIsolir;
+    const waOtpEl = document.getElementById('setting-wa-template-otp');
+    if (waOtpEl) waOtpEl.value = waTemplateOtp;
 }
 
-function saveCompanySettings(e) {
+async function saveCompanySettings(e) {
     e.preventDefault();
     const name = document.getElementById('setting-isp-name').value.trim();
     const addr = document.getElementById('setting-isp-address').value.trim();
@@ -3022,14 +3086,77 @@ function saveCompanySettings(e) {
     localStorage.setItem('company_phone', phone);
     localStorage.setItem('company_web', web);
 
-    showToast('Profil perusahaan berhasil disimpan!', 'success');
+    showLoading(true, 'Menyimpan profil perusahaan ke MySQL...');
+    try {
+        await fetch(`${API_BASE_URL}/api/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                company_name: name,
+                company_address: addr,
+                company_contact: phone,
+                support_by: web
+            })
+        });
+        showToast('Profil perusahaan berhasil disimpan ke database MySQL!', 'success');
+    } catch (err) {
+        showToast('Tersimpan di lokal, gagal sync ke database: ' + err.message, 'warning');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function saveWaSettings(e) {
+    if (e) e.preventDefault();
+    const gatewayEnabled = document.getElementById('setting-wa-gateway-enabled')?.checked ?? true;
+    const notifyBilling = document.getElementById('setting-wa-notify-new-billing')?.checked ?? true;
+    const notifyPayment = document.getElementById('setting-wa-notify-payment-success')?.checked ?? true;
+    const notifyIsolir = document.getElementById('setting-wa-notify-isolir')?.checked ?? true;
+    const notifyOtp = document.getElementById('setting-wa-notify-otp')?.checked ?? true;
+
+    const templateBilling = document.getElementById('setting-wa-template')?.value.trim() || '';
+    const templatePayment = document.getElementById('setting-wa-template-payment')?.value.trim() || '';
+    const templateIsolir = document.getElementById('setting-wa-template-isolir')?.value.trim() || '';
+    const templateOtp = document.getElementById('setting-wa-template-otp')?.value.trim() || '';
+
+    localStorage.setItem('wa_template', templateBilling);
+
+    showLoading(true, 'Menyimpan pengaturan WhatsApp ke MySQL...');
+    try {
+        const payload = {
+            wa_gateway_enabled: String(gatewayEnabled),
+            wa_notify_new_billing: String(notifyBilling),
+            wa_notify_payment_success: String(notifyPayment),
+            wa_notify_isolir: String(notifyIsolir),
+            wa_notify_otp: String(notifyOtp),
+            wa_template_new_billing: templateBilling,
+            wa_template: templateBilling,
+            wa_template_payment_success: templatePayment,
+            wa_template_isolir: templateIsolir,
+            wa_template_otp: templateOtp
+        };
+
+        const res = await fetch(`${API_BASE_URL}/api/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast('Pengaturan WhatsApp berhasil disimpan dan disinkronkan ke database MySQL!', 'success');
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast('Gagal menyimpan ke MySQL: ' + (err.error || 'Server error'), 'error');
+        }
+    } catch (err) {
+        showToast('Tersimpan di lokal, gagal sync ke database: ' + err.message, 'warning');
+    } finally {
+        showLoading(false);
+    }
 }
 
 function saveWaTemplate(e) {
-    e.preventDefault();
-    const val = document.getElementById('setting-wa-template').value.trim();
-    localStorage.setItem('wa_template', val);
-    showToast('Template pesan WhatsApp berhasil diperbarui!', 'success');
+    return saveWaSettings(e);
 }
 
 async function saveNewPassword(e) {
@@ -4317,6 +4444,70 @@ async function deleteMikrotikSecret(name) {
     }
 }
 
+// ================= APP SETTINGS (Pengaturan Aplikasi & Perusahaan MySQL) =================
+let currentAppSettings = {};
+
+async function loadAppSettings() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/settings`);
+        if (res.ok) {
+            currentAppSettings = await res.json();
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (el && val !== undefined && val !== null) el.value = val;
+            };
+
+            setVal('setting-company-name', currentAppSettings.company_name || 'Akbar Media');
+            setVal('setting-company-slogan', currentAppSettings.company_slogan || '');
+            setVal('setting-company-address', currentAppSettings.company_address || '');
+            setVal('setting-company-contact', currentAppSettings.company_contact || '');
+            setVal('setting-invoice-footer', currentAppSettings.invoice_footer || 'L U N A S');
+            setVal('setting-invoice-help-text', currentAppSettings.invoice_help_text || '');
+            setVal('setting-support-by', currentAppSettings.support_by || '');
+            setVal('setting-dashboard-info', currentAppSettings.dashboard_info || '');
+            setVal('setting-dashboard-info-2', currentAppSettings.dashboard_info_2 || '');
+        }
+    } catch (e) {
+        console.warn('Gagal memuat pengaturan aplikasi dari MySQL:', e);
+    }
+}
+
+async function saveAppSettingsFromWeb(event) {
+    if (event) event.preventDefault();
+    showLoading(true, 'Menyimpan pengaturan aplikasi ke MySQL...');
+    try {
+        const payload = {
+            company_name: document.getElementById('setting-company-name')?.value || '',
+            company_slogan: document.getElementById('setting-company-slogan')?.value || '',
+            company_address: document.getElementById('setting-company-address')?.value || '',
+            company_contact: document.getElementById('setting-company-contact')?.value || '',
+            invoice_footer: document.getElementById('setting-invoice-footer')?.value || 'L U N A S',
+            invoice_help_text: document.getElementById('setting-invoice-help-text')?.value || '',
+            support_by: document.getElementById('setting-support-by')?.value || '',
+            dashboard_info: document.getElementById('setting-dashboard-info')?.value || '',
+            dashboard_info_2: document.getElementById('setting-dashboard-info-2')?.value || ''
+        };
+
+        const res = await fetch(`${API_BASE_URL}/api/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast('Pengaturan aplikasi berhasil disimpan ke database MySQL!', 'success');
+            await loadAppSettings();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Gagal menyimpan pengaturan aplikasi.', 'error');
+        }
+    } catch (e) {
+        showToast('Koneksi server backend gagal: ' + e.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
 // Global scope bindings for window access
 window.selectPackageTemplate = selectPackageTemplate;
 window.calculateDedicatedPackage = calculateDedicatedPackage;
@@ -4337,4 +4528,7 @@ window.changeAcsPage = changeAcsPage;
 window.changeAcsPerPage = changeAcsPerPage;
 window.applyAcsDeviceFilters = applyAcsDeviceFilters;
 window.switchMikrotikSubTab = switchMikrotikSubTab;
+window.loadAppSettings = loadAppSettings;
+window.saveAppSettingsFromWeb = saveAppSettingsFromWeb;
+
 

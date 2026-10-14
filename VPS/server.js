@@ -564,6 +564,11 @@ async function ensureTenantTables(pool) {
         await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
         await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
         await pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(()=>{});
+        await pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key VARCHAR(100) PRIMARY KEY,
+            setting_value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`).catch(()=>{});
     } catch (err) {
         console.error("ensureTenantTables error:", err.message);
     }
@@ -1433,6 +1438,16 @@ app.get('/api/wa/history', async (req, res) => {
         res.json(rows);
     } catch (error) {
         console.error("API Error:", error.message); res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+    }
+});
+
+app.delete('/api/wa/history', async (req, res) => {
+    try {
+        await req.pool.query('DELETE FROM wa_history');
+        res.json({ message: "Riwayat pesan WhatsApp berhasil dibersihkan", success: true });
+    } catch (error) {
+        console.error("API Error DELETE /api/wa/history:", error.message);
+        res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
     }
 });
 
@@ -2771,6 +2786,16 @@ app.post('/api/packages/:id/image', upload.single('image'), async (req, res) => 
     }
 });
 
+app.delete('/api/packages/:id/image', async (req, res) => {
+    try {
+        await req.pool.query('UPDATE packages SET qr_image_url = NULL WHERE id = ?', [req.params.id]);
+        res.json({ message: "Gambar QR berhasil dihapus", success: true });
+    } catch (error) {
+        console.error("API Error DELETE /api/packages/:id/image:", error.message);
+        res.status(500).json({ error: (error && error.message) ? error.message : "Terjadi kesalahan" });
+    }
+});
+
 app.delete('/api/packages/:id', async (req, res) => {
     try {
         await req.pool.query('DELETE FROM packages WHERE id = ?', [req.params.id]);
@@ -2780,7 +2805,113 @@ app.delete('/api/packages/:id', async (req, res) => {
     }
 });
 
-// also for area we need add/edit ? We already have /api/areas
+// ================= APP SETTINGS (Pengaturan Aplikasi Android & Web Portal) =================
+app.get('/api/settings', async (req, res) => {
+    try {
+        await req.pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key VARCHAR(100) PRIMARY KEY,
+            setting_value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`).catch(() => {});
+
+        const [rows] = await req.pool.query('SELECT setting_key, setting_value FROM app_settings');
+        const settings = {
+            company_name: 'Akbar Media',
+            company_slogan: 'PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS',
+            company_address: 'Jln. Raya Akbar Media, Indonesia',
+            company_contact: 'WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id',
+            invoice_header: 'Akbar Media\nPENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS\nJln. Raya Akbar Media, Indonesia\nWhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id',
+            invoice_footer: 'L U N A S',
+            invoice_help_text: 'Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890',
+            support_by: 'Toko Ana, PT.Telkom, PT.Citra Selaras Terabit',
+            dashboard_info: 'Pemeliharaan server pada 12 Agustus 2026',
+            app_theme: 'Sesuai Sistem',
+            font_scale: 'Kecil',
+            use_invoice_logo: 'true',
+            wa_gateway_enabled: 'true',
+            wa_notify_new_billing: 'true',
+            wa_notify_payment_success: 'true',
+            wa_notify_isolir: 'true',
+            wa_notify_otp: 'true',
+            wa_template_new_billing: "Halo {nama},\nTagihan internet AKBAR MEDIA Anda untuk bulan {bulan} telah terbit sebesar {nominal}.\n\nHarap segera melakukan pembayaran sebelum jatuh tempo.\n\nTerima kasih.",
+            wa_template_payment_success: "Halo {nama},\nTerima kasih, pembayaran tagihan internet AKBAR MEDIA untuk bulan {bulan} sejumlah {nominal} telah kami terima dan dinyatakan LUNAS.\n\nSalam,\nAKBAR MEDIA",
+            wa_template_isolir: "Halo {nama},\nLayanan internet Anda sementara dinonaktifkan karena belum melakukan pembayaran tagihan bulan {bulan}.\n\nSilakan lakukan pembayaran untuk mengaktifkan kembali layanan.\n\nTerima kasih.",
+            wa_template_otp: "Kode OTP Anda adalah: {otp}\n\nJangan membagikan kode ini kepada siapa pun.\n\nAKBAR MEDIA"
+        };
+
+        for (const row of rows) {
+            settings[row.setting_key] = row.setting_value;
+        }
+
+        res.json(settings);
+    } catch (error) {
+        console.error("API Error /api/settings:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/settings', async (req, res) => {
+    try {
+        await req.pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key VARCHAR(100) PRIMARY KEY,
+            setting_value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`).catch(() => {});
+
+        const payload = req.body;
+        if (!payload || typeof payload !== 'object') {
+            return res.status(400).json({ error: "Data pengaturan tidak valid" });
+        }
+
+        if (payload.key && payload.value !== undefined) {
+            await req.pool.query(
+                `INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                [String(payload.key), String(payload.value)]
+            );
+        } else {
+            for (const [k, v] of Object.entries(payload)) {
+                if (k && v !== undefined && v !== null) {
+                    const strVal = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                    await req.pool.query(
+                        `INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)
+                         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                        [String(k), strVal]
+                    );
+                }
+            }
+        }
+
+        res.json({ message: "Pengaturan aplikasi berhasil disimpan di MySQL", success: true });
+    } catch (error) {
+        console.error("API Error POST /api/settings:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/settings/:key', async (req, res) => {
+    try {
+        await req.pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key VARCHAR(100) PRIMARY KEY,
+            setting_value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`).catch(() => {});
+
+        const key = req.params.key;
+        const val = req.body.value !== undefined ? req.body.value : (req.body.val !== undefined ? req.body.val : '');
+        const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        await req.pool.query(
+            `INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+            [String(key), strVal]
+        );
+        res.json({ message: `Pengaturan ${key} berhasil disimpan`, success: true });
+    } catch (error) {
+        console.error("API Error POST /api/settings/:key:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 function resolveAcsCandidates(apiDomain, acsUser, acsPassword) {
     let raw = (apiDomain || '').trim();
