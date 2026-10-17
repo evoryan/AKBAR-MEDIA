@@ -45,12 +45,12 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val bgMain = if (isDark) Color(0xFF0A0A0A) else Color(0xFFF4F7FA)
+    val bgMain = if (isDark) Color(0xFF0A0A0A) else Color(0xFFF1F5F9)
     val cardBg = if (isDark) Color(0xFF141414) else Color.White
-    val cardBorder = if (isDark) Color(0xFF262626) else Color(0xFFE2E8F0)
-    val textMain = if (isDark) Color(0xFFFFFFFF) else Color(0xFF1A1A1A)
-    val neonCyan = if (isDark) Color(0xFF00FFFF) else Color(0xFF0066FF)
-    val textSecondary = if (isDark) Color(0xFFAAAAAA) else Color(0xFF666666)
+    val cardBorder = if (isDark) Color(0xFF262626) else Color(0xFFCBD5E1)
+    val textMain = if (isDark) Color(0xFFFFFFFF) else Color(0xFF0F172A)
+    val neonCyan = if (isDark) Color(0xFF00FFFF) else Color(0xFF0265DC)
+    val textSecondary = if (isDark) Color(0xFFAAAAAA) else Color(0xFF475569)
 
     var companyName by remember { mutableStateOf(SettingsManager.companyName) }
     var companySlogan by remember { mutableStateOf(SettingsManager.companySlogan) }

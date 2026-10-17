@@ -77,13 +77,13 @@ fun PaymentSuccessScreen(
     }
 
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val bgMain = if (isDark) Color(0xFF0A0A0A) else Color(0xFFF4F7FA)
+    val bgMain = if (isDark) Color(0xFF0A0A0A) else Color(0xFFF1F5F9)
     val cardBg = if (isDark) Color(0xFF11111A) else Color.White
-    val cardBorder = if (isDark) Color(0xFF262626) else Color(0xFFE2E8F0)
-    val textMain = if (isDark) Color(0xFFFFFFFF) else Color(0xFF1A1A1A)
-    val textSecondary = if (isDark) Color(0xFFAAAAAA) else Color(0xFF666666)
+    val cardBorder = if (isDark) Color(0xFF262626) else Color(0xFFCBD5E1)
+    val textMain = if (isDark) Color(0xFFFFFFFF) else Color(0xFF0F172A)
+    val textSecondary = if (isDark) Color(0xFFAAAAAA) else Color(0xFF475569)
     val successGreen = Color(0xFF00FF00)
-    val neonCyan = if (isDark) Color(0xFF00FFFF) else Color(0xFF0066FF)
+    val neonCyan = if (isDark) Color(0xFF00FFFF) else Color(0xFF0265DC)
     val isLunas = status.equals("LUNAS", ignoreCase = true)
     val currentStatus = if (isLunas) "LUNAS" else "BELUM BAYAR"
     val statusColor = if (isLunas) Color(0xFF059669) else Color(0xFFDC2626)

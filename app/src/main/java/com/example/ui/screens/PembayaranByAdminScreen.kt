@@ -56,18 +56,33 @@ data class PembayaranData(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PembayaranByAdminScreen(onBack: () -> Unit) {
+fun PembayaranByAdminScreen(
+    onBack: () -> Unit,
+    filterAdminName: String? = null,
+    fromCollector: Boolean = false
+) {
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val bgMain = if (isDark) Color(0xFF0A0A0C) else Color(0xFFF5F7FA)
+    val bgMain = if (isDark) Color(0xFF0A0A0C) else Color(0xFFF1F5F9)
     val cardBg = if (isDark) Color(0xFF16161F) else Color(0xFFFFFFFF)
-    val headerBg = if (isDark) Color(0xFF1E1E2A) else Color(0xFFFFEBF5)
-    val textMain = if (isDark) Color(0xFFFFFFFF) else Color(0xFF1A1A1A)
-    val textSecondary = if (isDark) Color(0xFFA0A0C0) else Color(0xFF666666)
-    val primaryColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF0066FF)
+    val headerBg = if (isDark) Color(0xFF1E1E2A) else Color(0xFFE2E8F0)
+    val textMain = if (isDark) Color(0xFFFFFFFF) else Color(0xFF0F172A)
+    val textSecondary = if (isDark) Color(0xFFA0A0C0) else Color(0xFF475569)
+    val primaryColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF0265DC)
     val accentYellow = Color(0xFFFFC107)
     val accentGreen = Color(0xFF4CAF50)
 
     val currentUser by UserSession.currentUser.collectAsState()
+    val isCollector = fromCollector || currentUser?.role == UserRole.COLLECTOR
+
+    val relatedAdminName = remember(filterAdminName, currentUser) {
+        filterAdminName?.takeIf { it.isNotBlank() }
+            ?: currentUser?.name?.takeIf { it.isNotBlank() }
+            ?: currentUser?.username?.takeIf { it.isNotBlank() }
+            ?: "Admin"
+    }
+    val relatedAdminUsername = remember(currentUser) {
+        currentUser?.username.orEmpty()
+    }
 
     val currentMonthName = remember {
         val cal = java.util.Calendar.getInstance()
@@ -79,12 +94,9 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
     var realData by remember { mutableStateOf<List<PembayaranData>>(emptyList()) }
     var registeredAdmins by remember { mutableStateOf<List<String>>(emptyList()) }
     var registeredAreas by remember { mutableStateOf<List<String>>(emptyList()) }
+    var rawAreaList by remember { mutableStateOf<List<Area>>(emptyList()) }
     
-    var selectedAdmin by remember { mutableStateOf("Semua Admin") }
-    var selectedBulan by remember { mutableStateOf(currentMonthName) }
-    var selectedArea by remember { mutableStateOf("Semua Area") }
     var isLoading by remember { mutableStateOf(false) }
-    
     val coroutineScope = rememberCoroutineScope()
 
     fun loadData() {
@@ -97,6 +109,8 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                 val admins = try { ApiClient.apiService.getAdmins() } catch (e: Exception) { emptyList() }
                 val areas = try { ApiClient.apiService.getAreas() } catch (e: Exception) { emptyList() }
                 
+                rawAreaList = areas
+                UserSession.cachedAreas = areas
                 registeredAdmins = admins.map { it.name }.distinct()
                 registeredAreas = areas.map { it.name }.distinct()
 
@@ -138,32 +152,108 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
         loadData()
     }
 
-    // Dynamic Filter Option Lists
-    val filterOptionsAdmin by remember(registeredAdmins) {
+    // Resolving areas based on rights of the Collector / Admin
+    val allowedAreaNames by remember(currentUser, registeredAreas, rawAreaList, isCollector) {
         derivedStateOf {
-            listOf("Semua Admin") + registeredAdmins
+            val user = currentUser
+            if (!isCollector || user == null) {
+                registeredAreas
+            } else {
+                val userAreaId = user.area_id?.trim()
+                if (userAreaId.isNullOrBlank() || userAreaId.equals("semua", ignoreCase = true)) {
+                    registeredAreas
+                } else {
+                    val allowedParts = userAreaId.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    val names = allowedParts.map { part ->
+                        rawAreaList.find { it.id.equals(part, ignoreCase = true) }?.name
+                            ?: rawAreaList.find { it.name.equals(part, ignoreCase = true) }?.name
+                            ?: part
+                    }.distinct()
+                    names.ifEmpty { registeredAreas }
+                }
+            }
         }
     }
+
+    // Dynamic Filter Option Lists: Collector can ONLY see their own admin name and authorized areas
+    val filterOptionsAdmin by remember(isCollector, relatedAdminName, registeredAdmins) {
+        derivedStateOf {
+            if (isCollector) {
+                listOf(relatedAdminName)
+            } else {
+                listOf("Semua Admin") + registeredAdmins
+            }
+        }
+    }
+
     val filterOptionsBulan = remember {
         listOf(
             "Semua Bulan", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
             "Juli", "Agustus", "September", "Oktober", "November", "Desember"
         )
     }
-    val filterOptionsArea by remember(registeredAreas, realData) {
+
+    val filterOptionsArea by remember(isCollector, allowedAreaNames, registeredAreas, realData) {
         derivedStateOf {
-            listOf("Semua Area") + (registeredAreas + realData.map { it.area }).distinct()
+            if (isCollector) {
+                if (allowedAreaNames.size > 1) {
+                    listOf("Semua Area") + allowedAreaNames
+                } else if (allowedAreaNames.isNotEmpty()) {
+                    allowedAreaNames
+                } else {
+                    listOf("Semua Area")
+                }
+            } else {
+                listOf("Semua Area") + (registeredAreas + realData.map { it.area }).distinct()
+            }
         }
     }
 
-    // Real-time Reactive Filtering with monthly cycle support
-    val displayedData by remember(realData, selectedAdmin, selectedBulan, selectedArea) {
+    var selectedAdmin by remember(isCollector, relatedAdminName) {
+        mutableStateOf(if (isCollector && relatedAdminName.isNotBlank()) relatedAdminName else "Semua Admin")
+    }
+    var selectedBulan by remember { mutableStateOf(currentMonthName) }
+    var selectedArea by remember(isCollector) { mutableStateOf("Semua Area") }
+
+    LaunchedEffect(filterOptionsAdmin) {
+        if (selectedAdmin !in filterOptionsAdmin && filterOptionsAdmin.isNotEmpty()) {
+            selectedAdmin = filterOptionsAdmin.first()
+        }
+    }
+
+    LaunchedEffect(filterOptionsArea) {
+        if (selectedArea !in filterOptionsArea && filterOptionsArea.isNotEmpty()) {
+            selectedArea = if (filterOptionsArea.contains("Semua Area")) "Semua Area" else filterOptionsArea.first()
+        }
+    }
+
+    // Real-time Reactive Filtering with collector isolation and monthly cycle support
+    val displayedData by remember(realData, selectedAdmin, selectedBulan, selectedArea, isCollector, allowedAreaNames, relatedAdminName, relatedAdminUsername) {
         derivedStateOf {
             realData.filter { item ->
-                val matchAdmin = (selectedAdmin == "Semua Admin" || item.adminName == selectedAdmin)
+                val matchAdmin = if (isCollector) {
+                    item.adminName.trim().equals(relatedAdminName.trim(), ignoreCase = true) ||
+                    (relatedAdminUsername.isNotBlank() && item.adminName.trim().equals(relatedAdminUsername.trim(), ignoreCase = true)) ||
+                    (selectedAdmin.isNotBlank() && item.adminName.trim().equals(selectedAdmin.trim(), ignoreCase = true))
+                } else {
+                    selectedAdmin == "Semua Admin" || item.adminName.equals(selectedAdmin, ignoreCase = true)
+                }
+
                 val matchBulan = (selectedBulan == "Semua Bulan" || selectedBulan == "Bulan" || item.payMonth.equals(selectedBulan, ignoreCase = true))
                 val matchYear = (selectedBulan == "Semua Bulan" || item.payYear == 0 || item.payYear == currentYear)
-                val matchArea = (selectedArea == "Semua Area" || item.area == selectedArea)
+                
+                val matchArea = if (isCollector) {
+                    if (selectedArea == "Semua Area") {
+                        allowedAreaNames.isEmpty() ||
+                        allowedAreaNames.any { it.equals(item.area, ignoreCase = true) } ||
+                        UserSession.isAreaNameAllowed(item.area)
+                    } else {
+                        item.area.equals(selectedArea, ignoreCase = true)
+                    }
+                } else {
+                    selectedArea == "Semua Area" || item.area.equals(selectedArea, ignoreCase = true)
+                }
+
                 matchAdmin && matchBulan && matchYear && matchArea
             }
         }
@@ -181,12 +271,22 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { 
-                    Text(
-                        text = "Pembayaran by Admin", 
-                        color = textMain, 
-                        fontSize = 18.sp, 
-                        fontWeight = FontWeight.Bold
-                    ) 
+                    Column {
+                        Text(
+                            text = if (isCollector) "Pembayaran by $relatedAdminName" else "Pembayaran by Admin", 
+                            color = textMain, 
+                            fontSize = 17.sp, 
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (isCollector) {
+                            Text(
+                                text = "Mode Kolektor • Khusus Akun Terkait",
+                                color = primaryColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -215,7 +315,7 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // High-fidelity Filter Card (With exact requested dropdowns)
+            // High-fidelity Filter Card (With collector restrictions applied)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -228,16 +328,37 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "Filter Laporan", 
-                        color = textMain, 
-                        fontSize = 14.sp, 
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isCollector) "Filter Pembayaran Kolektor" else "Filter Laporan", 
+                            color = textMain, 
+                            fontSize = 14.sp, 
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (isCollector) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(primaryColor.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = "Akses Khusus",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = primaryColor
+                                )
+                            }
+                        }
+                    }
                     
-                    // Admin Dropdown
+                    // Admin Dropdown - Only shows the related admin for Collector
                     CustomExposedDropdown(
-                        label = "Admin Penerima",
+                        label = if (isCollector) "Admin Penerima (Terkunci)" else "Admin Penerima",
                         selectedOption = selectedAdmin,
                         options = filterOptionsAdmin,
                         onOptionSelected = { selectedAdmin = it },
@@ -260,9 +381,9 @@ fun PembayaranByAdminScreen(onBack: () -> Unit) {
                             modifier = Modifier.weight(1f)
                         )
 
-                        // Dropdown Area
+                        // Dropdown Area - Only shows authorized areas for Collector
                         CustomExposedDropdown(
-                            label = "Area",
+                            label = if (isCollector) "Hak Akses Area" else "Area",
                             selectedOption = selectedArea,
                             options = filterOptionsArea,
                             onOptionSelected = { selectedArea = it },

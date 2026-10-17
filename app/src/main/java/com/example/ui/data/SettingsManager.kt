@@ -18,6 +18,7 @@ object SettingsManager {
     private var appContext: Context? = null
 
     val appVersionFlow = kotlinx.coroutines.flow.MutableStateFlow("v1.6.1")
+    val tenantInfosFlow = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
 
     fun isVersionGreaterOrEqual(v1: String, v2: String): Boolean {
         fun parseParts(v: String): List<Int> {
@@ -46,6 +47,7 @@ object SettingsManager {
         themeStateFlow.value = appTheme
         fontScaleStateFlow.value = fontScale
         appVersionFlow.value = getEffectiveAppVersion(context)
+        reloadTenantInfosForActiveDatabase()
         restoreInvoiceSettingsIfPresent(context)
         syncSettingsFromRemote(context)
     }
@@ -298,9 +300,10 @@ object SettingsManager {
         }
     }
 
-    fun syncSettingsToRemote() {
+    fun syncSettingsToRemote(targetDbName: String? = null) {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             try {
+                val currentDb = targetDbName?.takeIf { it.isNotBlank() } ?: getActiveDbName()
                 val settingsMap = mutableMapOf<String, String>()
                 settingsMap["company_name"] = companyName
                 settingsMap["company_slogan"] = companySlogan
@@ -325,9 +328,14 @@ object SettingsManager {
                 settingsMap["wa_template_isolir"] = waTemplateIsolir
                 settingsMap["wa_template_otp"] = waTemplateOtp
                 appliedAppVersion?.let { settingsMap["applied_app_version"] = it }
+                val key = getTenantInfoPrefsKey(currentDb)
+                val tenantJson = prefs.getString(key, "[]") ?: "[]"
+                settingsMap["tenant_info_list"] = tenantJson
+                settingsMap["tenant_info_list_$currentDb"] = tenantJson
+                settingsMap["db_name"] = currentDb
 
                 com.example.ui.data.remote.ApiClient.apiService.saveAppSettings(settingsMap)
-                android.util.Log.d("SettingsManager", "Pengaturan aplikasi berhasil disimpan ke MySQL database")
+                android.util.Log.d("SettingsManager", "Pengaturan aplikasi (Tenant DB: $currentDb) berhasil disimpan ke remote")
             } catch (e: Exception) {
                 android.util.Log.w("SettingsManager", "Gagal sync pengaturan ke MySQL: ${e.message}")
             }
@@ -369,6 +377,21 @@ object SettingsManager {
                     remote["wa_template_payment_success"]?.let { if (it.isNotBlank()) editor.putString("wa_template_payment_success", it) }
                     remote["wa_template_isolir"]?.let { if (it.isNotBlank()) editor.putString("wa_template_isolir", it) }
                     remote["wa_template_otp"]?.let { if (it.isNotBlank()) editor.putString("wa_template_otp", it) }
+
+                    val currentDb = getActiveDbName()
+                    val isolatedKey = "tenant_info_list_$currentDb"
+                    val remoteTenantJson = remote[isolatedKey] ?: remote["tenant_info_list"]
+                    if (!remoteTenantJson.isNullOrBlank()) {
+                        val key = getTenantInfoPrefsKey(currentDb)
+                        editor.putString(key, remoteTenantJson)
+                        try {
+                            val list = kotlinx.serialization.json.Json.decodeFromString<List<String>>(remoteTenantJson)
+                            tenantInfosFlow.value = list
+                            android.util.Log.d("SettingsManager", "Isolasi Tenant DB: Sinkronisasi remote berhasil untuk [$currentDb] (${list.size} info)")
+                        } catch (e: Exception) {
+                            // Ignore
+                        }
+                    }
                     editor.apply()
                     android.util.Log.d("SettingsManager", "Pengaturan aplikasi berhasil disinkronkan dari MySQL")
                 }
@@ -501,19 +524,73 @@ object SettingsManager {
             syncSettingsToRemote()
         }
 
-    var tenantInfos: List<String>
-        get() {
-            val jsonStr = prefs.getString("tenant_info_list", "[]") ?: "[]"
+    fun getActiveDbName(): String {
+        return UserSession.currentUser.value?.db_name?.takeIf { it.isNotBlank() }
+            ?: appContext?.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+                ?.getString("user_db_name", null)?.takeIf { it.isNotBlank() }
+            ?: "tenant_default"
+    }
+
+    private fun getTenantInfoPrefsKey(dbName: String? = null): String {
+        val targetDb = dbName?.takeIf { it.isNotBlank() } ?: getActiveDbName()
+        val safeKey = targetDb.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        return "tenant_info_list_$safeKey"
+    }
+
+    fun getTenantInfosForDb(dbName: String? = null): List<String> {
+        val targetDb = dbName?.takeIf { it.isNotBlank() } ?: getActiveDbName()
+        val key = getTenantInfoPrefsKey(targetDb)
+        val jsonStr = prefs.getString(key, null)
+        if (jsonStr != null) {
             return try {
                 kotlinx.serialization.json.Json.decodeFromString<List<String>>(jsonStr)
             } catch (e: Exception) {
                 emptyList()
             }
         }
-        set(value) {
-            val jsonStr = kotlinx.serialization.json.Json.encodeToString(value)
-            prefs.edit().putString("tenant_info_list", jsonStr).apply()
+        // Fallback for legacy key if this is default database
+        if (targetDb == "akbarmedia" || targetDb == "tenant_default") {
+            val legacy = prefs.getString("tenant_info_list", null)
+            if (!legacy.isNullOrBlank()) {
+                return try {
+                    val list = kotlinx.serialization.json.Json.decodeFromString<List<String>>(legacy)
+                    prefs.edit().putString(key, legacy).apply()
+                    list
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
         }
+        return emptyList()
+    }
+
+    fun setTenantInfosForDb(value: List<String>, dbName: String? = null) {
+        val targetDb = dbName?.takeIf { it.isNotBlank() } ?: getActiveDbName()
+        val key = getTenantInfoPrefsKey(targetDb)
+        val jsonStr = kotlinx.serialization.json.Json.encodeToString(value)
+        prefs.edit().putString(key, jsonStr).apply()
+        if (targetDb == getActiveDbName()) {
+            tenantInfosFlow.value = value
+        }
+        syncSettingsToRemote(targetDb)
+    }
+
+    var tenantInfos: List<String>
+        get() = getTenantInfosForDb(getActiveDbName())
+        set(value) {
+            setTenantInfosForDb(value, getActiveDbName())
+        }
+
+    fun reloadTenantInfosForActiveDatabase(dbName: String? = null) {
+        val targetDb = dbName ?: getActiveDbName()
+        val list = getTenantInfosForDb(targetDb)
+        tenantInfosFlow.value = list
+        android.util.Log.d("SettingsManager", "Isolasi Tenant DB: Memuat info terisolasi untuk [$targetDb] (${list.size} item)")
+    }
+
+    fun onSessionCleared() {
+        tenantInfosFlow.value = emptyList()
+    }
 
     var lastNotifiedInfo: String
         get() = prefs.getString("last_notified_info", "") ?: ""

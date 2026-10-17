@@ -65,7 +65,10 @@ object PembukuanRoute
 object UangDiAdminRoute
 
 @Serializable
-object PembayaranByAdminRoute
+data class PembayaranByAdminRoute(
+    val adminName: String? = null,
+    val fromCollector: Boolean = false
+)
 
 @Serializable
 data class SemuaPembukuanRoute(val initialType: String = "")
@@ -135,3 +138,5 @@ object NocDashboardRoute
 object InfoTenantRoute
 @Serializable
 object SinkronisasiRoute
+@Serializable
+object CollectorDashboardRoute

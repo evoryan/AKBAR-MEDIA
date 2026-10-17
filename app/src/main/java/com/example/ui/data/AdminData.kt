@@ -132,6 +132,9 @@ object UserSession {
         
         // Isolasi notifikasi pembayaran secara ketat per database tenant
         updateTenantNotificationSubscription(context, user.db_name)
+        // Sinkronkan isolasi info tenant per database
+        SettingsManager.reloadTenantInfosForActiveDatabase(user.db_name)
+        SettingsManager.syncSettingsFromRemote(context)
     }
     
     fun loadSession(context: Context): Boolean {
@@ -154,6 +157,9 @@ object UserSession {
             
             // Sinkronkan kembali isolasi notifikasi per database tenant saat session aktif dimuat
             updateTenantNotificationSubscription(context, dbName)
+            // Sinkronkan isolasi info tenant per database
+            SettingsManager.reloadTenantInfosForActiveDatabase(dbName)
+            SettingsManager.syncSettingsFromRemote(context)
             return true
         }
         return false
@@ -249,6 +255,7 @@ object UserSession {
             safeUnsubscribeFromTopic(context, lastTopic)
         }
         safeUnsubscribeFromTopic(context, "tenant_superadmin")
+        SettingsManager.onSessionCleared()
         sharedPrefs.edit().clear().apply()
     }
 }

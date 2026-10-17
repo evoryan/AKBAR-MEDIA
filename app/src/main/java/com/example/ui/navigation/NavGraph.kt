@@ -85,7 +85,24 @@ fun AkbarMediaNavGraph() {
                     onNavigateToManageSecrets = { areaId, filter ->
                         navController.navigate(ManageSecretsRoute(areaId = areaId, initialFilter = filter))
                     },
-                    onNavigateToStockBarang = { navController.navigate(StockBarangRoute) }
+                    onNavigateToStockBarang = { navController.navigate(StockBarangRoute) },
+                    onNavigateToQueue = { navController.navigate(QueueRoute) },
+                    onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) }
+                )
+            }
+
+            composable<CollectorDashboardRoute> {
+                com.example.ui.screens.CollectorDashboardScreen(
+                    onNavigateToBilling = { tab -> navController.navigate(BillingRoute(tab)) },
+                    onNavigateToCustomers = { navController.navigate(CustomersRoute) },
+                    onNavigateToPembayaranByAdmin = {
+                        val curr = com.example.ui.data.UserSession.currentUser.value
+                        navController.navigate(PembayaranByAdminRoute(adminName = curr?.name, fromCollector = true))
+                    },
+                    onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) },
+                    onNavigateToManageSecrets = { areaId, filter ->
+                        navController.navigate(ManageSecretsRoute(areaId = areaId, initialFilter = filter))
+                    }
                 )
             }
 
@@ -98,13 +115,21 @@ fun AkbarMediaNavGraph() {
                     },
                     onNavigateToDashboard = {
                         val currentUser = com.example.ui.data.UserSession.currentUser.value
-                        if (currentUser?.role == com.example.ui.data.UserRole.TEKNISI) {
-                            navController.navigate(NocDashboardRoute) {
-                                popUpTo(SplashRoute) { inclusive = true }
+                        when (currentUser?.role) {
+                            com.example.ui.data.UserRole.TEKNISI -> {
+                                navController.navigate(NocDashboardRoute) {
+                                    popUpTo(SplashRoute) { inclusive = true }
+                                }
                             }
-                        } else {
-                            navController.navigate(DashboardRoute) {
-                                popUpTo(SplashRoute) { inclusive = true }
+                            com.example.ui.data.UserRole.COLLECTOR -> {
+                                navController.navigate(CollectorDashboardRoute) {
+                                    popUpTo(SplashRoute) { inclusive = true }
+                                }
+                            }
+                            else -> {
+                                navController.navigate(DashboardRoute) {
+                                    popUpTo(SplashRoute) { inclusive = true }
+                                }
                             }
                         }
                     }
@@ -115,13 +140,21 @@ fun AkbarMediaNavGraph() {
                 LoginScreen(
                     onLoginSuccess = {
                         val currentUser = com.example.ui.data.UserSession.currentUser.value
-                        if (currentUser?.role == com.example.ui.data.UserRole.TEKNISI) {
-                            navController.navigate(NocDashboardRoute) {
-                                popUpTo(LoginRoute) { inclusive = true }
+                        when (currentUser?.role) {
+                            com.example.ui.data.UserRole.TEKNISI -> {
+                                navController.navigate(NocDashboardRoute) {
+                                    popUpTo(LoginRoute) { inclusive = true }
+                                }
                             }
-                        } else {
-                            navController.navigate(DashboardRoute) {
-                                popUpTo(LoginRoute) { inclusive = true }
+                            com.example.ui.data.UserRole.COLLECTOR -> {
+                                navController.navigate(CollectorDashboardRoute) {
+                                    popUpTo(LoginRoute) { inclusive = true }
+                                }
+                            }
+                            else -> {
+                                navController.navigate(DashboardRoute) {
+                                    popUpTo(LoginRoute) { inclusive = true }
+                                }
                             }
                         }
                     }
@@ -142,7 +175,8 @@ fun AkbarMediaNavGraph() {
                     onNavigateToSetting = { navController.navigate(SettingRoute) },
                     onNavigateToJaringan = { navController.navigate(JaringanRoute) },
                     onNavigateToProfile = { navController.navigate(ProfileRoute) },
-                    onNavigateToGangguan = { navController.navigate(GangguanRoute) }
+                    onNavigateToGangguan = { navController.navigate(GangguanRoute) },
+                    onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) }
                 )
             }
 
@@ -271,7 +305,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToBilling = { tab -> navController.navigate(BillingRoute(tab)) },
                     onBack = { navController.popBackStack() },
                     onNavigateToUangDiAdmin = { navController.navigate(UangDiAdminRoute) },
-                    onNavigateToPembayaranByAdmin = { navController.navigate(PembayaranByAdminRoute) },
+                    onNavigateToPembayaranByAdmin = { navController.navigate(PembayaranByAdminRoute()) },
                     onNavigateToSemuaPembukuan = { type -> navController.navigate(SemuaPembukuanRoute(type)) },
                     onNavigateToRangkuman = { navController.navigate(RangkumanRoute) }
                 )
@@ -279,8 +313,13 @@ fun AkbarMediaNavGraph() {
             composable<UangDiAdminRoute> {
                 UangDiAdminScreen(onBack = { navController.popBackStack() })
             }
-            composable<PembayaranByAdminRoute> {
-                PembayaranByAdminScreen(onBack = { navController.popBackStack() })
+            composable<PembayaranByAdminRoute> { backStackEntry ->
+                val args = backStackEntry.toRoute<PembayaranByAdminRoute>()
+                PembayaranByAdminScreen(
+                    onBack = { navController.popBackStack() },
+                    filterAdminName = args.adminName,
+                    fromCollector = args.fromCollector
+                )
             }
             composable<SemuaPembukuanRoute> {
                 val args = it.toRoute<SemuaPembukuanRoute>()
@@ -400,13 +439,21 @@ fun AkbarMediaNavGraph() {
                     currentRoute = currentDestination,
                     onNavigateToDashboard = { 
                         val currentUser = com.example.ui.data.UserSession.currentUser.value
-                        if (currentUser?.role == com.example.ui.data.UserRole.TEKNISI) {
-                            navController.navigate(NocDashboardRoute) {
-                                popUpTo(NocDashboardRoute) { inclusive = true }
+                        when (currentUser?.role) {
+                            com.example.ui.data.UserRole.TEKNISI -> {
+                                navController.navigate(NocDashboardRoute) {
+                                    popUpTo(NocDashboardRoute) { inclusive = true }
+                                }
                             }
-                        } else {
-                            navController.navigate(DashboardRoute) {
-                                popUpTo(DashboardRoute) { inclusive = true }
+                            com.example.ui.data.UserRole.COLLECTOR -> {
+                                navController.navigate(CollectorDashboardRoute) {
+                                    popUpTo(CollectorDashboardRoute) { inclusive = true }
+                                }
+                            }
+                            else -> {
+                                navController.navigate(DashboardRoute) {
+                                    popUpTo(DashboardRoute) { inclusive = true }
+                                }
                             }
                         }
                     },

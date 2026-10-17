@@ -32,10 +32,10 @@ fun FloatingNavBar(
 ) {
     val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
     val navBg = if(isDark) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
-    val navBorder = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF).copy(alpha = 0.3f) else androidx.compose.ui.graphics.Color(0xFF0066FF).copy(alpha = 0.3f)
-    val primaryContainer = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF).copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color(0xFF0066FF).copy(alpha = 0.15f)
-    val onPrimaryContainer = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
-    val textSecondary = if(isDark) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val navBorder = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF).copy(alpha = 0.3f) else androidx.compose.ui.graphics.Color(0xFFCBD5E1)
+    val primaryContainer = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF).copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color(0xFFE0EDFF)
+    val onPrimaryContainer = if(isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0265DC)
+    val textSecondary = if(isDark) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF475569)
 
     Box(
         modifier = Modifier
@@ -57,7 +57,7 @@ fun FloatingNavBar(
             NavItem(
                 icon = Icons.Default.Dashboard,
                 label = "Beranda",
-                isSelected = currentRoute?.contains("DashboardRoute") == true || currentRoute?.contains("NocDashboardRoute") == true,
+                isSelected = currentRoute?.contains("DashboardRoute") == true || currentRoute?.contains("NocDashboardRoute") == true || currentRoute?.contains("CollectorDashboardRoute") == true,
                 primaryContainer = primaryContainer,
                 onPrimaryContainer = onPrimaryContainer,
                 textSecondary = textSecondary,

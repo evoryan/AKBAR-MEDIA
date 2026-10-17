@@ -52,7 +52,9 @@ fun NocDashboardScreen(
     onNavigateToSetting: () -> Unit = {},
     onNavigateToDashboard: () -> Unit = {},
     onNavigateToManageSecrets: (String, String) -> Unit = { _, _ -> },
-    onNavigateToStockBarang: () -> Unit = {}
+    onNavigateToStockBarang: () -> Unit = {},
+    onNavigateToQueue: () -> Unit = {},
+    onNavigateToInfoTenant: () -> Unit = {}
 ) {
     val localContext = LocalContext.current
     val currentUser by com.example.ui.data.UserSession.currentUser.collectAsState()
@@ -89,6 +91,7 @@ fun NocDashboardScreen(
         
         // Asynchronously fetch fresh data in the background (Parallel/Background Fetching)
         try {
+            com.example.ui.data.SettingsManager.syncSettingsFromRemote(localContext)
             areaList = com.example.ui.data.UserSession.getOrFetchAreas()
         } catch (e: Exception) {
             // let cached or hardcoded fallback areas render smoothly
@@ -161,119 +164,15 @@ fun NocDashboardScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 1.5. Information & System Broadcast Card (Polished & Material 3 compliant)
-            NocInfoCard()
+            // 1.5. Information & Tenant Info Broadcast Card
+            NocInfoCard(onNavigateToInfoTenant = onNavigateToInfoTenant)
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // 2. Data PPPoE dari Mikrotik (Swipeable Horizontal Pager)
             NocPppoePagerCard(allowedAreas = allowedAreas, onNavigateToManageSecrets = onNavigateToManageSecrets)
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 2.8. Operasional Cards (Pembukuan & Stock Barang in 1 row)
-            Text(
-                text = "OPERASIONAL",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = NocTextSecondary,
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Card(
-                    onClick = onNavigateToPembukuan,
-                    colors = CardDefaults.cardColors(containerColor = NocCardBg),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .border(1.dp, NocBorder, RoundedCornerShape(12.dp))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(NocPrimary.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AccountBalanceWallet,
-                                contentDescription = null,
-                                tint = NocPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Pembukuan",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NocTextPrimary
-                            )
-                            Text(
-                                text = "Kas & Transaksi",
-                                fontSize = 9.sp,
-                                color = NocTextSecondary
-                            )
-                        }
-                    }
-                }
-
-                Card(
-                    onClick = onNavigateToStockBarang,
-                    colors = CardDefaults.cardColors(containerColor = NocCardBg),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .border(1.dp, NocBorder, RoundedCornerShape(12.dp))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(NocPrimary.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Storage,
-                                contentDescription = null,
-                                tint = NocPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Stock Barang",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NocTextPrimary
-                            )
-                            Text(
-                                text = "Inventaris Alat",
-                                fontSize = 9.sp,
-                                color = NocTextSecondary
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 3. Quick Control Server & Mikrotik -> Network (ACS, Mikrotik Core, Jaringan)
+            // 3. Quick Control Server & Mikrotik -> Network Grid 2x2
             Text(
                 text = "NETWORK",
                 fontSize = 11.sp,
@@ -282,28 +181,44 @@ fun NocDashboardScreen(
                 letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.height(6.dp))
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                NocToolButton(
-                    icon = Icons.Default.Dns,
-                    label = "ACS",
-                    modifier = Modifier.weight(1f),
-                    onClick = onNavigateToAcs
-                )
-                NocToolButton(
-                    icon = Icons.Default.Router,
-                    label = "Mikrotik Core",
-                    modifier = Modifier.weight(1f),
-                    onClick = onNavigateToMikrotik
-                )
-                NocToolButton(
-                    icon = Icons.Default.Hub,
-                    label = "Jaringan",
-                    modifier = Modifier.weight(1f),
-                    onClick = onNavigateToJaringan
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    NocToolButton(
+                        icon = Icons.Default.Dns,
+                        label = "ACS",
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToAcs
+                    )
+                    NocToolButton(
+                        icon = Icons.Default.Router,
+                        label = "Mikrotik",
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToMikrotik
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    NocToolButton(
+                        icon = Icons.Default.Hub,
+                        label = "Jaringan",
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToJaringan
+                    )
+                    NocToolButton(
+                        icon = Icons.Default.Speed,
+                        label = "Queue",
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToQueue
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -363,47 +278,165 @@ fun NocHeader(operatorName: String, areaAccess: String, dateTimeString: String) 
 }
 
 @Composable
-fun NocInfoCard(modifier: Modifier = Modifier) {
+fun NocInfoCard(
+    modifier: Modifier = Modifier,
+    onNavigateToInfoTenant: () -> Unit = {}
+) {
+    val tenantInfos by com.example.ui.data.SettingsManager.tenantInfosFlow.collectAsState()
+    val currentUser by com.example.ui.data.UserSession.currentUser.collectAsState()
+    val companyName = remember { com.example.ui.data.SettingsManager.companyName }
+
     Card(
+        onClick = onNavigateToInfoTenant,
         colors = CardDefaults.cardColors(containerColor = NocCardBg),
         shape = RoundedCornerShape(12.dp),
         modifier = modifier
             .fillMaxWidth()
             .border(1.dp, NocPrimary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(NocPrimary.copy(alpha = 0.12f), CircleShape),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = NocPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(NocPrimary.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = "Info Tenant",
+                            tint = NocPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "DATA INFO TENANT",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NocPrimary,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = "Info dari Akun Super Admin",
+                            fontSize = 9.sp,
+                            color = NocTextSecondary
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .background(NocPrimary.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                        .border(1.dp, NocPrimary.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = if (tenantInfos.isNotEmpty()) "${tenantInfos.size} Info" else "Detail",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NocPrimary
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = NocPrimary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = "INFO JALUR UTAMA & PEMELIHARAAN",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = NocPrimary,
-                    letterSpacing = 0.5.sp
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Semua gateway utama berstatus ONLINE & STABIL. Pemeliharaan berkala backbone fiber optik terjadwal malam ini pukul 01:00 WIB.",
-                    fontSize = 10.sp,
-                    color = NocTextPrimary,
-                    lineHeight = 14.sp
-                )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (tenantInfos.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    tenantInfos.take(3).forEach { info ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(NocBorder.copy(alpha = 0.45f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(NocPrimary)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = info,
+                                    fontSize = 11.sp,
+                                    color = NocTextPrimary,
+                                    lineHeight = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Dibuat oleh: Super Admin",
+                                    fontSize = 9.sp,
+                                    color = NocPrimary.copy(alpha = 0.85f),
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    if (tenantInfos.size > 3) {
+                        Text(
+                            text = "+${tenantInfos.size - 3} informasi lainnya (ketuk untuk lihat semua)",
+                            fontSize = 9.sp,
+                            color = NocTextSecondary,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(NocBorder.copy(alpha = 0.25f))
+                        .padding(vertical = 12.dp, horizontal = 10.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = NocTextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Belum ada informasi tenant yang dibuat akun super_admin.",
+                            fontSize = 10.sp,
+                            color = NocTextSecondary
+                        )
+                    }
+                }
             }
         }
     }
@@ -451,18 +484,36 @@ fun NocToolButton(icon: ImageVector, label: String, modifier: Modifier = Modifie
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = NocCardBg),
-        shape = RoundedCornerShape(8.dp),
-        modifier = modifier.border(1.dp, NocBorder, RoundedCornerShape(8.dp))
+        shape = RoundedCornerShape(10.dp),
+        modifier = modifier.border(1.dp, NocBorder, RoundedCornerShape(10.dp))
     ) {
-        Column(
+        Row(
             modifier = Modifier
-                .padding(10.dp)
+                .padding(horizontal = 12.dp, vertical = 12.dp)
                 .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = NocPrimary, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = label, fontSize = 10.sp, color = NocTextPrimary, fontWeight = FontWeight.Medium)
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(NocPrimary.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = NocPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                color = NocTextPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
