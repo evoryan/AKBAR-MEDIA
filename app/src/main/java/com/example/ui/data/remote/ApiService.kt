@@ -470,6 +470,49 @@ interface ApiService {
 
     @POST("api/settings/{key}")
     suspend fun saveAppSetting(@Path("key") key: String, @Body body: Map<String, String>): ApiResponse
+
+    // --- MANAJEMEN TENANT (manage_tenant.sh) ---
+    @GET("api/manage-tenant/list")
+    suspend fun getTenantsList(): List<TenantItem>
+
+    @POST("api/manage-tenant/add")
+    suspend fun createTenant(@Body request: CreateTenantRequest): ManageTenantActionResponse
+
+    @POST("api/manage-tenant/reset-password")
+    suspend fun resetTenantPassword(@Body request: ResetPasswordTenantRequest): ManageTenantActionResponse
+
+    @POST("api/manage-tenant/disable")
+    suspend fun disableTenant(@Body request: TenantActionRequest): ManageTenantActionResponse
+
+    @POST("api/manage-tenant/enable")
+    suspend fun enableTenant(@Body request: TenantActionRequest): ManageTenantActionResponse
+
+    @POST("api/manage-tenant/toggle-demo")
+    suspend fun toggleDemoTenant(@Body request: TenantActionRequest): ManageTenantActionResponse
+
+    @GET("api/manage-tenant/stats/{username}")
+    suspend fun getTenantStats(@Path("username") username: String): TenantStatsResponse
+
+    @POST("api/manage-tenant/backup")
+    suspend fun backupTenantDatabase(@Body request: BackupTenantRequest): ManageTenantActionResponse
+
+    @POST("api/manage-tenant/restore")
+    suspend fun restoreTenantDatabase(@Body request: RestoreTenantRequest): ManageTenantActionResponse
+
+    @POST("api/manage-tenant/update-db")
+    suspend fun updateTenantDatabases(@Body request: UpdateDbRequest): ManageTenantActionResponse
+
+    @POST("api/manage-tenant/delete")
+    suspend fun deleteTenant(@Body request: DeleteTenantRequest): ManageTenantActionResponse
+
+    @GET("api/manage-tenant/broadcast")
+    suspend fun getGlobalBroadcasts(): List<GlobalAnnouncement>
+
+    @POST("api/manage-tenant/broadcast")
+    suspend fun sendGlobalBroadcast(@Body request: BroadcastRequest): ManageTenantActionResponse
+
+    @DELETE("api/manage-tenant/broadcast/{id}")
+    suspend fun deleteGlobalBroadcast(@Path("id") id: String): ManageTenantActionResponse
 }
 
 @kotlinx.serialization.Serializable
@@ -567,3 +610,101 @@ data class MikrotikLog(
     val topics: String = "",
     val message: String = ""
 )
+
+@kotlinx.serialization.Serializable
+data class TenantItem(
+    val id: Int = 0,
+    val name: String = "",
+    val username: String = "",
+    val db_name: String = "",
+    val role: String = "SUPER_ADMIN",
+    val status: String = "ACTIVE",
+    val is_demo: Int = 0,
+    val created_at: String? = null,
+    val db_exists: String? = "✅ Ada",
+    val total_customers: String? = "0",
+    val total_users: String? = "0"
+)
+
+@kotlinx.serialization.Serializable
+data class TenantStatsResponse(
+    val name: String = "",
+    val username: String = "",
+    val db_name: String = "",
+    val status: String = "ACTIVE",
+    val is_demo: Int = 0,
+    val created_at: String? = null,
+    val total_customers: Int = 0,
+    val total_areas: Int = 0,
+    val total_transactions: Int = 0,
+    val total_invoices: Int = 0,
+    val total_users: Int = 0
+)
+
+@kotlinx.serialization.Serializable
+data class CreateTenantRequest(
+    val db_name: String,
+    val name: String,
+    val username: String,
+    val password: String,
+    val is_demo: Boolean = false
+)
+
+@kotlinx.serialization.Serializable
+data class ResetPasswordTenantRequest(
+    val username: String,
+    val new_password: String
+)
+
+@kotlinx.serialization.Serializable
+data class TenantActionRequest(
+    val username: String
+)
+
+@kotlinx.serialization.Serializable
+data class DeleteTenantRequest(
+    val username: String,
+    val confirmation: String
+)
+
+@kotlinx.serialization.Serializable
+data class BackupTenantRequest(
+    val db_name: String
+)
+
+@kotlinx.serialization.Serializable
+data class RestoreTenantRequest(
+    val db_name: String,
+    val sql_path: String
+)
+
+@kotlinx.serialization.Serializable
+data class UpdateDbRequest(
+    val target: String = "all"
+)
+
+@kotlinx.serialization.Serializable
+data class ManageTenantActionResponse(
+    val success: Boolean = true,
+    val message: String = "",
+    val details: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class GlobalAnnouncement(
+    val id: String = "",
+    val title: String = "PENGUMUMAN PUSAT",
+    val message: String = "",
+    val priority: String = "PENTING",
+    val author: String = "akbar2026",
+    val created_at: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class BroadcastRequest(
+    val message: String,
+    val priority: String = "PENTING",
+    val title: String = "PENGUMUMAN PUSAT (MASTER)"
+)
+
+

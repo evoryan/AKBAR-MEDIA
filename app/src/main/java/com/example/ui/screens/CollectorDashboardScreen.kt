@@ -585,6 +585,7 @@ private fun CollectorSystemAndTenantCard(
     collectorColor: Color
 ) {
     val tenantInfos by SettingsManager.tenantInfosFlow.collectAsState()
+    val globalAnnouncements by SettingsManager.globalAnnouncementsFlow.collectAsState()
     val currentUser by UserSession.currentUser.collectAsState()
     val companyName = remember { SettingsManager.companyName }
 
@@ -670,11 +671,49 @@ private fun CollectorSystemAndTenantCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Body: Active tenant announcements made by Super Admin
-            if (tenantInfos.isNotEmpty()) {
+            if (globalAnnouncements.isNotEmpty() || tenantInfos.isNotEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // PEMBERITAHUAN GLOBAL DARI MASTER AKBAR2026 (FONT WARNA KHUSUS)
+                    globalAnnouncements.forEach { broadcast ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(androidx.compose.ui.graphics.Color(0xFF78350F).copy(alpha = 0.25f))
+                                .border(1.dp, androidx.compose.ui.graphics.Color(0xFFF59E0B).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(androidx.compose.ui.graphics.Color(0xFFF59E0B))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "[PUSAT] ${broadcast.message}",
+                                    fontSize = 11.sp,
+                                    color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) 
+                                        androidx.compose.ui.graphics.Color(0xFFFBBF24) else androidx.compose.ui.graphics.Color(0xFFB45309), // Distinct Amber font color!
+                                    lineHeight = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Dibuat oleh: Master Admin akbar2026 (${broadcast.priority})",
+                                    fontSize = 9.sp,
+                                    color = androidx.compose.ui.graphics.Color(0xFFFCD34D),
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
                     tenantInfos.take(3).forEach { info ->
                         Row(
                             modifier = Modifier

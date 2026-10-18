@@ -19,6 +19,7 @@ object SettingsManager {
 
     val appVersionFlow = kotlinx.coroutines.flow.MutableStateFlow("v1.6.1")
     val tenantInfosFlow = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+    val globalAnnouncementsFlow = kotlinx.coroutines.flow.MutableStateFlow<List<com.example.ui.data.remote.GlobalAnnouncement>>(emptyList())
 
     fun isVersionGreaterOrEqual(v1: String, v2: String): Boolean {
         fun parseParts(v: String): List<Int> {
@@ -47,6 +48,7 @@ object SettingsManager {
         themeStateFlow.value = appTheme
         fontScaleStateFlow.value = fontScale
         appVersionFlow.value = getEffectiveAppVersion(context)
+        globalAnnouncementsFlow.value = globalAnnouncements
         reloadTenantInfosForActiveDatabase()
         restoreInvoiceSettingsIfPresent(context)
         syncSettingsFromRemote(context)
@@ -392,6 +394,21 @@ object SettingsManager {
                             // Ignore
                         }
                     }
+
+                    // Sinkronisasi pengumuman global master akbar2026 untuk seluruh user & DB
+                    remote["global_master_announcements"]?.let { remoteBroadcastJson ->
+                        if (remoteBroadcastJson.isNotBlank()) {
+                            editor.putString(KEY_GLOBAL_ANNOUNCEMENTS, remoteBroadcastJson)
+                            try {
+                                val broadcastList = kotlinx.serialization.json.Json.decodeFromString<List<com.example.ui.data.remote.GlobalAnnouncement>>(remoteBroadcastJson)
+                                globalAnnouncementsFlow.value = broadcastList
+                                android.util.Log.d("SettingsManager", "Pengumuman Master Global berhasil dimuat: ${broadcastList.size} pesan")
+                            } catch (e: Exception) {
+                                // Ignore
+                            }
+                        }
+                    }
+
                     editor.apply()
                     android.util.Log.d("SettingsManager", "Pengaturan aplikasi berhasil disinkronkan dari MySQL")
                 }
@@ -591,6 +608,25 @@ object SettingsManager {
     fun onSessionCleared() {
         tenantInfosFlow.value = emptyList()
     }
+
+    private const val KEY_GLOBAL_ANNOUNCEMENTS = "global_master_announcements"
+
+    var globalAnnouncements: List<com.example.ui.data.remote.GlobalAnnouncement>
+        get() {
+            if (!::prefs.isInitialized) return emptyList()
+            val jsonStr = prefs.getString(KEY_GLOBAL_ANNOUNCEMENTS, "[]") ?: "[]"
+            return try {
+                kotlinx.serialization.json.Json.decodeFromString(jsonStr)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        set(value) {
+            val jsonStr = kotlinx.serialization.json.Json.encodeToString(value)
+            prefs.edit().putString(KEY_GLOBAL_ANNOUNCEMENTS, jsonStr).apply()
+            globalAnnouncementsFlow.value = value
+        }
+
 
     var lastNotifiedInfo: String
         get() = prefs.getString("last_notified_info", "") ?: ""

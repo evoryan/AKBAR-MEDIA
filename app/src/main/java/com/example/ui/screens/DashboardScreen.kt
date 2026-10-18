@@ -232,12 +232,53 @@ fun DashboardScreen(
                         .verticalScroll(rememberScrollState())
                 ) {
                     val tenantInfos by com.example.ui.data.SettingsManager.tenantInfosFlow.collectAsState()
+                    val globalAnnouncements by com.example.ui.data.SettingsManager.globalAnnouncementsFlow.collectAsState()
+
+                    // PEMBERITAHUAN GLOBAL DARI MASTER PANEL (akbar2026) DENGAN WARNA FONT KHUSUS
+                    if (globalAnnouncements.isNotEmpty()) {
+                        globalAnnouncements.forEach { broadcast ->
+                            Surface(
+                                color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) 
+                                    androidx.compose.ui.graphics.Color(0xFF78350F).copy(alpha = 0.35f) else androidx.compose.ui.graphics.Color(0xFFFEF3C7),
+                                shape = RoundedCornerShape(6.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp, 
+                                    if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFF59E0B) else androidx.compose.ui.graphics.Color(0xFFD97706)
+                                ),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text("📢 ", fontSize = 12.sp)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "[PUSAT] ${broadcast.message}",
+                                            color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) 
+                                                androidx.compose.ui.graphics.Color(0xFFFBBF24) else androidx.compose.ui.graphics.Color(0xFFB45309),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            lineHeight = 16.sp
+                                        )
+                                        Text(
+                                            text = "Pemberitahuan Master (${broadcast.priority})",
+                                            color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) 
+                                                androidx.compose.ui.graphics.Color(0xFFFCD34D) else androidx.compose.ui.graphics.Color(0xFF92400E),
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (tenantInfos.isNotEmpty()) {
                         tenantInfos.forEach { info ->
                             Text("• $info", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                         }
-                    } else {
+                    } else if (globalAnnouncements.isEmpty()) {
                         Text("• Belum ada informasi tenant dari Super Admin", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666), fontSize = 12.sp)
                         Spacer(modifier = Modifier.height(4.dp))
                     }

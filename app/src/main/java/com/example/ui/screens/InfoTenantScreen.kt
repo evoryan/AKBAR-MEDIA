@@ -41,6 +41,7 @@ fun InfoTenantScreen(onBack: () -> Unit) {
 
     var newInfoText by remember { mutableStateOf("") }
     val infoList by SettingsManager.tenantInfosFlow.collectAsState()
+    val globalAnnouncements by SettingsManager.globalAnnouncementsFlow.collectAsState()
     var showError by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentDb) {
@@ -217,7 +218,7 @@ fun InfoTenantScreen(onBack: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (infoList.isEmpty()) {
+            if (infoList.isEmpty() && globalAnnouncements.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -236,6 +237,74 @@ fun InfoTenantScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
+                    // PEMBERITAHUAN GLOBAL DARI MASTER AKBAR2026 (WARNA FONT KHUSUS)
+                    items(globalAnnouncements) { broadcast ->
+                        val isDarkTheme = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    1.dp,
+                                    if (isDarkTheme) Color(0xFFF59E0B) else Color(0xFFD97706),
+                                    RoundedCornerShape(12.dp)
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isDarkTheme) Color(0xFF78350F).copy(alpha = 0.35f) else Color(0xFFFEF3C7)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Text("📢", fontSize = 16.sp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = broadcast.title.ifBlank { "PENGUMUMAN PUSAT (MASTER)" },
+                                            color = if (isDarkTheme) Color(0xFFFBBF24) else Color(0xFFB45309), // Distinct Amber / Gold font color
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        )
+                                        Surface(
+                                            color = if (isDarkTheme) Color(0xFFF59E0B).copy(alpha = 0.2f) else Color(0xFFD97706).copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = broadcast.priority,
+                                                color = if (isDarkTheme) Color(0xFFFBBF24) else Color(0xFFB45309),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = broadcast.message,
+                                        color = if (isDarkTheme) Color(0xFFFCD34D) else Color(0xFF78350F), // Distinct font color!
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        lineHeight = 18.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Berlaku untuk seluruh database • Pengirim: ${broadcast.author}",
+                                        color = if (isDarkTheme) Color(0xFFFDE68A) else Color(0xFF92400E),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     items(infoList) { infoItem ->
                         Card(
                             modifier = Modifier

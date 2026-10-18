@@ -140,3 +140,5 @@ object InfoTenantRoute
 object SinkronisasiRoute
 @Serializable
 object CollectorDashboardRoute
+@Serializable
+object ManageTenantRoute

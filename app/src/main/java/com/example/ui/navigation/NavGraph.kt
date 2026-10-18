@@ -369,6 +369,7 @@ fun AkbarMediaNavGraph() {
                     onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) },
                     onNavigateToSinkronisasi = { navController.navigate(SinkronisasiRoute) },
                     onNavigateToBotWa = { navController.navigate(BotWaRoute) },
+                    onNavigateToManageTenant = { navController.navigate(ManageTenantRoute) },
                     onLogout = {
                         val context = navController.context
                         com.example.ui.data.UserSession.clearSession(context)
@@ -381,6 +382,7 @@ fun AkbarMediaNavGraph() {
             
             composable<UpdateEmailRoute> { UpdateEmailScreen(onBack = { navController.popBackStack() }) }
             composable<InfoTenantRoute> { InfoTenantScreen(onBack = { navController.popBackStack() }) }
+            composable<ManageTenantRoute> { ManageTenantScreen(onBack = { navController.popBackStack() }) }
             composable<SinkronisasiRoute> { SinkronisasiScreen(onBack = { navController.popBackStack() }) }
             composable<UpdateProfilRoute> { UpdateProfilScreen(onBack = { navController.popBackStack() }) }
             composable<GantiPasswordRoute> { 

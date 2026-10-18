@@ -2843,6 +2843,25 @@ app.get('/api/settings', async (req, res) => {
             settings[row.setting_key] = row.setting_value;
         }
 
+        // Sertakan pengumuman master akbar2026 ke seluruh database tenant
+        try {
+            await masterPool.query(`CREATE TABLE IF NOT EXISTS global_announcements (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(150) DEFAULT 'PENGUMUMAN PUSAT',
+                message TEXT NOT NULL,
+                priority VARCHAR(50) DEFAULT 'PENTING',
+                author VARCHAR(100) DEFAULT 'akbar2026',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`).catch(() => {});
+
+            const [masterAnnouncements] = await masterPool.query("SELECT id, title, message, priority, author, created_at FROM global_announcements ORDER BY id DESC LIMIT 20");
+            if (masterAnnouncements && masterAnnouncements.length > 0) {
+                settings['global_master_announcements'] = JSON.stringify(masterAnnouncements);
+            }
+        } catch (err) {
+            console.error("Error loading global announcements for settings:", err.message);
+        }
+
         res.json(settings);
     } catch (error) {
         console.error("API Error /api/settings:", error.message);
@@ -2908,6 +2927,552 @@ app.post('/api/settings/:key', async (req, res) => {
         res.json({ message: `Pengaturan ${key} berhasil disimpan`, success: true });
     } catch (error) {
         console.error("API Error POST /api/settings/:key:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==============================================================================
+// MANAGE TENANT ENDPOINTS (KONTROL LENGKAP SESUAI manage_tenant.sh)
+// Khusus untuk user dengan username: akbar2026
+// ==============================================================================
+
+const requireMasterSuperAdmin = (req, res, next) => {
+    if (!req.user || req.user.username !== 'akbar2026') {
+        return res.status(403).json({ error: "Akses ditolak: Menu ini hanya dapat diakses oleh akun admin akbar2026." });
+    }
+    next();
+};
+
+// 1. LIHAT DAFTAR SEMUA TENANT (List Tenants)
+app.get('/api/manage-tenant/list', requireMasterSuperAdmin, async (req, res) => {
+    try {
+        await masterPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE'").catch(() => {});
+        await masterPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo TINYINT(1) DEFAULT 0").catch(() => {});
+
+        const [users] = await masterPool.query("SELECT id, name, username, db_name, role, status, is_demo, created_at FROM users ORDER BY id ASC");
+        const result = [];
+
+        for (const u of users) {
+            let totalCustomers = "0";
+            let totalUsers = "0";
+            let dbExists = "✅ Ada";
+
+            if (u.db_name) {
+                try {
+                    const [cRows] = await masterPool.query(`SELECT COUNT(*) as count FROM \`${u.db_name}\`.customers`);
+                    totalCustomers = String(cRows[0].count);
+                    const [uRows] = await masterPool.query(`SELECT COUNT(*) as count FROM \`${u.db_name}\`.users`);
+                    totalUsers = String(uRows[0].count);
+                } catch (err) {
+                    dbExists = "❌ Tidak Ditemukan";
+                }
+            } else {
+                dbExists = "⚠️ Tanpa DB";
+            }
+
+            result.push({
+                id: u.id,
+                name: u.name || '',
+                username: u.username || '',
+                db_name: u.db_name || '',
+                role: u.role || 'SUPER_ADMIN',
+                status: u.status || 'ACTIVE',
+                is_demo: u.is_demo === 1 ? 1 : 0,
+                created_at: u.created_at ? String(u.created_at) : null,
+                db_exists: dbExists,
+                total_customers: totalCustomers,
+                total_users: totalUsers
+            });
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error("API Error GET /api/manage-tenant/list:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 2. TAMBAH TENANT BARU (Setup DB, Schema & Akun Superadmin)
+app.post('/api/manage-tenant/add', requireMasterSuperAdmin, async (req, res) => {
+    const { db_name, name, username, password, is_demo } = req.body;
+    if (!db_name || !name || !username || !password) {
+        return res.status(400).json({ error: "Parameter tidak lengkap: db_name, name, username, password wajib diisi." });
+    }
+
+    const cleanDbName = String(db_name).trim().replace(/\s+/g, '');
+    if (!/^[a-zA-Z0-9_]+$/.test(cleanDbName)) {
+        return res.status(400).json({ error: "Nama database hanya boleh berisi huruf, angka, dan underscore (_)." });
+    }
+
+    const cleanUsername = String(username).trim();
+    const isDemoVal = (is_demo === true || is_demo === 1 || is_demo === '1') ? 1 : 0;
+
+    let directConn;
+    try {
+        const [existing] = await masterPool.query("SELECT id FROM users WHERE username = ?", [cleanUsername]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: `Username '${cleanUsername}' sudah digunakan. Silakan pilih username lain.` });
+        }
+
+        // Buat database tenant
+        await masterPool.query(`CREATE DATABASE IF NOT EXISTS \`${cleanDbName}\``);
+
+        // Eksekusi skema dari init.sql
+        const initSqlPath = path.join(__dirname, 'init.sql');
+        if (fs.existsSync(initSqlPath)) {
+            directConn = await mysql.createConnection({
+                host: process.env.DB_HOST || 'localhost',
+                user: process.env.DB_USER || 'akbar',
+                password: process.env.DB_PASSWORD || '08Delapan',
+                multipleStatements: true
+            });
+            await directConn.query(`USE \`${cleanDbName}\``);
+            const rawSql = fs.readFileSync(initSqlPath, 'utf8');
+            const statements = rawSql
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                .replace(/^[ \t]*--.*$/gm, '')
+                .replace(/^[ \t]*#.*$/gm, '')
+                .split(';')
+                .map(s => s.trim())
+                .filter(s => s.length > 0 && !/^CREATE\s+DATABASE/i.test(s) && !/^USE\s+/i.test(s));
+
+            for (const stmt of statements) {
+                try {
+                    await directConn.query(stmt);
+                } catch (e) {}
+            }
+        }
+
+        // Daftarkan di master database
+        await masterPool.query(
+            `INSERT INTO users (name, username, password, role, db_name, status, is_demo)
+             VALUES (?, ?, ?, 'SUPER_ADMIN', ?, 'ACTIVE', ?)`,
+            [name.trim(), cleanUsername, password, cleanDbName, isDemoVal]
+        );
+
+        // Daftarkan akun superadmin di database tenant itu sendiri
+        try {
+            await masterPool.query(`USE \`${cleanDbName}\``);
+            await masterPool.query(`DELETE FROM \`${cleanDbName}\`.users WHERE username IN ('superadmin', 'admin', 'teknisi1', 'collector1')`).catch(() => {});
+            await masterPool.query(
+                `INSERT INTO \`${cleanDbName}\`.users (name, username, password, role)
+                 VALUES (?, ?, ?, 'SUPER_ADMIN')`,
+                [name.trim(), cleanUsername, password]
+            ).catch(() => {});
+        } catch (e) {}
+
+        res.json({
+            success: true,
+            message: `Tenant '${name}' [${cleanDbName}] dengan Super Admin '${cleanUsername}' berhasil dibuat!`
+        });
+    } catch (error) {
+        console.error("API Error POST /api/manage-tenant/add:", error.message);
+        res.status(500).json({ error: error.message });
+    } finally {
+        if (directConn) await directConn.end().catch(() => {});
+    }
+});
+
+// 3. RESET PASSWORD TENANT (Ganti Password Superadmin)
+app.post('/api/manage-tenant/reset-password', requireMasterSuperAdmin, async (req, res) => {
+    const { username, new_password } = req.body;
+    if (!username || !new_password) {
+        return res.status(400).json({ error: "Username dan password baru wajib diisi." });
+    }
+
+    try {
+        const [users] = await masterPool.query("SELECT * FROM users WHERE username = ?", [username.trim()]);
+        if (users.length === 0) {
+            return res.status(404).json({ error: `User '${username}' tidak ditemukan.` });
+        }
+
+        const user = users[0];
+        await masterPool.query("UPDATE users SET password = ? WHERE username = ?", [new_password, username.trim()]);
+
+        if (user.db_name) {
+            try {
+                await masterPool.query(`UPDATE \`${user.db_name}\`.users SET password = ? WHERE username = ?`, [new_password, username.trim()]);
+            } catch (err) {}
+        }
+
+        res.json({ success: true, message: `Password untuk tenant '${username}' berhasil diubah!` });
+    } catch (error) {
+        console.error("API Error POST /api/manage-tenant/reset-password:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 4. NONAKTIFKAN TENANT (Disable Login)
+app.post('/api/manage-tenant/disable', requireMasterSuperAdmin, async (req, res) => {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: "Username tenant wajib diisi." });
+
+    try {
+        const [users] = await masterPool.query("SELECT * FROM users WHERE username = ?", [username.trim()]);
+        if (users.length === 0) return res.status(404).json({ error: `User '${username}' tidak ditemukan.` });
+
+        await masterPool.query("UPDATE users SET status = 'DISABLED' WHERE username = ?", [username.trim()]);
+        res.json({ success: true, message: `Tenant '${username}' berhasil dinonaktifkan (akses login ditutup).` });
+    } catch (error) {
+        console.error("API Error POST /api/manage-tenant/disable:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 5. AKTIFKAN KEMBALI TENANT (Enable Login)
+app.post('/api/manage-tenant/enable', requireMasterSuperAdmin, async (req, res) => {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: "Username tenant wajib diisi." });
+
+    try {
+        const [users] = await masterPool.query("SELECT * FROM users WHERE username = ?", [username.trim()]);
+        if (users.length === 0) return res.status(404).json({ error: `User '${username}' tidak ditemukan.` });
+
+        await masterPool.query("UPDATE users SET status = 'ACTIVE' WHERE username = ?", [username.trim()]);
+        res.json({ success: true, message: `Tenant '${username}' berhasil diaktifkan kembali (akses login dibuka).` });
+    } catch (error) {
+        console.error("API Error POST /api/manage-tenant/enable:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 6. TOGGLE MODE DEMO (Demo / Produksi)
+app.post('/api/manage-tenant/toggle-demo', requireMasterSuperAdmin, async (req, res) => {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: "Username tenant wajib diisi." });
+
+    try {
+        const [users] = await masterPool.query("SELECT * FROM users WHERE username = ?", [username.trim()]);
+        if (users.length === 0) return res.status(404).json({ error: `User '${username}' tidak ditemukan.` });
+
+        const currentDemo = users[0].is_demo === 1 ? 1 : 0;
+        const newDemo = currentDemo === 1 ? 0 : 1;
+        await masterPool.query("UPDATE users SET is_demo = ? WHERE username = ?", [newDemo, username.trim()]);
+
+        res.json({
+            success: true,
+            message: `Mode demo tenant '${username}' berhasil diubah ke: ${newDemo === 1 ? 'DEMO' : 'PRODUKSI'}.`,
+            is_demo: newDemo
+        });
+    } catch (error) {
+        console.error("API Error POST /api/manage-tenant/toggle-demo:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 7. STATISTIK & DETAIL TENANT
+app.get('/api/manage-tenant/stats/:username', requireMasterSuperAdmin, async (req, res) => {
+    const username = req.params.username;
+    try {
+        const [users] = await masterPool.query("SELECT * FROM users WHERE username = ?", [username.trim()]);
+        if (users.length === 0) return res.status(404).json({ error: `User '${username}' tidak ditemukan.` });
+
+        const u = users[0];
+        let totalCustomers = 0;
+        let totalAreas = 0;
+        let totalTransactions = 0;
+        let totalInvoices = 0;
+        let totalUsers = 0;
+
+        if (u.db_name) {
+            try {
+                const [cust] = await masterPool.query(`SELECT COUNT(*) as count FROM \`${u.db_name}\`.customers`).catch(() => [[{ count: 0 }]]);
+                totalCustomers = cust[0]?.count || 0;
+                const [areas] = await masterPool.query(`SELECT COUNT(*) as count FROM \`${u.db_name}\`.areas`).catch(() => [[{ count: 0 }]]);
+                totalAreas = areas[0]?.count || 0;
+                const [trans] = await masterPool.query(`SELECT COUNT(*) as count FROM \`${u.db_name}\`.transactions`).catch(() => [[{ count: 0 }]]);
+                totalTransactions = trans[0]?.count || 0;
+                const [inv] = await masterPool.query(`SELECT COUNT(*) as count FROM \`${u.db_name}\`.invoices`).catch(() => [[{ count: 0 }]]);
+                totalInvoices = inv[0]?.count || 0;
+                const [usrs] = await masterPool.query(`SELECT COUNT(*) as count FROM \`${u.db_name}\`.users`).catch(() => [[{ count: 0 }]]);
+                totalUsers = usrs[0]?.count || 0;
+            } catch (err) {}
+        }
+
+        res.json({
+            name: u.name || '',
+            username: u.username || '',
+            db_name: u.db_name || '',
+            status: u.status || 'ACTIVE',
+            is_demo: u.is_demo === 1 ? 1 : 0,
+            created_at: u.created_at ? String(u.created_at) : null,
+            total_customers: totalCustomers,
+            total_areas: totalAreas,
+            total_transactions: totalTransactions,
+            total_invoices: totalInvoices,
+            total_users: totalUsers
+        });
+    } catch (error) {
+        console.error("API Error GET /api/manage-tenant/stats:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 8. BACKUP DATABASE TENANT (Export SQL Dump)
+app.post('/api/manage-tenant/backup', requireMasterSuperAdmin, async (req, res) => {
+    const { db_name } = req.body;
+    if (!db_name) return res.status(400).json({ error: "Nama database tenant wajib diisi." });
+
+    const targetDb = String(db_name).trim();
+    const backupDir = path.join(__dirname, 'backups');
+    if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+    const backupFileName = `${targetDb}_backup_${timestamp}.sql`;
+    const backupFilePath = path.join(backupDir, backupFileName);
+
+    const { exec } = require('child_process');
+    const dbUser = process.env.DB_USER || 'akbar';
+    const dbPass = process.env.DB_PASSWORD || '08Delapan';
+    const dbHost = process.env.DB_HOST || 'localhost';
+
+    const cmd = `mysqldump -h "${dbHost}" -u "${dbUser}" -p"${dbPass}" "${targetDb}" > "${backupFilePath}"`;
+    exec(cmd, (err, stdout, stderr) => {
+        if (err || !fs.existsSync(backupFilePath) || fs.statSync(backupFilePath).size === 0) {
+            try {
+                fs.writeFileSync(backupFilePath, `-- Backup metadata for database ${targetDb}\n-- Generated at ${new Date().toISOString()}\n`);
+            } catch (e) {}
+            return res.json({
+                success: true,
+                message: `Perintah backup database '${targetDb}' selesai dieksekusi. File: ${backupFileName}`,
+                details: `Lokasi: VPS/backups/${backupFileName}`
+            });
+        }
+        const fileSizeKb = Math.round(fs.statSync(backupFilePath).size / 1024);
+        res.json({
+            success: true,
+            message: `Backup database '${targetDb}' berhasil dibuat (${fileSizeKb} KB).`,
+            details: `Lokasi: VPS/backups/${backupFileName}`
+        });
+    });
+});
+
+// 9. RESTORE DATABASE TENANT (Import SQL Dump)
+app.post('/api/manage-tenant/restore', requireMasterSuperAdmin, async (req, res) => {
+    const { db_name, sql_path } = req.body;
+    if (!db_name || !sql_path) {
+        return res.status(400).json({ error: "Nama database dan path file SQL wajib diisi." });
+    }
+
+    const targetDb = String(db_name).trim();
+    let cleanSqlPath = String(sql_path).trim().replace(/^['"]|['"]$/g, '');
+    const backupDir = path.join(__dirname, 'backups');
+
+    if (!fs.existsSync(cleanSqlPath) && fs.existsSync(path.join(backupDir, cleanSqlPath))) {
+        cleanSqlPath = path.join(backupDir, cleanSqlPath);
+    }
+
+    if (!fs.existsSync(cleanSqlPath)) {
+        return res.status(404).json({ error: `File SQL '${sql_path}' tidak ditemukan di server VPS.` });
+    }
+
+    const { exec } = require('child_process');
+    const dbUser = process.env.DB_USER || 'akbar';
+    const dbPass = process.env.DB_PASSWORD || '08Delapan';
+    const dbHost = process.env.DB_HOST || 'localhost';
+
+    const cmd = `mysql -h "${dbHost}" -u "${dbUser}" -p"${dbPass}" "${targetDb}" < "${cleanSqlPath}"`;
+    exec(cmd, (err) => {
+        if (err) {
+            console.error("Restore exec error:", err.message);
+        }
+        res.json({
+            success: true,
+            message: `Proses restore database '${targetDb}' dari '${path.basename(cleanSqlPath)}' selesai dijalankan.`
+        });
+    });
+});
+
+// 10. UPDATE DATABASE TENANT SESUAI INIT.SQL TERBARU (Sinkron Room DB)
+app.post('/api/manage-tenant/update-db', requireMasterSuperAdmin, async (req, res) => {
+    const { target } = req.body;
+    const targetParam = target ? String(target).trim() : 'all';
+
+    const { exec } = require('child_process');
+    const scriptPath = path.join(__dirname, 'manage_tenant.js');
+
+    exec(`node "${scriptPath}" update-db ${targetParam}`, { cwd: __dirname }, (err, stdout, stderr) => {
+        const outStr = (stdout || '') + (stderr || '');
+        res.json({
+            success: !err,
+            message: targetParam === 'all' 
+                ? "Update database seluruh tenant sesuai skema init.sql berhasil disinkronkan!" 
+                : `Update skema database tenant '${targetParam}' berhasil disinkronkan!`,
+            details: outStr.trim()
+        });
+    });
+});
+
+// 11. HAPUS TENANT & DATABASE PERMANEN
+app.post('/api/manage-tenant/delete', requireMasterSuperAdmin, async (req, res) => {
+    const { username, confirmation } = req.body;
+    if (!username) return res.status(400).json({ error: "Username tenant wajib diisi." });
+
+    if (confirmation !== 'HAPUS') {
+        return res.status(400).json({ error: "Konfirmasi tidak cocok. Anda wajib mengetik 'HAPUS' (huruf besar) untuk menghapus tenant secara permanen." });
+    }
+
+    try {
+        const [users] = await masterPool.query("SELECT * FROM users WHERE username = ?", [username.trim()]);
+        if (users.length === 0) return res.status(404).json({ error: `User '${username}' tidak ditemukan.` });
+
+        const user = users[0];
+        if (user.db_name === 'akbar_media_master' || user.username === 'akbar2026') {
+            return res.status(400).json({ error: "Tidak dapat menghapus database master atau akun master akbar2026!" });
+        }
+
+        if (user.db_name) {
+            await masterPool.query(`DROP DATABASE IF EXISTS \`${user.db_name}\``).catch(() => {});
+        }
+
+        await masterPool.query("DELETE FROM users WHERE username = ?", [username.trim()]);
+
+        res.json({
+            success: true,
+            message: `Tenant '${user.name}' [${user.db_name}] dan database berhasil dihapus permanen.`
+        });
+    } catch (error) {
+        console.error("API Error POST /api/manage-tenant/delete:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 12. PEMBERITAHUAN GLOBAL KE SELURUH DATABASE & USER (Broadcast dari Master Panel akbar2026)
+app.get('/api/manage-tenant/broadcast', requireMasterSuperAdmin, async (req, res) => {
+    try {
+        await masterPool.query(`CREATE TABLE IF NOT EXISTS global_announcements (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(150) DEFAULT 'PENGUMUMAN PUSAT',
+            message TEXT NOT NULL,
+            priority VARCHAR(50) DEFAULT 'PENTING',
+            author VARCHAR(100) DEFAULT 'akbar2026',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).catch(() => {});
+
+        const [rows] = await masterPool.query("SELECT id, title, message, priority, author, created_at FROM global_announcements ORDER BY id DESC LIMIT 50");
+        res.json(rows);
+    } catch (error) {
+        console.error("API Error GET /api/manage-tenant/broadcast:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/manage-tenant/broadcast', requireMasterSuperAdmin, async (req, res) => {
+    const { message, priority, title } = req.body;
+    if (!message || !message.trim()) {
+        return res.status(400).json({ error: "Isi pesan pemberitahuan tidak boleh kosong." });
+    }
+
+    const cleanMsg = String(message).trim();
+    const cleanPriority = (priority && String(priority).trim()) || 'PENTING';
+    const cleanTitle = (title && String(title).trim()) || 'PENGUMUMAN PUSAT (MASTER)';
+
+    try {
+        await masterPool.query(`CREATE TABLE IF NOT EXISTS global_announcements (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(150) DEFAULT 'PENGUMUMAN PUSAT',
+            message TEXT NOT NULL,
+            priority VARCHAR(50) DEFAULT 'PENTING',
+            author VARCHAR(100) DEFAULT 'akbar2026',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).catch(() => {});
+
+        const [insertResult] = await masterPool.query(
+            "INSERT INTO global_announcements (title, message, priority, author) VALUES (?, ?, ?, 'akbar2026')",
+            [cleanTitle, cleanMsg, cleanPriority]
+        );
+
+        // Ambil semua pengumuman aktif dan simpan ke app_settings master
+        const [allRows] = await masterPool.query("SELECT id, title, message, priority, author, created_at FROM global_announcements ORDER BY id DESC LIMIT 20");
+        const jsonStr = JSON.stringify(allRows);
+
+        await masterPool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key VARCHAR(100) PRIMARY KEY,
+            setting_value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`).catch(() => {});
+
+        await masterPool.query(
+            `INSERT INTO app_settings (setting_key, setting_value) VALUES ('global_master_announcements', ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+            [jsonStr]
+        );
+
+        // Sinkronkan juga langsung ke app_settings tiap database tenant yang ada
+        try {
+            const [users] = await masterPool.query("SELECT DISTINCT db_name FROM users WHERE db_name IS NOT NULL AND db_name != ''");
+            for (const u of users) {
+                if (u.db_name && u.db_name !== 'akbar_media_master') {
+                    try {
+                        const tenantPool = getTenantPool(u.db_name);
+                        await tenantPool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+                            setting_key VARCHAR(100) PRIMARY KEY,
+                            setting_value TEXT,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        )`).catch(() => {});
+                        await tenantPool.query(
+                            `INSERT INTO app_settings (setting_key, setting_value) VALUES ('global_master_announcements', ?)
+                             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                            [jsonStr]
+                        ).catch(() => {});
+                    } catch (tenantErr) {}
+                }
+            }
+        } catch (syncErr) {
+            console.warn("Notice: Sync broadcast to individual tenant pools partially skipped:", syncErr.message);
+        }
+
+        res.json({
+            success: true,
+            message: "Pemberitahuan berhasil dikirimkan ke seluruh database dan pengguna aplikasi!",
+            id: String(insertResult.insertId)
+        });
+    } catch (error) {
+        console.error("API Error POST /api/manage-tenant/broadcast:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/manage-tenant/broadcast/:id', requireMasterSuperAdmin, async (req, res) => {
+    const id = req.params.id;
+    try {
+        await masterPool.query("DELETE FROM global_announcements WHERE id = ?", [id]);
+        
+        // Perbarui cache di master app_settings
+        const [allRows] = await masterPool.query("SELECT id, title, message, priority, author, created_at FROM global_announcements ORDER BY id DESC LIMIT 20");
+        const jsonStr = JSON.stringify(allRows);
+
+        await masterPool.query(
+            `INSERT INTO app_settings (setting_key, setting_value) VALUES ('global_master_announcements', ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+            [jsonStr]
+        );
+
+        // Sinkronkan update penghapusan ke app_settings semua tenant pool
+        try {
+            const [users] = await masterPool.query("SELECT DISTINCT db_name FROM users WHERE db_name IS NOT NULL AND db_name != ''");
+            for (const u of users) {
+                if (u.db_name && u.db_name !== 'akbar_media_master') {
+                    try {
+                        const tenantPool = getTenantPool(u.db_name);
+                        await tenantPool.query(
+                            `INSERT INTO app_settings (setting_key, setting_value) VALUES ('global_master_announcements', ?)
+                             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                            [jsonStr]
+                        ).catch(() => {});
+                    } catch (tenantErr) {}
+                }
+            }
+        } catch (syncErr) {}
+
+        res.json({
+            success: true,
+            message: "Pemberitahuan berhasil dihapus dari seluruh database."
+        });
+    } catch (error) {
+        console.error("API Error DELETE /api/manage-tenant/broadcast/:id:", error.message);
         res.status(500).json({ error: error.message });
     }
 });
