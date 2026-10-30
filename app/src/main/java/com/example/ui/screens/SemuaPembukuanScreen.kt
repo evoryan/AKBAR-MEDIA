@@ -1,19 +1,19 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -22,33 +22,53 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
-
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import com.example.ui.data.remote.ApiClient
+import com.example.ui.data.remote.PembukuanItem
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.Locale
+
+fun formatInvoiceUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    if (url.startsWith("http://") || url.startsWith("https://")) return url
+    val baseUrl = com.example.ui.data.SettingsManager.apiBaseUrl.removeSuffix("/")
+    val path = if (url.startsWith("/")) url else "/$url"
+    return "$baseUrl$path"
+}
 
 @Composable
 fun PembukuanListItem(
-    item: com.example.ui.data.remote.PembukuanItem,
+    item: PembukuanItem,
     bgMain: Color,
     textMain: Color,
     textSecondary: Color,
+    onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = bgMain),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -57,20 +77,48 @@ fun PembukuanListItem(
                     text = item.description ?: "-",
                     color = textMain,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+                    fontSize = 15.sp
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
-                    text = "${item.type.uppercase()} - ${item.category ?: "-"}",
+                    text = "${item.type.uppercase()} • ${item.category ?: "-"}",
                     color = textSecondary,
                     fontSize = 12.sp
                 )
                 Text(
                     text = item.created_at?.take(19)?.replace("T", " ") ?: "",
                     color = textSecondary,
-                    fontSize = 12.sp
+                    fontSize = 11.sp
                 )
+                
+                if (!item.image_url.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        color = Color(0xFF03A9F4).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ReceiptLong,
+                                contentDescription = null,
+                                tint = Color(0xFF0288D1),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "Ada Foto Invoice",
+                                color = Color(0xFF0288D1),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
+            
             Column(horizontalAlignment = Alignment.End) {
                 val color = if (item.type.lowercase() == "pemasukan") Color(0xFF4CAF50) else Color(0xFFF44336)
                 Text(
@@ -79,12 +127,12 @@ fun PembukuanListItem(
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF2196F3))
+                Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF2196F3), modifier = Modifier.size(18.dp))
                     }
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFF44336))
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFF44336), modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -95,20 +143,21 @@ fun PembukuanListItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: () -> Unit) {
-    val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF4F7FA)
-    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
-    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val context = LocalContext.current
+    val bgMain = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF0A0A0A) else Color(0xFFF4F7FA)
+    val textMain = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFFFFFFF) else Color(0xFF1A1A1A)
+    val textSecondary = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFFAAAAAA) else Color(0xFF666666)
+    val cardBg = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF11111A) else Color(0xFFFFFFFF)
     val primaryBlue = Color(0xFF2196F3)
     val warningYellow = Color(0xFFFF9800)
     val successGreen = Color(0xFF4CAF50)
     val errorRed = Color(0xFFF44336)
-    val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFFFEBF5)
+    val headerBg = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF1F0216) else Color(0xFFFFEBF5)
 
     val currentMonthYear = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.forLanguageTag("id-ID")))
     }
     val currentYear = remember { LocalDate.now().year }
-    val context = androidx.compose.ui.platform.LocalContext.current
     
     var selectedMonth by remember { mutableStateOf(currentMonthYear) }
     var monthDropdownExpanded by remember { mutableStateOf(false) }
@@ -133,16 +182,26 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     }
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var detailItem by remember { mutableStateOf<PembukuanItem?>(null) }
+    var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+
     var keterangan by remember { mutableStateOf("") }
     var jumlah by remember { mutableStateOf("") }
     var tipePembukuan by remember { mutableStateOf(if (initialType.isNotEmpty()) initialType else "Pilih Tipe Pembukuan") }
     var tipeDropdownExpanded by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     val tipeOptions = listOf("Pilih Tipe Pembukuan", "Pemasukan", "Pengeluaran", "Setor")
-    
-    var pembukuanList by remember { mutableStateOf(emptyList<com.example.ui.data.remote.PembukuanItem>()) }
+
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        selectedImageUri = uri
+    }
+
+    var pembukuanList by remember { mutableStateOf(emptyList<PembukuanItem>()) }
     var isBackgroundLoading by remember { mutableStateOf(true) }
-    var editingItem by remember { mutableStateOf<com.example.ui.data.remote.PembukuanItem?>(null) }
+    var editingItem by remember { mutableStateOf<PembukuanItem?>(null) }
     val coroutineScope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
 
@@ -163,7 +222,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
         refreshData()
     }
 
-    fun isItemInMonth(item: com.example.ui.data.remote.PembukuanItem, filter: String): Boolean {
+    fun isItemInMonth(item: PembukuanItem, filter: String): Boolean {
         if (filter == "Semua Waktu") return true
         val createdAt = item.created_at ?: return false
         val parts = filter.split(" ")
@@ -186,9 +245,6 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     val totalPengeluaranBulan = remember(monthFilteredList) {
         monthFilteredList.filter { it.type.equals("pengeluaran", ignoreCase = true) }.sumOf { it.amount.toLong() }
     }
-    val totalSetorBulan = remember(monthFilteredList) {
-        monthFilteredList.filter { it.type.equals("setor", ignoreCase = true) }.sumOf { it.amount.toLong() }
-    }
 
     val currentTabItems = remember(monthFilteredList, selectedTab, searchQuery) {
         val byType = when (selectedTab) {
@@ -207,7 +263,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     Scaffold(
         containerColor = bgMain,
         topBar = {
-            Column(modifier = Modifier.background(if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))) {
+            Column(modifier = Modifier.background(if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF11111A) else Color(0xFFFFFFFF))) {
                 TopAppBar(
                     title = { Text("Semua Pembukuan", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
                     navigationIcon = {
@@ -245,7 +301,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             DropdownMenu(
                                 expanded = monthDropdownExpanded,
                                 onDismissRequest = { monthDropdownExpanded = false },
-                                containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+                                containerColor = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF11111A) else Color(0xFFFFFFFF)
                             ) {
                                 months.forEach { month ->
                                     DropdownMenuItem(
@@ -263,6 +319,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                     FloatingActionButton(
                         onClick = { 
                             editingItem = null
+                            selectedImageUri = null
                             keterangan = ""
                             jumlah = ""
                             tipePembukuan = when (selectedTab) {
@@ -284,7 +341,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                 // TabRow Pemisah Pemasukan dan Pengeluaran
                 TabRow(
                     selectedTabIndex = selectedTab,
-                    containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF151522) else androidx.compose.ui.graphics.Color(0xFFF0F4F8),
+                    containerColor = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF151522) else Color(0xFFF0F4F8),
                     contentColor = primaryBlue,
                     indicator = { tabPositions ->
                         TabRowDefaults.SecondaryIndicator(
@@ -379,7 +436,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF))
+                    .background(if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF11111A) else Color(0xFFFFFFFF))
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -397,7 +454,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                         color = errorRed, fontSize = 14.sp, fontWeight = FontWeight.Bold
                     )
                 }
-                Divider(color = textSecondary.copy(alpha = 0.2f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
+                HorizontalDivider(color = textSecondary.copy(alpha = 0.2f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Sisa Saldo Kas Bulan Ini :", color = textMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     val sisaSaldo = totalPemasukanBulan - totalPengeluaranBulan
@@ -539,17 +596,21 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp),
+                    contentPadding = PaddingValues(bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(currentTabItems) { item ->
                         PembukuanListItem(
                             item = item,
-                            bgMain = bgMain,
+                            bgMain = cardBg,
                             textMain = textMain,
                             textSecondary = textSecondary,
+                            onClick = {
+                                detailItem = item
+                            },
                             onEdit = {
                                 editingItem = item
+                                selectedImageUri = null
                                 tipePembukuan = when (item.type.lowercase()) {
                                     "pemasukan" -> "Pemasukan"
                                     "pengeluaran" -> "Pengeluaran"
@@ -579,72 +640,279 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
         }
     }
 
+    // DIALOG: Detail Transaksi / Pengeluaran
+    if (detailItem != null) {
+        val item = detailItem!!
+        val fullImgUrl = formatInvoiceUrl(item.image_url)
+        val isPengeluaran = item.type.lowercase() == "pengeluaran"
+
+        AlertDialog(
+            onDismissRequest = { detailItem = null },
+            containerColor = cardBg,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isPengeluaran) Icons.Default.ReceiptLong else Icons.Default.AccountBalanceWallet,
+                        contentDescription = null,
+                        tint = if (isPengeluaran) errorRed else successGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (isPengeluaran) "Detail Pengeluaran" else "Detail Transaksi",
+                        color = textMain,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Nominal
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isPengeluaran) errorRed.copy(alpha = 0.1f) else successGreen.copy(alpha = 0.1f)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Nominal ${item.type.uppercase()}", color = textSecondary, fontSize = 11.sp)
+                            Text(
+                                "Rp. ${String.format("%,d", item.amount.toLong()).replace(",", ".")}",
+                                color = if (isPengeluaran) errorRed else successGreen,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Metadata
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Kategori:", color = textSecondary, fontSize = 12.sp)
+                            Text(item.category ?: "-", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Keterangan:", color = textSecondary, fontSize = 12.sp)
+                            Text(item.description ?: "-", color = textMain, fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Admin Input:", color = textSecondary, fontSize = 12.sp)
+                            Text(item.admin_name ?: "Admin", color = textMain, fontSize = 12.sp)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Waktu Catat:", color = textSecondary, fontSize = 12.sp)
+                            Text(item.created_at?.take(19)?.replace("T", " ") ?: "-", color = textMain, fontSize = 12.sp)
+                        }
+                    }
+
+                    HorizontalDivider(color = textSecondary.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
+
+                    // Gambar Foto Invoice
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text("Gambar / Foto Invoice Bukti:", color = textMain, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        if (!fullImgUrl.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.Black.copy(alpha = 0.1f))
+                                    .clickable {
+                                        fullScreenImageUrl = fullImgUrl
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = fullImgUrl,
+                                    contentDescription = "Foto Invoice",
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Surface(
+                                    color = Color.Black.copy(alpha = 0.6f),
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Klik Perbesar", color = Color.White, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            Surface(
+                                color = textSecondary.copy(alpha = 0.08f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.ImageNotSupported, contentDescription = null, tint = textSecondary, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Tidak ada foto invoice yang dilampirkan", color = textSecondary, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            val curr = detailItem
+                            detailItem = null
+                            if (curr != null) {
+                                editingItem = curr
+                                selectedImageUri = null
+                                tipePembukuan = when (curr.type.lowercase()) {
+                                    "pemasukan" -> "Pemasukan"
+                                    "pengeluaran" -> "Pengeluaran"
+                                    "setor" -> "Setor"
+                                    else -> "Pilih Tipe Pembukuan"
+                                }
+                                keterangan = curr.description ?: ""
+                                jumlah = curr.amount.toLong().toString()
+                                showAddDialog = true
+                            }
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Edit", fontSize = 12.sp)
+                    }
+
+                    Button(
+                        onClick = { detailItem = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryBlue),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Tutup", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+        )
+    }
+
+    // DIALOG: Fullscreen View Image Invoice
+    if (fullScreenImageUrl != null) {
+        Dialog(
+            onDismissRequest = { fullScreenImageUrl = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = fullScreenImageUrl,
+                    contentDescription = "Invoice Fullscreen",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                )
+
+                IconButton(
+                    onClick = { fullScreenImageUrl = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(24.dp)
+                        .size(40.dp)
+                        .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                }
+            }
+        }
+    }
+
+    // DIALOG: Input / Edit Pembukuan
     if (showAddDialog) {
         AlertDialog(
-            onDismissRequest = { showAddDialog = false; editingItem = null; keterangan = ""; jumlah = ""; tipePembukuan = "Pilih Tipe Pembukuan" },
-            containerColor = bgMain,
+            onDismissRequest = { showAddDialog = false; editingItem = null; selectedImageUri = null; keterangan = ""; jumlah = ""; tipePembukuan = "Pilih Tipe Pembukuan" },
+            containerColor = cardBg,
             title = {
                 Text(
-                    "Transaksi",
+                    if (editingItem != null) "Edit Transaksi" else "Tambah Transaksi",
                     color = textMain,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column {
                         Text("Bulan Input", color = textSecondary, fontSize = 12.sp)
-                        Text("(Ini berdasarkan pada pemilihan bulan di beranda)", color = textSecondary, fontSize = 10.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(selectedMonth, color = primaryBlue, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(selectedMonth, color = primaryBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    TextField(
+                    OutlinedTextField(
                         value = keterangan,
                         onValueChange = { keterangan = it },
                         label = { Text("Keterangan", color = textSecondary) },
-                        placeholder = { Text("Keterangan...", color = textSecondary) },
+                        placeholder = { Text("Keterangan transaksi...", color = textSecondary) },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedTextColor = textMain,
-                            unfocusedTextColor = textMain
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBlue, unfocusedBorderColor = textSecondary,
+                            focusedTextColor = textMain, unfocusedTextColor = textMain
                         ),
                         singleLine = true
                     )
 
-                    TextField(
+                    OutlinedTextField(
                         value = jumlah,
                         onValueChange = { jumlah = it },
-                        label = { Text("Jumlah", color = textSecondary) },
-                        placeholder = { Text("Jumlah", color = textSecondary) },
+                        label = { Text("Jumlah (Rp)", color = textSecondary) },
+                        placeholder = { Text("Nominal angka...", color = textSecondary) },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedTextColor = textMain,
-                            unfocusedTextColor = textMain
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBlue, unfocusedBorderColor = textSecondary,
+                            focusedTextColor = textMain, unfocusedTextColor = textMain
                         ),
                         singleLine = true
                     )
 
                     Column {
-                        Text("Type", color = textSecondary, fontSize = 12.sp)
-                        Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        Text("Tipe Transaksi", color = textSecondary, fontSize = 12.sp)
+                        Box(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().clickable { tipeDropdownExpanded = true }.padding(vertical = 8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(textSecondary.copy(alpha = 0.08f))
+                                    .clickable { tipeDropdownExpanded = true }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(tipePembukuan, color = textMain, fontSize = 14.sp)
+                                Text(tipePembukuan, color = textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textSecondary)
                             }
                             DropdownMenu(
                                 expanded = tipeDropdownExpanded,
                                 onDismissRequest = { tipeDropdownExpanded = false },
-                                containerColor = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+                                containerColor = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF11111A) else Color(0xFFFFFFFF),
                                 modifier = Modifier.fillMaxWidth(0.7f)
                             ) {
                                 tipeOptions.forEach { option ->
@@ -659,6 +927,85 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             }
                         }
                     }
+
+                    // Input Gambar / Foto Invoice (Opsional)
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text("Foto Invoice / Bukti (Opsional)", color = textSecondary, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        val existingImgUrl = formatInvoiceUrl(editingItem?.image_url)
+
+                        if (selectedImageUri != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = selectedImageUri,
+                                    contentDescription = "New Invoice Preview",
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                IconButton(
+                                    onClick = { selectedImageUri = null },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(4.dp)
+                                        .size(28.dp)
+                                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "Hapus Gambar Baru", tint = Color.White, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        } else if (!existingImgUrl.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = existingImgUrl,
+                                    contentDescription = "Existing Invoice Preview",
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Black.copy(alpha = 0.6f), contentColor = Color.White),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("Ganti Foto", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryBlue)
+                            ) {
+                                Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Pilih Foto Invoice / Bukti", fontSize = 13.sp)
+                            }
+                        }
+                    }
                     
                     Button(
                         onClick = { 
@@ -666,6 +1013,21 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             isSaving = true
                             coroutineScope.launch {
                                 try {
+                                    var imageUrl: String? = editingItem?.image_url
+
+                                    if (selectedImageUri != null) {
+                                        val inputStream = context.contentResolver.openInputStream(selectedImageUri!!)
+                                        val bytes = inputStream?.readBytes()
+                                        inputStream?.close()
+                                        if (bytes != null) {
+                                            val mimeType = context.contentResolver.getType(selectedImageUri!!) ?: "image/jpeg"
+                                            val reqFile = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                                            val part = MultipartBody.Part.createFormData("image", "invoice_${System.currentTimeMillis()}.jpg", reqFile)
+                                            val uploadRes = ApiClient.apiService.uploadInvoiceImage(part)
+                                            imageUrl = uploadRes.url ?: uploadRes.image_url
+                                        }
+                                    }
+
                                     val amountLong = jumlah.replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
                                     val amountDouble = amountLong.toDouble()
                                     var type = "pemasukan"
@@ -683,7 +1045,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                                     }
                                     
                                     val req = com.example.ui.data.remote.PembukuanRequest(
-                                        type, category, amountDouble, keterangan
+                                        type, category, amountDouble, keterangan, image_url = imageUrl
                                     )
                                     if (editingItem != null) {
                                         ApiClient.apiService.updatePembukuan(editingItem!!.id, req)
@@ -693,6 +1055,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                                     refreshData()
                                     showAddDialog = false
                                     editingItem = null
+                                    selectedImageUri = null
                                     keterangan = ""
                                     jumlah = ""
                                     tipePembukuan = "Pilih Tipe Pembukuan"
@@ -705,16 +1068,20 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF)),
-                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryBlue),
+                        shape = RoundedCornerShape(12.dp),
                         enabled = !isSaving
                     ) {
-                        Text(if (isSaving) "MENYIMPAN..." else "SIMPAN", color = textMain, fontWeight = FontWeight.Bold)
+                        Text(if (isSaving) "MENYIMPAN..." else "SIMPAN", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             },
             confirmButton = {},
-            dismissButton = {}
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false; editingItem = null; selectedImageUri = null }) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
         )
     }
 }

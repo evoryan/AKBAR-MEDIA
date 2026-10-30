@@ -27,11 +27,17 @@ import com.example.ui.data.UserSession
 import com.example.ui.data.UserRole
 import com.example.ui.data.remote.ApiClient
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
-import com.example.ui.data.remote.PembukuanRequest
 import androidx.compose.ui.window.DialogProperties
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import coil.compose.AsyncImage
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.CircleShape
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +79,14 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
     var inputAmount by remember { mutableStateOf("") }
     var inputDescription by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        selectedImageUri = uri
+    }
 
     fun fetchData(m: String = selectedMonth, y: String = selectedYear) {
         coroutineScope.launch {
@@ -496,16 +510,16 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
         }
         if (showAddDialog) {
             AlertDialog(
-                onDismissRequest = { showAddDialog = false },
+                onDismissRequest = { showAddDialog = false; selectedImageUri = null },
                 containerColor = cardBg,
                 title = { Text("Input Nominal ($selectedCategory)", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.Bold) },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
                             value = inputAmount,
                             onValueChange = { inputAmount = it },
                             label = { Text("Nominal (Rp)", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryCyan, unfocusedBorderColor = textSecondary,
                                 focusedTextColor = textMain, unfocusedTextColor = textMain
@@ -522,6 +536,51 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        // Input Gambar/Foto Invoice (Opsional)
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("Foto Invoice / Bukti (Opsional)", color = textSecondary, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            if (selectedImageUri != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(130.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.Black.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = selectedImageUri,
+                                        contentDescription = "Preview Invoice",
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    IconButton(
+                                        onClick = { selectedImageUri = null },
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(4.dp)
+                                            .size(28.dp)
+                                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Hapus Gambar", tint = Color.White, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = {
+                                        photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryCyan)
+                                ) {
+                                    Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Pilih Foto Invoice", fontSize = 13.sp)
+                                }
+                            }
+                        }
                     }
                 },
                 confirmButton = {
@@ -531,11 +590,35 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             isSaving = true
                             coroutineScope.launch {
                                 try {
-                                    val amount = inputAmount.replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0.0
-                                    ApiClient.apiService.addPembukuan(com.example.ui.data.remote.PembukuanRequest(selectedType, selectedCategory, amount.toDouble(), inputDescription))
+                                    var imageUrl: String? = null
+                                    if (selectedImageUri != null) {
+                                        val inputStream = context.contentResolver.openInputStream(selectedImageUri!!)
+                                        val bytes = inputStream?.readBytes()
+                                        inputStream?.close()
+                                        if (bytes != null) {
+                                            val mimeType = context.contentResolver.getType(selectedImageUri!!) ?: "image/jpeg"
+                                            val reqFile = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                                            val part = MultipartBody.Part.createFormData("image", "invoice_${System.currentTimeMillis()}.jpg", reqFile)
+                                            val uploadRes = ApiClient.apiService.uploadInvoiceImage(part)
+                                            imageUrl = uploadRes.url ?: uploadRes.image_url
+                                        }
+                                    }
+
+                                    val amount = inputAmount.replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                                    ApiClient.apiService.addPembukuan(
+                                        com.example.ui.data.remote.PembukuanRequest(
+                                            selectedType,
+                                            selectedCategory,
+                                            amount.toDouble(),
+                                            inputDescription,
+                                            image_url = imageUrl
+                                        )
+                                    )
                                     fetchData()
                                     showAddDialog = false
+                                    selectedImageUri = null
                                 } catch (e: Exception) {
+                                    e.printStackTrace()
                                 } finally {
                                     isSaving = false
                                 }
@@ -548,7 +631,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showAddDialog = false }) {
+                    TextButton(onClick = { showAddDialog = false; selectedImageUri = null }) {
                         Text("Batal", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A))
                     }
                 },

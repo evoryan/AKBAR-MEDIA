@@ -23,11 +23,40 @@ data class PembukuanResponse(
     val categories: Map<String, Double> = emptyMap()
 )
 
+data class InvoiceUploadResponse(
+    val status: String? = null,
+    val message: String? = null,
+    val url: String? = null,
+    val image_url: String? = null
+)
+
+data class ProfilePictureUploadResponse(
+    val status: String? = null,
+    val message: String? = null,
+    val avatar_url: String? = null,
+    val url: String? = null
+)
+
+data class CustomerHeaderUploadResponse(
+    val status: String? = null,
+    val message: String? = null,
+    val header_bg_url: String? = null,
+    val url: String? = null
+)
+
+data class UpdateProfileRequest(
+    val name: String,
+    val username: String,
+    val password: String? = null,
+    val avatar_url: String? = null
+)
+
 data class PembukuanRequest(
     val type: String,
     val category: String,
     val amount: Double,
-    val description: String
+    val description: String,
+    val image_url: String? = null
 )
 
 data class PembukuanItem(
@@ -37,7 +66,8 @@ data class PembukuanItem(
     val amount: Double,
     val description: String?,
     val created_at: String?,
-    val admin_name: String? = null
+    val admin_name: String? = null,
+    val image_url: String? = null
 )
 
 data class SetoranRequest(
@@ -253,6 +283,30 @@ interface ApiService {
     @POST("api/pembukuan")
     suspend fun addPembukuan(@Body request: PembukuanRequest): ApiResponse
     
+    @Multipart
+    @POST("api/pembukuan/upload-invoice")
+    suspend fun uploadInvoiceImage(
+        @Part image: okhttp3.MultipartBody.Part
+    ): InvoiceUploadResponse
+
+    @Multipart
+    @POST("api/user/profile-picture")
+    suspend fun uploadProfilePicture(
+        @Part image: okhttp3.MultipartBody.Part
+    ): ProfilePictureUploadResponse
+
+    @PUT("api/user/profile")
+    suspend fun updateProfile(
+        @Body request: UpdateProfileRequest
+    ): ApiResponse
+
+    @Multipart
+    @POST("api/customers/{id}/header-bg")
+    suspend fun uploadCustomerHeaderBg(
+        @Path("id") id: String,
+        @Part image: okhttp3.MultipartBody.Part
+    ): CustomerHeaderUploadResponse
+
     @PUT("api/pembukuan/{id}")
     suspend fun updatePembukuan(@Path("id") id: String, @Body request: PembukuanRequest): ApiResponse
     
@@ -616,6 +670,7 @@ data class TenantItem(
     val id: Int = 0,
     val name: String = "",
     val username: String = "",
+    val password: String? = "",
     val db_name: String = "",
     val role: String = "SUPER_ADMIN",
     val status: String = "ACTIVE",

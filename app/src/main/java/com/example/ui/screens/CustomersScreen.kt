@@ -587,10 +587,12 @@ data class Customer(
     @Json(name = "additional_cost_desc2") val additional_cost_desc2: String? = null,
     @Json(name = "pppoe_secret") val pppoeSecret: String? = null,
     @Json(name = "odp_id") val odpId: String? = null,
-    @Json(name = "odp_port") val odpPort: String? = null
+    @Json(name = "odp_port") val odpPort: String? = null,
+    @Json(name = "header_bg_url") val headerBgUrl: String? = null
 ) {
     val register_date: String? get() = registerDate
     val isolate_date: String? get() = isolateDate
+    val header_bg_url: String? get() = headerBgUrl
 
     fun getEffectiveRegisterDate(): String? {
         return registerDate?.takeIf { it.isNotBlank() }

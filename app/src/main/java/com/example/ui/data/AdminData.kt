@@ -11,7 +11,7 @@ enum class UserRole {
     SUPER_ADMIN, ADMIN, TEKNISI, COLLECTOR
 }
 
-data class AdminUser(val id: String, var name: String, var username: String, var role: UserRole, val token: String? = null, val db_name: String? = null, var area_id: String? = null)
+data class AdminUser(val id: String, var name: String, var username: String, var role: UserRole, val token: String? = null, val db_name: String? = null, var area_id: String? = null, var avatar_url: String? = null)
 
 object UserSession {
     val currentUser = MutableStateFlow<AdminUser?>(null)
@@ -127,6 +127,7 @@ object UserSession {
             putString("user_token", user.token)
             putString("user_db_name", user.db_name)
             putString("user_area_id", user.area_id)
+            putString("user_avatar_url", user.avatar_url)
             apply()
         }
         
@@ -146,6 +147,7 @@ object UserSession {
         val token = sharedPrefs.getString("user_token", null)
         val dbName = sharedPrefs.getString("user_db_name", null)
         val areaId = sharedPrefs.getString("user_area_id", "semua")
+        val avatarUrl = sharedPrefs.getString("user_avatar_url", null)
         
         if (id != null && name != null && username != null && roleString != null) {
             val role = try {
@@ -153,7 +155,7 @@ object UserSession {
             } catch (e: Exception) {
                 UserRole.ADMIN
             }
-            currentUser.value = AdminUser(id, name, username, role, token, dbName, areaId)
+            currentUser.value = AdminUser(id, name, username, role, token, dbName, areaId, avatarUrl)
             
             // Sinkronkan kembali isolasi notifikasi per database tenant saat session aktif dimuat
             updateTenantNotificationSubscription(context, dbName)

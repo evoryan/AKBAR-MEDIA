@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -37,14 +42,18 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import android.provider.MediaStore
 import android.content.ContentValues
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.FileProvider
 import androidx.print.PrintHelper
+import coil.compose.AsyncImage
 import com.example.ui.util.InvoiceGenerator
 import com.example.ui.data.SettingsManager
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 
 data class CustomerInvoicePreview(
     val title: String,
@@ -94,6 +103,65 @@ fun CustomerDetailScreen(
     val graphicsLayer = rememberGraphicsLayer()
     var activeInvoicePreview by remember { mutableStateOf<CustomerInvoicePreview?>(null) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+
+    var showImagePickerDialog by remember { mutableStateOf(false) }
+    var isUploadingHeader by remember { mutableStateOf(false) }
+    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    fun uploadHeaderBg(uri: Uri) {
+        coroutineScope.launch {
+            try {
+                isUploadingHeader = true
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bytes = inputStream?.readBytes()
+                inputStream?.close()
+                if (bytes != null) {
+                    val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val reqFile = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                    val part = MultipartBody.Part.createFormData("image", "header_bg_${System.currentTimeMillis()}.jpg", reqFile)
+                    val res = ApiClient.apiService.uploadCustomerHeaderBg(customerId, part)
+                    val newHeaderUrl = res.header_bg_url ?: res.url
+                    if (!newHeaderUrl.isNullOrBlank()) {
+                        customer = customer?.copy(headerBgUrl = newHeaderUrl)
+                        Toast.makeText(context, "Background header berhasil diubah!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Gagal mengunggah background: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isUploadingHeader = false
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            uploadHeaderBg(uri)
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && tempCameraUri != null) {
+            uploadHeaderBg(tempCameraUri!!)
+        }
+    }
+
+    fun launchCamera() {
+        try {
+            val cameraFile = File(context.cacheDir, "camera_header_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cameraFile)
+            tempCameraUri = uri
+            cameraLauncher.launch(uri)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(context, "Gagal membuka kamera: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -545,60 +613,117 @@ fun CustomerDetailScreen(
                     Text("Pelanggan tidak ditemukan", color = textMain, fontSize = 16.sp)
                 }
             } else {
-                // Top Section (Profile)
-                Column(
+                // Top Section (Profile Header with custom background)
+                val formattedHeaderBgUrl = remember(customer?.header_bg_url) {
+                    formatInvoiceUrl(customer?.header_bg_url)
+                }
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(185.dp)
                         .background(headerBg)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(
+                    if (!formattedHeaderBgUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = formattedHeaderBgUrl,
+                            contentDescription = "Header Background",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Black.copy(alpha = 0.35f),
+                                            Color.Black.copy(alpha = 0.85f)
+                                        )
+                                    )
+                                )
+                        )
+                    }
+
+                    Column(
                         modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(primaryBlue),
-                        contentAlignment = Alignment.Center
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        if (isBackgroundLoading) {
-                            CircularProgressIndicator(
-                                color = neonCyan,
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text(
-                                customer?.name?.take(1)?.uppercase() ?: "P",
-                                color = neonCyan,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .background(primaryBlue),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isBackgroundLoading) {
+                                CircularProgressIndicator(
+                                    color = neonCyan,
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(
+                                    customer?.name?.take(1)?.uppercase() ?: "P",
+                                    color = neonCyan,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            if (isBackgroundLoading) "Memuat..." else (customer?.name ?: "Nama Pelanggan"),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            if (isBackgroundLoading) "" else (customer?.phone ?: "-"),
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { onNavigateToEdit(customerId) },
+                                modifier = Modifier.testTag("btn_edit_customer_header"),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp), tint = neonCyan)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Edit Pelanggan", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = neonCyan)
+                            }
+
+                            Button(
+                                onClick = { showImagePickerDialog = true },
+                                modifier = Modifier.testTag("btn_change_header_bg"),
+                                colors = ButtonDefaults.buttonColors(containerColor = primaryBlue.copy(alpha = 0.85f), contentColor = neonCyan),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp), tint = neonCyan)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Ubah Header", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = neonCyan)
+                            }
                         }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        if (isBackgroundLoading) "Memuat..." else (customer?.name ?: "Nama Pelanggan"),
-                        color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        if (isBackgroundLoading) "" else (customer?.phone ?: "-"),
-                        color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666),
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = { onNavigateToEdit(customerId) },
-                        modifier = Modifier.testTag("btn_edit_customer_header"),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp), tint = neonCyan)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Edit Pelanggan", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = neonCyan)
+
+                    if (isUploadingHeader) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.6f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = neonCyan)
+                        }
                     }
                 }
 
@@ -786,6 +911,52 @@ fun CustomerDetailScreen(
                 }
             }
         }
+    }
+
+    // DIALOG: Pick Image Source (Gallery / Camera)
+    if (showImagePickerDialog) {
+        AlertDialog(
+            onDismissRequest = { showImagePickerDialog = false },
+            containerColor = cardBg,
+            title = { Text("Ubah Background Header", color = textMain, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Pilih sumber gambar background header pelanggan:", color = textSecondary, fontSize = 13.sp)
+
+                    OutlinedButton(
+                        onClick = {
+                            showImagePickerDialog = false
+                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.Collections, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Pilih dari Galeri")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            showImagePickerDialog = false
+                            launchCamera()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ambil dari Kamera")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImagePickerDialog = false }) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
+        )
     }
 }
 

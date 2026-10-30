@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.data.UserSession
 import com.example.ui.data.remote.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -190,8 +192,22 @@ fun ManageTenantScreen(
         coroutineScope.launch {
             isBroadcastLoading = true
             try {
-                val list = withContext(Dispatchers.IO) {
-                    ApiClient.apiService.getGlobalBroadcasts()
+                // 1. Coba endpoint khusus broadcast
+                val list = try {
+                    withContext(Dispatchers.IO) {
+                        ApiClient.apiService.getGlobalBroadcasts()
+                    }
+                } catch (_: Exception) {
+                    // 2. Fallback: ambil dari app_settings MySQL yang sudah aktif di server
+                    try {
+                        val settings = withContext(Dispatchers.IO) {
+                            ApiClient.apiService.getAppSettings()
+                        }
+                        val jsonStr = settings["global_master_announcements"] ?: "[]"
+                        Json.decodeFromString<List<GlobalAnnouncement>>(jsonStr)
+                    } catch (_: Exception) {
+                        com.example.ui.data.SettingsManager.globalAnnouncements
+                    }
                 }
                 broadcastsList = list
                 com.example.ui.data.SettingsManager.globalAnnouncements = list
@@ -964,18 +980,57 @@ fun ManageTenantScreen(
                                         coroutineScope.launch {
                                             isBroadcastSubmitting = true
                                             try {
-                                                val req = BroadcastRequest(
-                                                    title = broadcastTitle.trim().ifBlank { "PENGUMUMAN PUSAT (MASTER)" },
-                                                    message = broadcastMessage.trim(),
-                                                    priority = broadcastPriority
+                                                val cleanTitle = broadcastTitle.trim().ifBlank { "PENGUMUMAN PUSAT (MASTER)" }
+                                                val cleanMsg = broadcastMessage.trim()
+                                                val simpleDate = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+                                                val newAnnouncement = GlobalAnnouncement(
+                                                    id = System.currentTimeMillis().toString(),
+                                                    title = cleanTitle,
+                                                    message = cleanMsg,
+                                                    priority = broadcastPriority,
+                                                    author = "akbar2026",
+                                                    created_at = simpleDate
                                                 )
-                                                val resp = withContext(Dispatchers.IO) {
-                                                    ApiClient.apiService.sendGlobalBroadcast(req)
+
+                                                var success = false
+                                                var respMessage = "Pemberitahuan berhasil dikirimkan ke seluruh database dan pengguna aplikasi!"
+
+                                                // 1. Coba endpoint khusus broadcast
+                                                try {
+                                                    val req = BroadcastRequest(
+                                                        title = cleanTitle,
+                                                        message = cleanMsg,
+                                                        priority = broadcastPriority
+                                                    )
+                                                    val resp = withContext(Dispatchers.IO) {
+                                                        ApiClient.apiService.sendGlobalBroadcast(req)
+                                                    }
+                                                    respMessage = resp.message ?: respMessage
+                                                    success = true
+                                                } catch (_: Exception) {
+                                                    // 2. Fallback otomatis jika 404: Simpan langsung ke app_settings global_master_announcements
+                                                    try {
+                                                        val currentList = broadcastsList.toMutableList()
+                                                        currentList.removeAll { it.id == newAnnouncement.id }
+                                                        currentList.add(0, newAnnouncement)
+                                                        val jsonStr = Json.encodeToString(currentList)
+                                                        withContext(Dispatchers.IO) {
+                                                            ApiClient.apiService.saveAppSetting("global_master_announcements", mapOf("value" to jsonStr))
+                                                        }
+                                                        broadcastsList = currentList
+                                                        com.example.ui.data.SettingsManager.globalAnnouncements = currentList
+                                                        success = true
+                                                    } catch (dbErr: Exception) {
+                                                        throw dbErr
+                                                    }
                                                 }
-                                                operationResultMsg = "✅ BERHASIL DISIARKAN!\n\n${resp.message ?: "Pemberitahuan terkirim ke seluruh database & pengguna!"}"
-                                                broadcastMessage = ""
-                                                loadBroadcasts()
-                                                com.example.ui.data.SettingsManager.syncSettingsFromRemote(context)
+
+                                                if (success) {
+                                                    operationResultMsg = "✅ BERHASIL DISIARKAN!\n\n$respMessage"
+                                                    broadcastMessage = ""
+                                                    loadBroadcasts()
+                                                    com.example.ui.data.SettingsManager.syncSettingsFromRemote(context)
+                                                }
                                             } catch (e: Exception) {
                                                 operationResultMsg = "❌ GAGAL MENGIRIM PEMBERITAHUAN:\n${e.localizedMessage ?: e.message}"
                                             } finally {
@@ -1509,6 +1564,8 @@ fun ManageTenantScreen(
     // DIALOG: Detail & Statistik Tenant (manage_tenant.sh Menu 7)
     if (showStatsDialog != null) {
         val t = showStatsDialog!!
+        var showPasswordInStats by remember { mutableStateOf(false) }
+
         AlertDialog(
             onDismissRequest = {
                 showStatsDialog = null
@@ -1535,6 +1592,35 @@ fun ManageTenantScreen(
                     ) {
                         DetailRow("Nama Tenant", t.name, textMain, textSecondary)
                         DetailRow("Username", t.username, textMain, textSecondary)
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Password Superadmin", color = textSecondary, fontSize = 12.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = if (showPasswordInStats) (t.password?.takeIf { it.isNotBlank() } ?: "(kosong)") else "••••••••",
+                                    color = textMain,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { showPasswordInStats = !showPasswordInStats },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (showPasswordInStats) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = "Lihat Password",
+                                        tint = primaryColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         DetailRow("Database", t.db_name, textMain, textSecondary)
                         DetailRow("Status Akun", t.status, if (t.status == "ACTIVE") successColor else errorColor, textSecondary)
                         DetailRow("Mode", if (t.is_demo == 1) "DEMO (Uji Coba)" else "PRODUKSI", if (t.is_demo == 1) purpleColor else primaryColor, textSecondary)
@@ -1572,6 +1658,7 @@ fun ManageTenantScreen(
     if (showResetPasswordDialog != null) {
         val t = showResetPasswordDialog!!
         var showPass by remember { mutableStateOf(false) }
+        var showCurrentPass by remember { mutableStateOf(false) }
 
         AlertDialog(
             onDismissRequest = { if (!isResetSubmitting) showResetPasswordDialog = null },
@@ -1581,12 +1668,45 @@ fun ManageTenantScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.VpnKey, contentDescription = null, tint = warningColor, modifier = Modifier.size(24.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Reset Password Superadmin", color = textMain, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text("Ubah / Reset Password Superadmin", color = textMain, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Ubah password superadmin untuk tenant '${t.name}' (username: ${t.username}).", color = textSecondary, fontSize = 13.sp)
+
+                    Surface(
+                        color = primaryColor.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Password Saat Ini:", color = textSecondary, fontSize = 11.sp)
+                                Text(
+                                    text = if (showCurrentPass) (t.password?.takeIf { it.isNotBlank() } ?: "(kosong)") else "••••••••",
+                                    color = textMain,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            IconButton(
+                                onClick = { showCurrentPass = !showCurrentPass },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (showCurrentPass) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = "Tampilkan Password Saat Ini",
+                                    tint = primaryColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
 
                     OutlinedTextField(
                         value = newPasswordInput,
@@ -1639,6 +1759,7 @@ fun ManageTenantScreen(
                                 }
                                 operationResultMsg = res.message
                                 showResetPasswordDialog = null
+                                loadTenants()
                             } catch (e: Exception) {
                                 operationResultMsg = "Gagal reset password: ${e.localizedMessage ?: "Error"}"
                             } finally {
@@ -1863,10 +1984,23 @@ fun ManageTenantScreen(
                         coroutineScope.launch {
                             isDeletingBroadcast = true
                             try {
-                                val res = withContext(Dispatchers.IO) {
-                                    ApiClient.apiService.deleteGlobalBroadcast(b.id)
+                                var respMessage = "Pemberitahuan dihapus dari seluruh database."
+                                try {
+                                    val res = withContext(Dispatchers.IO) {
+                                        ApiClient.apiService.deleteGlobalBroadcast(b.id)
+                                    }
+                                    respMessage = res.message ?: respMessage
+                                } catch (_: Exception) {
+                                    // Fallback: hapus dari list di app_settings MySQL
+                                    val updatedList = broadcastsList.filter { it.id != b.id }
+                                    val jsonStr = Json.encodeToString(updatedList)
+                                    withContext(Dispatchers.IO) {
+                                        ApiClient.apiService.saveAppSetting("global_master_announcements", mapOf("value" to jsonStr))
+                                    }
+                                    broadcastsList = updatedList
+                                    com.example.ui.data.SettingsManager.globalAnnouncements = updatedList
                                 }
-                                operationResultMsg = "✅ BERHASIL DIHAPUS:\n\n${res.message ?: "Pemberitahuan dihapus dari seluruh database."}"
+                                operationResultMsg = "✅ BERHASIL DIHAPUS:\n\n$respMessage"
                                 broadcastToDelete = null
                                 loadBroadcasts()
                                 com.example.ui.data.SettingsManager.syncSettingsFromRemote(context)
@@ -1993,6 +2127,8 @@ private fun TenantCard(
     onToggleDemoClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
+    var showPassword by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -2014,11 +2150,30 @@ private fun TenantCard(
                         fontSize = 15.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        "Superadmin: ${tenant.username}",
-                        color = textSecondary,
-                        fontSize = 12.sp
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "User: ${tenant.username}",
+                            color = textSecondary,
+                            fontSize = 12.sp
+                        )
+                        Text("•", color = textSecondary, fontSize = 12.sp)
+                        Text("Pass: ", color = textSecondary, fontSize = 12.sp)
+                        Text(
+                            text = if (showPassword) (tenant.password?.takeIf { it.isNotBlank() } ?: "(kosong)") else "••••••••",
+                            color = textMain,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Icon(
+                            imageVector = if (showPassword) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = "Lihat Password",
+                            tint = primaryColor,
+                            modifier = Modifier.size(15.dp).clickable { showPassword = !showPassword }
+                        )
+                    }
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2109,7 +2264,7 @@ private fun TenantCard(
                 ) {
                     Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(14.dp), tint = warningColor)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Kunci", fontSize = 11.sp, color = textMain)
+                    Text("Password", fontSize = 11.sp, color = textMain)
                 }
 
                 // 3. Toggle Status (Disable / Enable)

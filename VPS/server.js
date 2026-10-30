@@ -12,6 +12,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { minioClient, uploadInvoiceImage, uploadProfilePicture, uploadCustomerHeaderBg } = require('./minioService');
 
 const app = express();
 app.use(cors({
@@ -33,6 +34,12 @@ const uploadDir = path.join(__dirname, 'uploads', 'packages');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
+const invoiceUploadDir = path.join(__dirname, 'uploads', 'invoices');
+if (!fs.existsSync(invoiceUploadDir)) {
+    fs.mkdirSync(invoiceUploadDir, { recursive: true });
+}
+
+const invoiceMemoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -452,6 +459,7 @@ async function ensureTenantTables(pool) {
             description TEXT,
             category VARCHAR(100) DEFAULT 'Lain-lain',
             admin_name VARCHAR(100),
+            image_url TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
         await pool.query(`CREATE TABLE IF NOT EXISTS pemasukan (
@@ -563,6 +571,8 @@ async function ensureTenantTables(pool) {
         await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
         await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
         await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS header_bg_url TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`).catch(()=>{});
         await pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(()=>{});
         await pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
             setting_key VARCHAR(100) PRIMARY KEY,
@@ -654,6 +664,7 @@ async function updateSchema() {
     try {
         await masterPool.query(`ALTER TABLE users ADD COLUMN is_demo TINYINT(1) DEFAULT 0`).catch(e=>{});
         await masterPool.query(`ALTER TABLE users ADD COLUMN area_id VARCHAR(100) DEFAULT 'semua'`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE users ADD COLUMN avatar_url TEXT`).catch(e=>{});
         await masterPool.query(`CREATE TABLE IF NOT EXISTS pembukuan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             type VARCHAR(50),
@@ -1499,7 +1510,9 @@ app.get('/api/customers', async (req, res) => {
                 additional_cost_desc1: desc1,
                 additional_cost_desc2: desc2,
                 add1Desc: desc1,
-                add2Desc: desc2
+                add2Desc: desc2,
+                header_bg_url: (r.header_bg_url || r.header_bg || ''),
+                headerBgUrl: (r.header_bg_url || r.header_bg || '')
             };
         });
         res.json(customers);
@@ -1976,8 +1989,164 @@ app.get('/api/pembayaran', async (req, res) => {
     }
 });
 
+app.post('/api/pembukuan/upload-invoice', invoiceMemoryUpload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "File gambar tidak ditemukan" });
+        }
+        const tenantDbName = req.tenantDb || (req.user ? req.user.db_name : 'default');
+        const result = await uploadInvoiceImage(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+            tenantDbName
+        );
+        res.json({
+            status: "success",
+            message: "Invoice uploaded successfully",
+            url: result.url,
+            image_url: result.url,
+            storage: result.storage
+        });
+    } catch (error) {
+        console.error("Invoice upload error:", error);
+        res.status(500).json({ error: "Gagal mengunggah gambar invoice: " + error.message });
+    }
+});
+
+// Upload Profile Picture (Local VPS Storage isolated per tenant)
+app.post('/api/user/profile-picture', invoiceMemoryUpload.single('image'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "File foto profil tidak ditemukan" });
+        }
+        const tenantDbName = req.tenantDb || (req.user ? req.user.db_name : 'default');
+        const userId = req.user ? req.user.id : (req.body.username || 'admin');
+        const result = await uploadProfilePicture(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+            tenantDbName,
+            userId
+        );
+
+        if (req.user && req.user.username) {
+            await masterPool.query('UPDATE users SET avatar_url = ? WHERE username = ?', [result.url, req.user.username]).catch(() => {});
+            try {
+                const tPool = getTenantPool(tenantDbName);
+                if (tPool) {
+                    await tPool.query('UPDATE users SET avatar_url = ? WHERE username = ?', [result.url, req.user.username]).catch(() => {});
+                }
+            } catch (err) {}
+        }
+
+        res.json({
+            status: "success",
+            message: "Foto profil berhasil diunggah",
+            avatar_url: result.url,
+            url: result.url
+        });
+    } catch (error) {
+        console.error("Profile picture upload error:", error);
+        res.status(500).json({ error: "Gagal mengunggah foto profil: " + error.message });
+    }
+});
+
+// Update Profile Info
+app.put('/api/user/profile', async (req, res) => {
+    try {
+        const { name, username, password, avatar_url } = req.body;
+        const targetUsername = (req.user && req.user.username) ? req.user.username : (username || '');
+        const tenantDbName = req.tenantDb || (req.user ? req.user.db_name : 'app_db');
+
+        if (!targetUsername) {
+            return res.status(400).json({ error: "User tidak terotentikasi" });
+        }
+
+        const updates = [];
+        const params = [];
+
+        if (name) {
+            updates.push('name = ?');
+            params.push(name);
+        }
+        if (username && username !== targetUsername) {
+            updates.push('username = ?');
+            params.push(username);
+        }
+        if (avatar_url) {
+            updates.push('avatar_url = ?');
+            params.push(avatar_url);
+        }
+        if (password && password.trim().length > 0) {
+            updates.push('password = ?');
+            params.push(password.trim());
+        }
+
+        if (updates.length > 0) {
+            const queryStr = `UPDATE users SET ${updates.join(', ')} WHERE username = ?`;
+            params.push(targetUsername);
+
+            await masterPool.query(queryStr, params).catch(e => console.error("Master update user error:", e.message));
+
+            try {
+                const tPool = getTenantPool(tenantDbName);
+                if (tPool) {
+                    await tPool.query(queryStr, params).catch(() => {});
+                }
+            } catch (err) {}
+        }
+
+        const finalUsername = username || targetUsername;
+        const [updatedRows] = await masterPool.query('SELECT id, name, username, role, db_name, status, is_demo, avatar_url FROM users WHERE username = ?', [finalUsername]);
+        const updatedUser = updatedRows && updatedRows.length > 0 ? updatedRows[0] : null;
+
+        res.json({
+            message: "Profil berhasil diperbarui",
+            user: updatedUser
+        });
+    } catch (error) {
+        console.error("Update profile error:", error);
+        res.status(500).json({ error: "Gagal memperbarui profil: " + error.message });
+    }
+});
+
+// Upload Customer Header Background Image (Local VPS Storage isolated per tenant)
+app.post('/api/customers/:id/header-bg', invoiceMemoryUpload.single('image'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!req.file) {
+            return res.status(400).json({ error: "File gambar background tidak ditemukan" });
+        }
+        const tenantDbName = req.tenantDb || (req.user ? req.user.db_name : 'default');
+        const result = await uploadCustomerHeaderBg(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+            tenantDbName,
+            id
+        );
+
+        if (req.pool) {
+            await req.pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS header_bg_url TEXT").catch(() => {});
+            await req.pool.query("UPDATE customers SET header_bg_url = ? WHERE id = ?", [result.url, id]);
+        }
+
+        res.json({
+            status: "success",
+            message: "Background header pelanggan berhasil diperbarui",
+            header_bg_url: result.url,
+            url: result.url
+        });
+    } catch (error) {
+        console.error("Customer header bg upload error:", error);
+        res.status(500).json({ error: "Gagal mengunggah background header: " + error.message });
+    }
+});
+
 app.get('/api/pembukuan/all', async (req, res) => {
     try {
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS image_url TEXT").catch(e => {});
         const { month, year, all } = req.query;
         let query = 'SELECT * FROM pembukuan';
         const params = [];
@@ -2001,6 +2170,8 @@ app.get('/api/pembukuan/all', async (req, res) => {
             category: r.category || 'Operasional',
             admin: r.admin_name || r.admin || 'Admin',
             admin_name: r.admin_name || r.admin || 'Admin',
+            image_url: r.image_url || r.invoice_url || '',
+            invoice_url: r.image_url || r.invoice_url || '',
             date: r.created_at || r.date || new Date().toISOString(),
             created_at: r.created_at || r.date || new Date().toISOString()
         })));
@@ -2013,11 +2184,20 @@ app.get('/api/pembukuan/all', async (req, res) => {
 app.put('/api/pembukuan/:id', async (req, res) => {
     try {
         await req.pool.query("ALTER TABLE pembukuan MODIFY COLUMN type VARCHAR(50)").catch(e => {});
-        const { type, category, amount, description } = req.body;
-        await req.pool.query(
-            'UPDATE pembukuan SET type = ?, category = ?, amount = ?, description = ? WHERE id = ?',
-            [type, category || 'Lain-lain', amount, description, req.params.id]
-        );
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS image_url TEXT").catch(e => {});
+        const { type, category, amount, description, image_url, invoice_url } = req.body;
+        const imgUrl = image_url || invoice_url || '';
+        if (imgUrl) {
+            await req.pool.query(
+                'UPDATE pembukuan SET type = ?, category = ?, amount = ?, description = ?, image_url = ? WHERE id = ?',
+                [type, category || 'Lain-lain', amount, description, imgUrl, req.params.id]
+            );
+        } else {
+            await req.pool.query(
+                'UPDATE pembukuan SET type = ?, category = ?, amount = ?, description = ? WHERE id = ?',
+                [type, category || 'Lain-lain', amount, description, req.params.id]
+            );
+        }
         res.json({ message: "Pembukuan diperbarui" });
     } catch (error) {
         console.error(error);
@@ -2072,13 +2252,15 @@ app.post('/api/pembukuan', async (req, res) => {
         await req.pool.query("ALTER TABLE pembukuan MODIFY COLUMN type VARCHAR(50)").catch(e => {});
         await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)").catch(e => {});
         await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)").catch(e => {});
-        const { type, amount, description, category } = req.body;
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS image_url TEXT").catch(e => {});
+        const { type, amount, description, category, image_url, invoice_url } = req.body;
+        const imgUrl = image_url || invoice_url || '';
         const adminName = req.body.admin_name || req.body.admin || (req.user ? req.user.username : 'Admin');
         const cat = category || 'Lain-lain';
         try {
             await req.pool.query(
-                'INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)',
-                [type, amount || 0, description || '', cat, adminName]
+                'INSERT INTO pembukuan (type, amount, description, category, admin_name, image_url) VALUES (?, ?, ?, ?, ?, ?)',
+                [type, amount || 0, description || '', cat, adminName, imgUrl]
             );
         } catch (e) {
             try {
@@ -2924,6 +3106,33 @@ app.post('/api/settings/:key', async (req, res) => {
              ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
             [String(key), strVal]
         );
+
+        if (key === 'global_master_announcements') {
+            try {
+                // Simpan juga ke app_settings di masterPool
+                await masterPool.query(
+                    `INSERT INTO app_settings (setting_key, setting_value) VALUES ('global_master_announcements', ?)
+                     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                    [strVal]
+                ).catch(() => {});
+
+                // Sinkronkan ke app_settings semua tenant pool
+                const [users] = await masterPool.query("SELECT DISTINCT db_name FROM users WHERE db_name IS NOT NULL AND db_name != ''");
+                for (const u of users) {
+                    if (u.db_name && u.db_name !== 'akbar_media_master') {
+                        try {
+                            const tenantPool = getTenantPool(u.db_name);
+                            await tenantPool.query(
+                                `INSERT INTO app_settings (setting_key, setting_value) VALUES ('global_master_announcements', ?)
+                                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                                [strVal]
+                            ).catch(() => {});
+                        } catch (tenantErr) {}
+                    }
+                }
+            } catch (err) {}
+        }
+
         res.json({ message: `Pengaturan ${key} berhasil disimpan`, success: true });
     } catch (error) {
         console.error("API Error POST /api/settings/:key:", error.message);
@@ -2949,7 +3158,7 @@ app.get('/api/manage-tenant/list', requireMasterSuperAdmin, async (req, res) => 
         await masterPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE'").catch(() => {});
         await masterPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo TINYINT(1) DEFAULT 0").catch(() => {});
 
-        const [users] = await masterPool.query("SELECT id, name, username, db_name, role, status, is_demo, created_at FROM users ORDER BY id ASC");
+        const [users] = await masterPool.query("SELECT id, name, username, password, db_name, role, status, is_demo, created_at FROM users ORDER BY id ASC");
         const result = [];
 
         for (const u of users) {
@@ -2974,6 +3183,7 @@ app.get('/api/manage-tenant/list', requireMasterSuperAdmin, async (req, res) => 
                 id: u.id,
                 name: u.name || '',
                 username: u.username || '',
+                password: u.password || '',
                 db_name: u.db_name || '',
                 role: u.role || 'SUPER_ADMIN',
                 status: u.status || 'ACTIVE',
