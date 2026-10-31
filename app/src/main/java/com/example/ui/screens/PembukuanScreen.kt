@@ -591,12 +591,11 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             coroutineScope.launch {
                                 try {
                                     var imageUrl: String? = null
-                                    if (selectedImageUri != null) {
-                                        val inputStream = context.contentResolver.openInputStream(selectedImageUri!!)
-                                        val bytes = inputStream?.readBytes()
-                                        inputStream?.close()
+                                    val imgUri = selectedImageUri
+                                    if (imgUri != null) {
+                                        val bytes = com.example.ui.util.ImageCompressor.compressImageUri(context, imgUri)
                                         if (bytes != null) {
-                                            val mimeType = context.contentResolver.getType(selectedImageUri!!) ?: "image/jpeg"
+                                            val mimeType = "image/jpeg"
                                             val reqFile = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
                                             val part = MultipartBody.Part.createFormData("image", "invoice_${System.currentTimeMillis()}.jpg", reqFile)
                                             val uploadRes = ApiClient.apiService.uploadInvoiceImage(part)

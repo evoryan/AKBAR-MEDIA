@@ -159,6 +159,11 @@ fun SettingScreen(
             var showFontScaleDialog by remember { mutableStateOf(false) }
             var currentFontScale by remember { mutableStateOf(com.example.ui.data.SettingsManager.fontScale) }
             
+            var showServerDialog by remember { mutableStateOf(false) }
+            var currentApiUrl by remember { mutableStateOf(com.example.ui.data.SettingsManager.apiBaseUrl) }
+            var customUrlInput by remember { mutableStateOf(currentApiUrl) }
+            var isTestingConnection by remember { mutableStateOf(false) }
+            
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -387,6 +392,18 @@ fun SettingScreen(
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             ) {
                 Column {
+                    SettingItem(
+                        icon = Icons.Default.Dns,
+                        title = "Pengaturan Server API",
+                        subtitle = currentApiUrl,
+                        iconTint = textMain,
+                        onClick = {
+                            customUrlInput = com.example.ui.data.SettingsManager.apiBaseUrl
+                            showServerDialog = true
+                        }
+                    )
+                    HorizontalDivider(color = cardBorder)
+
                     val isNewerAvailable = latestReleaseTag?.let { isVersionNewer(it, currentVersion) } == true
                     val displaySubtitle = when {
                         isCheckingUpdate -> "Memeriksa..."
@@ -662,6 +679,100 @@ fun SettingScreen(
                 }
             },
             dismissButton = {}
+        )
+    }
+
+    if (showServerDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isTestingConnection) showServerDialog = false },
+            containerColor = cardBg,
+            title = { Text("Pengaturan Server API", color = textMain, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "URL Server API yang sedang digunakan:",
+                        color = textSecondary,
+                        fontSize = 12.sp
+                    )
+
+                    OutlinedTextField(
+                        value = customUrlInput,
+                        onValueChange = { customUrlInput = it },
+                        label = { Text("URL Server API", color = textSecondary) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBg,
+                            unfocusedBorderColor = cardBorder,
+                            focusedTextColor = textMain,
+                            unfocusedTextColor = textMain
+                        ),
+                        singleLine = true
+                    )
+
+                    Text("Preset Pilihan URL:", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+
+                    OutlinedButton(
+                        onClick = { customUrlInput = "http://amg.akbarmediagroup.my.id/" },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+                            Text("Domain Utama (Rekomendasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = primaryBg)
+                            Text("http://amg.akbarmediagroup.my.id/", fontSize = 11.sp, color = textSecondary)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = { customUrlInput = "http://103.253.245.25:4100/" },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.fillMaxWidth()) {
+                            Text("VPS IP Direct (Cadangan)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = textMain)
+                            Text("http://103.253.245.25:4100/", fontSize = 11.sp, color = textSecondary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            if (customUrlInput.isBlank()) return@Button
+                            val formatted = if (customUrlInput.endsWith("/")) customUrlInput else "$customUrlInput/"
+                            coroutineScope.launch {
+                                isTestingConnection = true
+                                try {
+                                    com.example.ui.data.SettingsManager.apiBaseUrl = formatted
+                                    currentApiUrl = formatted
+                                    val pingRes = com.example.ui.data.remote.ApiClient.apiService.ping()
+                                    Toast.makeText(context, "Koneksi Berhasil: ${pingRes.status}", Toast.LENGTH_SHORT).show()
+                                    showServerDialog = false
+                                } catch (e: Exception) {
+                                    com.example.ui.data.SettingsManager.apiBaseUrl = formatted
+                                    currentApiUrl = formatted
+                                    Toast.makeText(context, "URL Tersimpan! Peringatan koneksi: ${e.message}", Toast.LENGTH_LONG).show()
+                                    showServerDialog = false
+                                } finally {
+                                    isTestingConnection = false
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryBg),
+                        enabled = !isTestingConnection
+                    ) {
+                        Text(if (isTestingConnection) "Menguji..." else "Simpan & Uji", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showServerDialog = false },
+                    enabled = !isTestingConnection
+                ) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
         )
     }
 

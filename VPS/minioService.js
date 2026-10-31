@@ -44,9 +44,13 @@ const baseCustomersDir = path.join(baseUploadsDir, 'customers');
  * Path: VPS/uploads/invoices/<tenant_db_name>/<timestamp>-<random>.<ext>
  */
 async function uploadInvoiceImage(fileBuffer, originalName, mimeType, tenantDbName) {
-    const ext = path.extname(originalName) || '.jpg';
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+        throw new Error("File buffer tidak valid atau kosong");
+    }
+    const safeOriginalName = originalName || 'invoice.jpg';
+    const ext = path.extname(safeOriginalName) || '.jpg';
     const timestamp = Date.now();
-    const cleanTenantDb = (tenantDbName || 'default_tenant').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanTenantDb = (tenantDbName || 'default_tenant').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
     const filename = `${timestamp}-${Math.round(Math.random() * 1e6)}${ext}`;
 
     const tenantDir = path.join(baseInvoicesDir, cleanTenantDb);
@@ -73,9 +77,13 @@ async function uploadInvoiceImage(fileBuffer, originalName, mimeType, tenantDbNa
  * Path: VPS/uploads/profiles/<tenant_db_name>/user_<userId>_<timestamp>.<ext>
  */
 async function uploadProfilePicture(fileBuffer, originalName, mimeType, tenantDbName, userId) {
-    const ext = path.extname(originalName) || '.jpg';
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+        throw new Error("File buffer tidak valid atau kosong");
+    }
+    const safeOriginalName = originalName || 'profile.jpg';
+    const ext = path.extname(safeOriginalName) || '.jpg';
     const timestamp = Date.now();
-    const cleanTenantDb = (tenantDbName || 'default_tenant').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanTenantDb = (tenantDbName || 'default_tenant').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
     const cleanUserId = (userId || 'admin').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
     const filename = `user_${cleanUserId}_${timestamp}${ext}`;
 
@@ -103,9 +111,13 @@ async function uploadProfilePicture(fileBuffer, originalName, mimeType, tenantDb
  * Path: VPS/uploads/customers/<tenant_db_name>/header_<customerId>_<timestamp>.<ext>
  */
 async function uploadCustomerHeaderBg(fileBuffer, originalName, mimeType, tenantDbName, customerId) {
-    const ext = path.extname(originalName) || '.jpg';
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+        throw new Error("File buffer tidak valid atau kosong");
+    }
+    const safeOriginalName = originalName || 'header.jpg';
+    const ext = path.extname(safeOriginalName) || '.jpg';
     const timestamp = Date.now();
-    const cleanTenantDb = (tenantDbName || 'default_tenant').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanTenantDb = (tenantDbName || 'default_tenant').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
     const cleanCustId = (customerId || '0').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
     const filename = `header_${cleanCustId}_${timestamp}${ext}`;
 

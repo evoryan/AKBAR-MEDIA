@@ -73,11 +73,9 @@ fun UpdateProfilScreen(onBack: () -> Unit) {
         coroutineScope.launch {
             try {
                 isUpdating = true
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val bytes = inputStream?.readBytes()
-                inputStream?.close()
+                val bytes = com.example.ui.util.ImageCompressor.compressImageUri(context, uri)
                 if (bytes != null) {
-                    val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val mimeType = "image/jpeg"
                     val reqFile = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
                     val part = MultipartBody.Part.createFormData("image", "avatar_${System.currentTimeMillis()}.jpg", reqFile)
                     val res = ApiClient.apiService.uploadProfilePicture(part)

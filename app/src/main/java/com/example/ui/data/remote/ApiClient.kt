@@ -36,6 +36,7 @@ object ApiClient {
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .addInterceptor(AuthInterceptor(context))
+                .addInterceptor(HostFallbackInterceptor(context))
                 .build()
                 
             updateBaseUrl(com.example.ui.data.SettingsManager.apiBaseUrl)

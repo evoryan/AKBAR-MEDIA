@@ -24,7 +24,8 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Setup static serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -38,8 +39,30 @@ const invoiceUploadDir = path.join(__dirname, 'uploads', 'invoices');
 if (!fs.existsSync(invoiceUploadDir)) {
     fs.mkdirSync(invoiceUploadDir, { recursive: true });
 }
+const profileUploadDir = path.join(__dirname, 'uploads', 'profiles');
+if (!fs.existsSync(profileUploadDir)) {
+    fs.mkdirSync(profileUploadDir, { recursive: true });
+}
+const customerUploadDir = path.join(__dirname, 'uploads', 'customers');
+if (!fs.existsSync(customerUploadDir)) {
+    fs.mkdirSync(customerUploadDir, { recursive: true });
+}
 
-const invoiceMemoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const invoiceMemoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+function handleUploadMiddleware(uploadSingle) {
+    return (req, res, next) => {
+        uploadSingle(req, res, (err) => {
+            if (err) {
+                if (err instanceof multer.MulterError) {
+                    return res.status(400).json({ error: `Ukuran berkas terlalu besar: ${err.message}` });
+                }
+                return res.status(500).json({ error: `Gagal memproses berkas: ${err.message}` });
+            }
+            next();
+        });
+    };
+}
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -561,19 +584,21 @@ async function ensureTenantTables(pool) {
         await pool.query(`CREATE OR REPLACE VIEW tagihan AS SELECT * FROM tagihan_bulanan`).catch(()=>{});
 
         // Ensure all customer columns exist matching Room PelangganEntity
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS alamat TEXT`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCost1 VARCHAR(50) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCost2 VARCHAR(50) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost1 VARCHAR(50) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost2 VARCHAR(50) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
-        await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS header_bg_url TEXT`).catch(()=>{});
-        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`).catch(()=>{});
-        await pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN alamat TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additional_cost1 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additional_cost2 VARCHAR(50) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN header_bg_url TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE users ADD COLUMN avatar_url TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(()=>{});
+        await pool.query(`ALTER TABLE pembukuan ADD COLUMN image_url TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(()=>{});
         await pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
             setting_key VARCHAR(100) PRIMARY KEY,
             setting_value TEXT,
@@ -936,10 +961,10 @@ app.post('/api/billing/pay', async (req, res) => {
         const customerName = customers[0].name;
         
         // Ensure table exists
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
         
-        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             customer_id INT,
@@ -983,7 +1008,7 @@ app.post('/api/billing/pay', async (req, res) => {
         } else {
             // Mark tagihan as LUNAS CASH
             const [tagihan] = await req.pool.query('SELECT id, bulan, tahun FROM tagihan_bulanan WHERE customer_id = ? AND status = "BELUM BAYAR" ORDER BY id ASC LIMIT 1', [customerId]);
-            await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+            await req.pool.query('ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
             if (tagihan.length > 0) {
                 await req.pool.query('UPDATE tagihan_bulanan SET status = "LUNAS CASH", admin_name = ?, amount = ? WHERE id = ?', [adminName, totalAmount || 0, tagihan[0].id]);
                 desc = `Pembayaran tagihan pelanggan ${customerName} (${tagihan[0].bulan} ${tagihan[0].tahun})`;
@@ -1011,7 +1036,7 @@ app.post('/api/billing/pay', async (req, res) => {
 
         // Add to pembukuan
         try {
-            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+            await req.pool.query('ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
             await req.pool.query('INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)', 
                 ['pemasukan', totalAmount || 0, desc, 'Transaksi Cash', adminName || 'Admin']);
         } catch (e) {
@@ -1079,9 +1104,9 @@ app.post('/api/billing/pay-bulk', async (req, res) => {
         let successCount = 0;
         let totalProcessedAmount = 0;
 
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
 
         for (const item of payments) {
             const customerId = item.customerId || item.customer_id || item.id;
@@ -1188,11 +1213,11 @@ app.post('/api/billing/delete', async (req, res) => {
         const customerName = customers[0].name;
         
         // Ensure table exists
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
-        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_id INT`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE pembukuan ADD COLUMN admin_id INT`).catch(e=>{});
         
-        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)`).catch(e=>{});
+        await req.pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(e=>{});
         await req.pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             customer_id INT,
@@ -1989,7 +2014,7 @@ app.get('/api/pembayaran', async (req, res) => {
     }
 });
 
-app.post('/api/pembukuan/upload-invoice', invoiceMemoryUpload.single('image'), async (req, res) => {
+app.post('/api/pembukuan/upload-invoice', handleUploadMiddleware(invoiceMemoryUpload.single('image')), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: "File gambar tidak ditemukan" });
@@ -2015,7 +2040,7 @@ app.post('/api/pembukuan/upload-invoice', invoiceMemoryUpload.single('image'), a
 });
 
 // Upload Profile Picture (Local VPS Storage isolated per tenant)
-app.post('/api/user/profile-picture', invoiceMemoryUpload.single('image'), async (req, res) => {
+app.post('/api/user/profile-picture', handleUploadMiddleware(invoiceMemoryUpload.single('image')), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: "File foto profil tidak ditemukan" });
@@ -2112,7 +2137,7 @@ app.put('/api/user/profile', async (req, res) => {
 });
 
 // Upload Customer Header Background Image (Local VPS Storage isolated per tenant)
-app.post('/api/customers/:id/header-bg', invoiceMemoryUpload.single('image'), async (req, res) => {
+app.post('/api/customers/:id/header-bg', handleUploadMiddleware(invoiceMemoryUpload.single('image')), async (req, res) => {
     try {
         const { id } = req.params;
         if (!req.file) {
@@ -2128,7 +2153,7 @@ app.post('/api/customers/:id/header-bg', invoiceMemoryUpload.single('image'), as
         );
 
         if (req.pool) {
-            await req.pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS header_bg_url TEXT").catch(() => {});
+            await req.pool.query("ALTER TABLE customers ADD COLUMN header_bg_url TEXT").catch(() => {});
             await req.pool.query("UPDATE customers SET header_bg_url = ? WHERE id = ?", [result.url, id]);
         }
 
@@ -2146,7 +2171,7 @@ app.post('/api/customers/:id/header-bg', invoiceMemoryUpload.single('image'), as
 
 app.get('/api/pembukuan/all', async (req, res) => {
     try {
-        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS image_url TEXT").catch(e => {});
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN image_url TEXT").catch(e => {});
         const { month, year, all } = req.query;
         let query = 'SELECT * FROM pembukuan';
         const params = [];
@@ -2184,7 +2209,7 @@ app.get('/api/pembukuan/all', async (req, res) => {
 app.put('/api/pembukuan/:id', async (req, res) => {
     try {
         await req.pool.query("ALTER TABLE pembukuan MODIFY COLUMN type VARCHAR(50)").catch(e => {});
-        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS image_url TEXT").catch(e => {});
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN image_url TEXT").catch(e => {});
         const { type, category, amount, description, image_url, invoice_url } = req.body;
         const imgUrl = image_url || invoice_url || '';
         if (imgUrl) {
@@ -2234,7 +2259,7 @@ app.delete('/api/pembukuan/:id', async (req, res) => {
 app.post('/api/setoran', async (req, res) => {
     try {
         const { adminName, amount } = req.body;
-        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)').catch(e=>{});
+        await req.pool.query('ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)').catch(e=>{});
         await req.pool.query(
             'INSERT INTO pembukuan (type, amount, description, category, admin_name) VALUES (?, ?, ?, ?, ?)',
             ['setor', amount, `Setoran oleh ${adminName}`, 'Setoran', adminName]
@@ -2250,9 +2275,9 @@ app.post('/api/setoran', async (req, res) => {
 app.post('/api/pembukuan', async (req, res) => {
     try {
         await req.pool.query("ALTER TABLE pembukuan MODIFY COLUMN type VARCHAR(50)").catch(e => {});
-        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS admin_name VARCHAR(100)").catch(e => {});
-        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS category VARCHAR(100)").catch(e => {});
-        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN IF NOT EXISTS image_url TEXT").catch(e => {});
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN admin_name VARCHAR(100)").catch(e => {});
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100)").catch(e => {});
+        await req.pool.query("ALTER TABLE pembukuan ADD COLUMN image_url TEXT").catch(e => {});
         const { type, amount, description, category, image_url, invoice_url } = req.body;
         const imgUrl = image_url || invoice_url || '';
         const adminName = req.body.admin_name || req.body.admin || (req.user ? req.user.username : 'Admin');
@@ -3155,8 +3180,8 @@ const requireMasterSuperAdmin = (req, res, next) => {
 // 1. LIHAT DAFTAR SEMUA TENANT (List Tenants)
 app.get('/api/manage-tenant/list', requireMasterSuperAdmin, async (req, res) => {
     try {
-        await masterPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE'").catch(() => {});
-        await masterPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo TINYINT(1) DEFAULT 0").catch(() => {});
+        await masterPool.query("ALTER TABLE users ADD COLUMN status VARCHAR(20) DEFAULT 'ACTIVE'").catch(() => {});
+        await masterPool.query("ALTER TABLE users ADD COLUMN is_demo TINYINT(1) DEFAULT 0").catch(() => {});
 
         const [users] = await masterPool.query("SELECT id, name, username, password, db_name, role, status, is_demo, created_at FROM users ORDER BY id ASC");
         const result = [];

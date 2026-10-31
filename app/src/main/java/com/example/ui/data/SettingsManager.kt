@@ -101,17 +101,21 @@ object SettingsManager {
     private const val KEY_API_BASE_URL = "api_base_url"
     var apiBaseUrl: String
         get() {
-            val saved = prefs.getString(KEY_API_BASE_URL, "http://amg.akbarmediagroup.my.id/") ?: "http://amg.akbarmediagroup.my.id/"
-            if (saved.contains("api.akbarmediagroup.me") || saved.contains("103.253.245.25")) {
-                val migrated = "http://amg.akbarmediagroup.my.id/"
-                prefs.edit().putString(KEY_API_BASE_URL, migrated).apply()
-                return migrated
+            val defaultDomainUrl = "http://amg.akbarmediagroup.my.id/"
+            val saved = prefs.getString(KEY_API_BASE_URL, defaultDomainUrl) ?: defaultDomainUrl
+            // Kembalikan ke alamat domain amg.akbarmediagroup.my.id jika sebelumnya tersimpan IP atau domain lama
+            if (saved.contains("103.253.245.25") || saved.contains("api.akbarmediagroup.me")) {
+                prefs.edit().putString(KEY_API_BASE_URL, defaultDomainUrl).apply()
+                return defaultDomainUrl
             }
             return saved
         }
         set(value) {
             val formatted = if (value.endsWith("/")) value else "$value/"
             prefs.edit().putString(KEY_API_BASE_URL, formatted).apply()
+            try {
+                com.example.ui.data.remote.ApiClient.updateBaseUrl(formatted)
+            } catch (_: Exception) {}
         }
 
     var companyName: String

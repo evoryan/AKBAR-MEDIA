@@ -6,7 +6,7 @@ const app = express();
 
 // Determine port from environment or fallback
 const PORT = process.env.PORT || 8080;
-const BACKEND_URL = process.env.BACKEND_URL || process.env.API_URL || 'https://amg.akbarmediagroup.my.id';
+const BACKEND_URL = process.env.BACKEND_URL || process.env.API_URL || 'http://103.253.245.25:4100';
 
 // Built-in reverse proxy for /api and /uploads to VPS Backend Server
 app.use(['/api', '/uploads'], (req, res) => {
