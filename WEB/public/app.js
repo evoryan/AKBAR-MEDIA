@@ -40,7 +40,7 @@ let activeInvoiceCustomer = null;
 
 // Pagination state
 let customerPage = 1;
-const customersPerPage = 10;
+const customersPerPage = 25;
 let filteredCustomersList = [];
 
 // Chart instance
@@ -625,6 +625,10 @@ function switchTab(tabId) {
         }
     }
 
+    if (tabId === 'keuangan') {
+        loadKeuanganData();
+    }
+
     if (tabId === 'konfigurasi') {
         loadAppSettings();
     }
@@ -1063,285 +1067,33 @@ function filterBilling() {
 }
 
 function getCustomerBillAmount(c) {
-    let base = parseFloat(String(c.price || '0').replace(/[^0-9]/g, '')) || 0;
+    if (!c) return 0;
+    let base = parseFloat(String(c.price || '0').replace(/[^0-9.]/g, '')) || 0;
     const pkgName = c.packageName || c.package_name;
-    if (!base && pkgName) {
+    if (!base && pkgName && typeof packagesList !== 'undefined' && packagesList.length > 0) {
         const pkg = packagesList.find(p => p.name === pkgName);
-        if (pkg) base = parseFloat(String(pkg.price || '0').replace(/[^0-9]/g, '')) || 0;
+        if (pkg) base = parseFloat(String(pkg.price || '0').replace(/[^0-9.]/g, '')) || 0;
     }
-    const add1 = parseFloat(String(c.add1 || c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9]/g, '')) || 0;
-    const add2 = parseFloat(String(c.add2 || c.additionalCost2 || c.additional_cost2 || '0').replace(/[^0-9]/g, '')) || 0;
-    const disc = parseFloat(String(c.discount || '0').replace(/[^0-9]/g, '')) || 0;
-    return Math.max(0, base + add1 + add2 - disc);
-}
+    const add1 = parseFloat(String(c.add1 || c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9.]/g, '')) || 0;
+    const add2 = parseFloat(String(c.add2 || c.additionalCost2 || c.additional_cost2 || '0').replace(/[^0-9.]/g, '')) || 0;
+    const disc = parseFloat(String(c.discount || c.diskon || '0').replace(/[^0-9.]/g, '')) || 0;
+    
+    let subtotal = Math.max(0, base + add1 + add2 - disc);
 
-function renderBillingTable(items) {
-    const tbody = document.getElementById('billing-table-body');
-    if (!tbody) return;
-
-    if (items.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="6" class="px-6 py-12 text-center text-slate-500">
-                    Tidak ada pelanggan ${currentBillingStatus === 'unpaid' ? 'belum bayar' : 'sudah bayar'} ditemukan.
-                </td>
-            </tr>
-        `;
-        return;
-    }
-
-    tbody.innerHTML = items.map(c => {
-        const billAmount = getCustomerBillAmount(c);
-        const monthVal = document.getElementById('billing-filter-month')?.value || (new Date().getMonth() + 1).toString();
-        const yearVal = document.getElementById('billing-filter-year')?.value || new Date().getFullYear().toString();
-        const isPaid = currentBillingStatus === 'paid' || isCustomerPaidForPeriod(c, monthVal, yearVal);
-        const isChecked = selectedBillingBulkIds.has(c.id);
-
-        return `
-            <tr class="hover:bg-slate-800/40 transition">
-                <td class="px-4 py-3 text-center">
-                    ${!isPaid ? `
-                        <input type="checkbox" onchange="toggleSelectBilling(${c.id}, this.checked)" ${isChecked ? 'checked' : ''} class="rounded bg-slate-900 border-slate-700 text-emerald-600 focus:ring-0">
-                    ` : `
-                        <i data-lucide="check" class="w-4 h-4 text-emerald-500 mx-auto"></i>
-                    `}
-                </td>
-                <td class="px-4 py-3">
-                    <p class="font-bold text-white">${c.name}</p>
-                    <p class="text-xs text-slate-400 font-mono">${c.phone || '-'}</p>
-                    <p class="text-[10px] text-slate-500">PPPoE: ${c.username || '-'}</p>
-                </td>
-                <td class="px-4 py-3">
-                    <span class="text-xs font-semibold text-emerald-400">${c.packageName || c.package_name || 'Paket Standar'}</span>
-                    <p class="font-bold text-white text-sm mt-0.5">${formatRupiah(billAmount)}</p>
-                </td>
-                <td class="px-4 py-3 text-xs">
-                    <p class="text-slate-300">${c.area || 'Semua Area'}</p>
-                    <p class="text-slate-400 text-[11px] mt-0.5">Jatuh Tempo: Tgl ${c.billingDate || '5'}</p>
-                </td>
-                <td class="px-4 py-3 text-center">
-                    ${isPaid ? `
-                        <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                            LUNAS
-                        </span>
-                    ` : `
-                        <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                            BELUM BAYAR
-                        </span>
-                    `}
-                </td>
-                <td class="px-4 py-3 text-right">
-                    <div class="flex items-center justify-end gap-1.5">
-                        ${!isPaid ? `
-                            <button onclick="openPayBillingModal(${c.id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1 shadow-sm">
-                                <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Bayar
-                            </button>
-                            <button onclick="sendWhatsAppInvoice(${c.id})" class="p-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 rounded-xl transition" title="Kirim Tagihan WhatsApp">
-                                <i data-lucide="message-circle" class="w-4 h-4"></i>
-                            </button>
-                            <button onclick="openInvoiceModal(${c.id})" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition" title="Rincian Invoice">
-                                <i data-lucide="file-text" class="w-4 h-4"></i>
-                            </button>
-                        ` : `
-                            <button onclick="openInvoiceModal(${c.id})" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-xl text-xs font-semibold transition flex items-center gap-1 border border-blue-500/30">
-                                <i data-lucide="receipt" class="w-3.5 h-3.5"></i> Invoice
-                            </button>
-                            <button onclick="cancelBillingPayment(${c.id})" class="p-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 rounded-xl transition" title="Hapus Status Bayar (Batalkan)">
-                                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-                            </button>
-                        `}
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    if (window.lucide) lucide.createIcons();
-}
-
-function toggleSelectBilling(id, checked) {
-    if (checked) {
-        selectedBillingBulkIds.add(id);
+    let ppnRaw = c.ppn || c.PPN || c.taxRate || '0';
+    let ppnVal = 0;
+    if (String(ppnRaw).includes('%')) {
+        let rate = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+        ppnVal = Math.round(subtotal * (rate / 100));
     } else {
-        selectedBillingBulkIds.delete(id);
-    }
-    updateBulkPayButtonState();
-}
-
-function toggleSelectAllBilling(checked) {
-    selectedBillingBulkIds.clear();
-    if (checked) {
-        customersList.filter(c => !(c.status || '').toUpperCase().includes('LUNAS')).forEach(c => {
-            selectedBillingBulkIds.add(c.id);
-        });
-    }
-    filterBilling();
-    updateBulkPayButtonState();
-}
-
-function updateBulkPayButtonState() {
-    const btn = document.getElementById('btn-bulk-pay');
-    const cnt = document.getElementById('bulk-selected-count');
-    if (!btn) return;
-    
-    if (selectedBillingBulkIds.size > 0) {
-        btn.classList.remove('hidden');
-        btn.classList.add('flex');
-        if (cnt) cnt.innerText = selectedBillingBulkIds.size;
-    } else {
-        btn.classList.add('hidden');
-        btn.classList.remove('flex');
-    }
-}
-
-async function triggerBulkPay() {
-    if (selectedBillingBulkIds.size === 0) return;
-    const count = selectedBillingBulkIds.size;
-    if (!confirm(`Konfirmasi pembayaran lunas untuk ${count} pelanggan terpilih?`)) return;
-
-    showLoading(true, 'Memproses pembayaran masal...');
-    try {
-        const adminName = localStorage.getItem('username') || 'Admin';
-        const payments = Array.from(selectedBillingBulkIds).map(id => {
-            const cust = customersList.find(c => c.id == id);
-            return {
-                customerId: id,
-                adminName: adminName,
-                totalAmount: cust ? getCustomerBillAmount(cust) : 0
-            };
-        });
-
-        const res = await fetch(`${API_BASE_URL}/api/billing/pay-bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                customerIds: Array.from(selectedBillingBulkIds),
-                payments: payments,
-                paymentMethod: 'Tunai / Cash',
-                receivedBy: adminName,
-                adminName: adminName
-            })
-        });
-
-        if (res.ok) {
-            showToast(`${count} tagihan berhasil dilunasi!`, 'success');
-            selectedBillingBulkIds.clear();
-            updateBulkPayButtonState();
-            await loadBillingData();
-            await loadCustomersData();
-            await loadKeuanganData();
-            await loadDashboardData();
-        } else {
-            showToast('Gagal memproses pembayaran masal.', 'error');
+        let parsed = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+        if (parsed > 0 && parsed <= 100) {
+            ppnVal = Math.round(subtotal * (parsed / 100));
+        } else if (parsed > 100) {
+            ppnVal = parsed;
         }
-    } catch (e) {
-        showToast('Terjadi kesalahan saat koneksi ke server.', 'error');
-    } finally {
-        showLoading(false);
     }
-}
-
-function openPayBillingModal(customerId) {
-    const c = customersList.find(cust => cust.id == customerId);
-    if (!c) return;
-
-    document.getElementById('pay-customer-id').value = c.id;
-    document.getElementById('pay-customer-name').innerText = `${c.name} (${c.username || 'No PPPoE'})`;
-    
-    const amount = getCustomerBillAmount(c);
-    document.getElementById('pay-customer-amount').innerText = formatRupiah(amount);
-    
-    const adminField = document.getElementById('pay-admin-name');
-    if (adminField) adminField.value = localStorage.getItem('username') || 'Admin';
-
-    openModal('modal-billing-pay');
-}
-
-async function submitPayBilling(e) {
-    e.preventDefault();
-    const customerId = document.getElementById('pay-customer-id').value;
-    const c = customersList.find(cust => cust.id == customerId);
-    if (!c) return;
-
-    const amount = getCustomerBillAmount(c);
-    const method = document.getElementById('pay-method').value;
-    const admin = document.getElementById('pay-admin-name').value.trim() || localStorage.getItem('username') || 'Admin';
-    const note = document.getElementById('pay-note').value.trim();
-
-    const monthIdx = parseInt(document.getElementById('billing-filter-month')?.value || (new Date().getMonth() + 1)) - 1;
-    const monthName = INDO_MONTHS[monthIdx] || 'Januari';
-    const yearStr = document.getElementById('billing-filter-year')?.value || new Date().getFullYear().toString();
-
-    showLoading(true, 'Menyimpan pembayaran...');
-    try {
-        const res = await fetch(`${API_BASE_URL}/api/billing/pay`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                customerId: Number(customerId),
-                totalAmount: amount,
-                paidAmount: amount,
-                adminName: admin,
-                receivedBy: admin,
-                paymentMethod: method,
-                notes: note,
-                months: [`${monthName} ${yearStr}`],
-                paymentDate: new Date().toISOString()
-            })
-        });
-
-        if (res.ok) {
-            showToast(`Pembayaran ${c.name} (${monthName} ${yearStr}) berhasil disimpan!`, 'success');
-            closeModal('modal-billing-pay');
-            await loadBillingData();
-            await loadCustomersData();
-            await loadKeuanganData();
-            await loadDashboardData();
-        } else {
-            showToast('Gagal menyimpan pembayaran tagihan.', 'error');
-        }
-    } catch (err) {
-        showToast('Koneksi server gagal saat mencatat pembayaran.', 'error');
-    } finally {
-        showLoading(false);
-    }
-}
-
-async function cancelBillingPayment(customerId) {
-    const c = customersList.find(cust => cust.id == customerId);
-    if (!c) return;
-
-    if (!confirm(`Batalkan status lunas untuk pelanggan ${c.name}? Status akan kembali menjadi Belum Bayar.`)) return;
-
-    showLoading(true, 'Membatalkan pembayaran...');
-    try {
-        const curMonth = Number(document.getElementById('billing-filter-month')?.value) || (new Date().getMonth() + 1);
-        const curYear = Number(document.getElementById('billing-filter-year')?.value) || new Date().getFullYear();
-
-        const res = await fetch(`${API_BASE_URL}/api/billing/delete`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                customerId: Number(customerId),
-                billingMonth: curMonth,
-                billingYear: curYear
-            })
-        });
-
-        if (res.ok) {
-            showToast(`Status tagihan ${c.name} dikembalikan ke Belum Bayar.`, 'success');
-            await loadBillingData();
-            await loadCustomersData();
-            await loadKeuanganData();
-            await loadDashboardData();
-        } else {
-            showToast('Gagal membatalkan pembayaran di server.', 'error');
-        }
-    } catch (e) {
-        showToast('Koneksi server gagal.', 'error');
-    } finally {
-        showLoading(false);
-    }
+    return Math.max(0, subtotal + ppnVal);
 }
 
 function openInvoiceModal(customerId) {
@@ -1355,9 +1107,20 @@ function openInvoiceModal(customerId) {
     // Populate elements
     const compName = localStorage.getItem('company_name') || 'AKBAR MEDIA NETWORKS';
     const compAddr = localStorage.getItem('company_address') || 'Layanan Internet Cepat & Stabil';
+    const compLogo = localStorage.getItem('company_logo') || '';
     
     document.getElementById('inv-company-name').innerText = compName;
     document.getElementById('inv-company-addr').innerText = compAddr;
+
+    const logoImg = document.getElementById('inv-company-logo');
+    if (logoImg) {
+        if (compLogo) {
+            logoImg.src = compLogo.startsWith('http') ? compLogo : (API_BASE_URL + compLogo);
+            logoImg.classList.remove('hidden');
+        } else {
+            logoImg.classList.add('hidden');
+        }
+    }
 
     const badge = document.getElementById('inv-badge-status');
     if (badge) {
@@ -1368,7 +1131,7 @@ function openInvoiceModal(customerId) {
     }
 
     const curMonthName = document.getElementById('billing-filter-month')?.selectedOptions[0]?.text || 'Bulan Ini';
-    const curYear = document.getElementById('billing-filter-year')?.value || '2026';
+    const curYear = document.getElementById('billing-filter-year')?.value || new Date().getFullYear().toString();
 
     document.getElementById('inv-number').innerText = `INV-${curYear}-${String(c.id).padStart(4, '0')}`;
     document.getElementById('inv-customer-name').innerText = c.name;
@@ -1376,28 +1139,78 @@ function openInvoiceModal(customerId) {
     document.getElementById('inv-period').innerText = `${curMonthName} ${curYear}`;
     document.getElementById('inv-due-date').innerText = `Tgl ${c.billingDate || '5'} ${curMonthName} ${curYear}`;
 
-    document.getElementById('inv-pkg-name').innerText = `Paket Internet: ${c.packageName || c.package_name || 'Standar'}`;
-    document.getElementById('inv-pkg-price').innerText = formatRupiah(c.price || 0);
+    let base = parseFloat(String(c.price || '0').replace(/[^0-9.]/g, '')) || 0;
+    const pkgName = c.packageName || c.package_name;
+    if (!base && pkgName && typeof packagesList !== 'undefined' && packagesList.length > 0) {
+        const pkg = packagesList.find(p => p.name === pkgName);
+        if (pkg) base = parseFloat(String(pkg.price || '0').replace(/[^0-9.]/g, '')) || 0;
+    }
 
-    const add1Val = parseFloat(String(c.add1 || c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9]/g, '')) || 0;
+    document.getElementById('inv-pkg-name').innerText = `Paket Internet: ${pkgName || 'Standar'}`;
+    document.getElementById('inv-pkg-price').innerText = formatRupiah(base);
+
+    const add1Val = parseFloat(String(c.add1 || c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9.]/g, '')) || 0;
     const add1Row = document.getElementById('inv-row-add1');
     if (add1Row) {
         if (add1Val > 0) {
             add1Row.classList.remove('hidden');
-            document.getElementById('inv-add1-desc').innerText = c.add1Desc || c.additionalCostDesc1 || c.additional_cost_desc1 || 'Biaya Tambahan';
-            document.getElementById('inv-add1-val').innerText = formatRupiah(add1Val);
+            const desc1 = document.getElementById('inv-add1-desc');
+            if (desc1) desc1.innerText = c.add1Desc || c.additionalCostDesc1 || c.additional_cost_desc1 || 'Biaya Tambahan 1';
+            const val1 = document.getElementById('inv-add1-val');
+            if (val1) val1.innerText = formatRupiah(add1Val);
         } else {
             add1Row.classList.add('hidden');
         }
     }
 
+    const add2Val = parseFloat(String(c.add2 || c.additionalCost2 || c.additional_cost2 || '0').replace(/[^0-9.]/g, '')) || 0;
+    const add2Row = document.getElementById('inv-row-add2');
+    if (add2Row) {
+        if (add2Val > 0) {
+            add2Row.classList.remove('hidden');
+            const desc2 = document.getElementById('inv-add2-desc');
+            if (desc2) desc2.innerText = c.add2Desc || c.additionalCostDesc2 || c.additional_cost_desc2 || 'Biaya Tambahan 2';
+            const val2 = document.getElementById('inv-add2-val');
+            if (val2) val2.innerText = formatRupiah(add2Val);
+        } else {
+            add2Row.classList.add('hidden');
+        }
+    }
+
+    const discVal = parseFloat(String(c.discount || c.diskon || '0').replace(/[^0-9.]/g, '')) || 0;
     const discRow = document.getElementById('inv-row-disc');
     if (discRow) {
-        if (Number(c.discount)) {
+        if (discVal > 0) {
             discRow.classList.remove('hidden');
-            document.getElementById('inv-disc-val').innerText = `- ${formatRupiah(c.discount)}`;
+            const dVal = document.getElementById('inv-disc-val');
+            if (dVal) dVal.innerText = `- ${formatRupiah(discVal)}`;
         } else {
             discRow.classList.add('hidden');
+        }
+    }
+
+    const ppnRow = document.getElementById('inv-row-ppn');
+    if (ppnRow) {
+        let subtotal = Math.max(0, base + add1Val + add2Val - discVal);
+        let ppnRaw = c.ppn || c.PPN || c.taxRate || '0';
+        let ppnCalculated = 0;
+        if (String(ppnRaw).includes('%')) {
+            let rate = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+            ppnCalculated = Math.round(subtotal * (rate / 100));
+        } else {
+            let parsed = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+            if (parsed > 0 && parsed <= 100) {
+                ppnCalculated = Math.round(subtotal * (parsed / 100));
+            } else if (parsed > 100) {
+                ppnCalculated = parsed;
+            }
+        }
+        if (ppnCalculated > 0) {
+            ppnRow.classList.remove('hidden');
+            const pVal = document.getElementById('inv-ppn-val');
+            if (pVal) pVal.innerText = formatRupiah(ppnCalculated);
+        } else {
+            ppnRow.classList.add('hidden');
         }
     }
 
@@ -1560,15 +1373,15 @@ function nextCustPage() {
     }
 }
 
-function openCustomerDetailModal(id) {
+async function openCustomerDetailModal(id) {
     const c = customersList.find(cust => cust.id == id);
     if (!c) return;
 
     document.getElementById('det-cust-name').innerText = c.name;
     document.getElementById('det-cust-phone').innerText = `No WA/HP: ${c.phone || '-'}`;
     document.getElementById('det-cust-address').innerText = `Alamat: ${c.address || '-'}`;
-    document.getElementById('det-cust-username').innerText = c.username || '-';
-    document.getElementById('det-cust-package').innerText = `${c.packageName || '-'} (${formatRupiah(getCustomerBillAmount(c))})`;
+    document.getElementById('det-cust-username').innerText = c.pppoeSecret || c.username || '-';
+    document.getElementById('det-cust-package').innerText = `${c.packageName || c.package_name || '-'} (${formatRupiah(getCustomerBillAmount(c))})`;
     document.getElementById('det-cust-area').innerText = c.area || '-';
     document.getElementById('det-cust-odp').innerText = c.odpId ? `ODP ID ${c.odpId} (Port ${c.odpPort || 1})` : 'Belum dihubungkan ke ODP';
 
@@ -1580,6 +1393,90 @@ function openCustomerDetailModal(id) {
             : c.status === 'ISOLIR'
             ? 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30'
             : 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30';
+    }
+
+    // 1. Mikrotik Secret Status Lookup
+    const mktBadge = document.getElementById('det-mkt-status-badge');
+    const mktRouter = document.getElementById('det-mkt-router-name');
+    const mktProfile = document.getElementById('det-mkt-profile');
+    const mktIp = document.getElementById('det-mkt-ip');
+    const mktUptime = document.getElementById('det-mkt-uptime');
+
+    const secretKey = (c.pppoeSecret || c.username || '').toLowerCase().trim();
+    let foundSecret = mikrotikSecretsList.find(s => (s.name || s.username || '').toLowerCase().trim() === secretKey);
+
+    if (foundSecret) {
+        if (mktBadge) {
+            const isOnline = foundSecret.isOnline || foundSecret.online;
+            const isDisabled = foundSecret.disabled;
+            mktBadge.innerText = isDisabled ? 'DISABLED' : (isOnline ? 'ONLINE' : 'OFFLINE');
+            mktBadge.className = isDisabled 
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                : isOnline 
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
+        }
+        if (mktRouter) mktRouter.innerText = c.area || foundSecret.areaName || '-';
+        if (mktProfile) mktProfile.innerText = foundSecret.profile || foundSecret.service || c.packageName || '-';
+        if (mktIp) mktIp.innerText = foundSecret.remoteAddress || foundSecret.address || '-';
+        if (mktUptime) mktUptime.innerText = foundSecret.uptime || (foundSecret.isOnline ? 'Aktif Terhubung' : 'Sesi Terputus');
+    } else {
+        if (mktBadge) {
+            mktBadge.innerText = secretKey ? 'TIDAK TERKONEKSI' : 'BELUM ADA SECRET';
+            mktBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
+        }
+        if (mktRouter) mktRouter.innerText = c.area || '-';
+        if (mktProfile) mktProfile.innerText = c.packageName || '-';
+        if (mktIp) mktIp.innerText = '-';
+        if (mktUptime) mktUptime.innerText = '-';
+    }
+
+    // 2. ACS TR-069 Device Lookup
+    const acsBadge = document.getElementById('det-acs-status-badge');
+    const acsSn = document.getElementById('det-acs-sn');
+    const acsRx = document.getElementById('det-acs-rx-power');
+    const acsSsid = document.getElementById('det-acs-ssid');
+    const acsModel = document.getElementById('det-acs-model');
+    const acsIpInform = document.getElementById('det-acs-ip-inform');
+
+    if (acsDevicesList.length === 0) {
+        try {
+            const acsRes = await fetch(`${API_BASE_URL}/api/acs/devices`);
+            if (acsRes.ok) {
+                acsDevicesList = await acsRes.json();
+            }
+        } catch(e) {}
+    }
+
+    let foundAcs = acsDevicesList.find(d => {
+        const dUser = (d.username || d.id || '').toLowerCase().trim();
+        const dSn = (d.serialNumber || '').toLowerCase().trim();
+        return (secretKey && dUser === secretKey) || (secretKey && dUser.includes(secretKey)) || (c.sn && dSn === c.sn.toLowerCase().trim());
+    });
+
+    if (foundAcs) {
+        if (acsBadge) {
+            const isOnline = foundAcs.isOnline;
+            acsBadge.innerText = isOnline ? 'ONLINE (TR-069)' : 'OFFLINE';
+            acsBadge.className = isOnline 
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        }
+        if (acsSn) acsSn.innerText = foundAcs.serialNumber || c.sn || '-';
+        if (acsRx) acsRx.innerText = foundAcs.rxPower ? `${foundAcs.rxPower} dBm` : '-';
+        if (acsSsid) acsSsid.innerText = foundAcs.ssid || '-';
+        if (acsModel) acsModel.innerText = `${foundAcs.manufacturer || ''} ${foundAcs.model || foundAcs.productClass || '-'}`.trim();
+        if (acsIpInform) acsIpInform.innerText = `${foundAcs.ipAddress || '-'} • ${foundAcs.lastInform ? new Date(foundAcs.lastInform).toLocaleTimeString('id-ID') : '-'}`;
+    } else {
+        if (acsBadge) {
+            acsBadge.innerText = 'TIDAK TERHUBUNG ACS';
+            acsBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-500 border border-slate-800';
+        }
+        if (acsSn) acsSn.innerText = c.sn || '-';
+        if (acsRx) acsRx.innerText = '-';
+        if (acsSsid) acsSsid.innerText = '-';
+        if (acsModel) acsModel.innerText = '-';
+        if (acsIpInform) acsIpInform.innerText = '-';
     }
 
     // Bind action shortcuts
@@ -2184,50 +2081,266 @@ async function saveItemTransaction(e) {
 }
 
 // ==========================================
-// KEUANGAN & PEMBUKUAN MODULE
+// KEUANGAN & PEMBUKUAN MODULE (Sync with Android)
 // ==========================================
 
+let currentKeuanganSubTab = 'semua';
+let currentKeuanganFilter = 'all';
+let uangAdminList = [];
+let pembayaranHistoryList = [];
+let selectedFinanceImageFile = null;
+
+function switchKeuanganSubTab(subtab) {
+    currentKeuanganSubTab = subtab;
+    const subtabs = ['semua', 'uang-admin', 'pembayaran', 'rangkuman'];
+    
+    subtabs.forEach(t => {
+        const btn = document.getElementById(`btn-fin-subtab-${t}`);
+        const container = document.getElementById(`fin-subtab-${t}`);
+        if (btn) {
+            if (t === subtab) {
+                btn.className = "px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+            } else {
+                btn.className = "px-4 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 text-slate-400 hover:text-white";
+            }
+        }
+        if (container) {
+            if (t === subtab) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+    });
+
+    if (subtab === 'semua') renderKeuanganTable();
+    else if (subtab === 'uang-admin') renderUangAdminTable();
+    else if (subtab === 'pembayaran') renderPembayaranTable();
+    else if (subtab === 'rangkuman') renderRangkumanKategori();
+}
+
+function filterSemuaPembukuan(filterType) {
+    currentKeuanganFilter = filterType;
+    const filterTypes = ['all', 'pemasukan', 'pengeluaran', 'has_invoice'];
+    filterTypes.forEach(ft => {
+        const btn = document.getElementById(`btn-fin-filter-${ft === 'has_invoice' ? 'invoice' : ft}`);
+        if (btn) {
+            if (ft === filterType) {
+                btn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white border border-slate-700 flex items-center gap-1";
+            } else {
+                btn.className = "px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1";
+            }
+        }
+    });
+    renderKeuanganTable();
+}
+
 async function loadKeuanganData() {
+    const monthEl = document.getElementById('fin-filter-month');
+    const yearEl = document.getElementById('fin-filter-year');
+    const selectedMonth = monthEl ? monthEl.value : 'Semua Waktu';
+    const selectedYear = yearEl ? yearEl.value : '2026';
+
+    const params = new URLSearchParams();
+    if (selectedMonth && selectedMonth !== 'Semua Waktu') params.append('month', selectedMonth);
+    if (selectedYear) params.append('year', selectedYear);
+
     try {
-        const res = await fetch(`${API_BASE_URL}/api/pembukuan/all`);
+        // Fetch all pembukuan records
+        const res = await fetch(`${API_BASE_URL}/api/pembukuan/all?${params.toString()}`);
         if (res.ok) {
             const data = await res.json();
             financeList = Array.isArray(data) ? data : (data.rows || []);
-            renderKeuanganTable();
-            calculateFinanceSummaries();
         }
+
+        // Fetch uang di admin
+        const resUang = await fetch(`${API_BASE_URL}/api/uang-di-admin?${params.toString()}`);
+        if (resUang.ok) {
+            uangAdminList = await resUang.json();
+        }
+
+        // Fetch pembayaran tagihan history
+        const resPem = await fetch(`${API_BASE_URL}/api/pembayaran?${params.toString()}`);
+        if (resPem.ok) {
+            pembayaranHistoryList = await resPem.json();
+        }
+
+        calculateFinanceSummaries();
+        if (currentKeuanganSubTab === 'semua') renderKeuanganTable();
+        else if (currentKeuanganSubTab === 'uang-admin') renderUangAdminTable();
+        else if (currentKeuanganSubTab === 'pembayaran') renderPembayaranTable();
+        else if (currentKeuanganSubTab === 'rangkuman') renderRangkumanKategori();
+
     } catch (e) {
-        console.error('Error loading finance:', e);
+        console.error('Error loading finance data:', e);
     }
+}
+
+function calculateFinanceSummaries() {
+    let totalPemasukan = 0;
+    let totalPengeluaran = 0;
+    let totalCash = 0;
+    let totalOnline = 0;
+
+    financeList.forEach(f => {
+        const amt = Math.abs(Number(f.amount) || 0);
+        const type = (f.type || '').toLowerCase();
+        const cat = (f.category || '').toLowerCase();
+
+        if (type === 'pemasukan' || (!type.includes('pengeluaran') && !type.includes('setor') && Number(f.amount) > 0)) {
+            totalPemasukan += amt;
+            if (cat.includes('online') || cat.includes('transfer')) {
+                totalOnline += amt;
+            } else {
+                totalCash += amt;
+            }
+        } else if (type === 'pengeluaran') {
+            totalPengeluaran += amt;
+        }
+    });
+
+    const incEl = document.getElementById('fin-total-pemasukan');
+    if (incEl) incEl.innerText = formatRupiah(totalPemasukan);
+
+    const expEl = document.getElementById('fin-total-pengeluaran');
+    if (expEl) expEl.innerText = formatRupiah(totalPengeluaran);
+
+    const salEl = document.getElementById('fin-total-saldo');
+    if (salEl) salEl.innerText = formatRupiah(totalPemasukan - totalPengeluaran);
+
+    const cashEl = document.getElementById('fin-transaksi-cash');
+    if (cashEl) cashEl.innerText = formatRupiah(totalCash);
+
+    const onlineEl = document.getElementById('fin-transaksi-online');
+    if (onlineEl) onlineEl.innerText = formatRupiah(totalOnline);
 }
 
 function renderKeuanganTable() {
     const tbody = document.getElementById('keuangan-table-body');
     if (!tbody) return;
 
-    if (financeList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-500">Belum ada transaksi mutasi kas.</td></tr>`;
+    const searchInput = document.getElementById('fin-search-input');
+    const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+    let list = financeList.filter(f => {
+        if (currentKeuanganFilter === 'pemasukan') {
+            return (f.type || '').toLowerCase() === 'pemasukan';
+        }
+        if (currentKeuanganFilter === 'pengeluaran') {
+            return (f.type || '').toLowerCase() === 'pengeluaran';
+        }
+        if (currentKeuanganFilter === 'has_invoice') {
+            return !!(f.image_url || f.invoice_url);
+        }
+        return true;
+    });
+
+    if (query) {
+        list = list.filter(f => {
+            const desc = (f.description || f.keterangan || '').toLowerCase();
+            const adm = (f.admin_name || f.admin || '').toLowerCase();
+            const cat = (f.category || '').toLowerCase();
+            return desc.includes(query) || adm.includes(query) || cat.includes(query);
+        });
+    }
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500">Tidak ada transaksi mutasi pembukuan ditemukan.</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = financeList.slice(0, 30).map(f => {
-        const isIncome = f.type === 'pemasukan' || Number(f.amount) > 0;
+    tbody.innerHTML = list.map(f => {
+        const typeClean = (f.type || 'pemasukan').toLowerCase();
+        const isIncome = typeClean === 'pemasukan';
+        const isSetor = typeClean === 'setor';
         const txDate = f.created_at || f.date;
-        const formattedDate = txDate ? new Date(txDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+        const formattedDate = txDate ? new Date(txDate).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+        const imgUrl = f.image_url || f.invoice_url;
+        const fullImgUrl = formatImageUrl(imgUrl);
+
+        let badgeType = `<span class="px-2 py-0.5 rounded-md text-[11px] font-bold ${isIncome ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : isSetor ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}">${(f.type || 'PEMASUKAN').toUpperCase()}</span>`;
+
         return `
-            <tr class="hover:bg-slate-800/40">
-                <td class="px-6 py-4 text-xs text-slate-400 font-mono">${formattedDate}</td>
-                <td class="px-6 py-4 font-semibold text-white">${f.description || f.keterangan || '-'}</td>
-                <td class="px-6 py-4 text-xs text-slate-400">
-                    <span class="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700">${f.category || 'Operasional'}</span>
+            <tr class="hover:bg-slate-800/40 transition">
+                <td class="px-6 py-4 text-xs text-slate-400 font-mono whitespace-nowrap">${formattedDate}</td>
+                <td class="px-6 py-4">
+                    <div class="font-semibold text-white flex items-center gap-2">
+                        <span>${f.description || f.keterangan || '-'}</span>
+                    </div>
+                    ${fullImgUrl ? `
+                        <button onclick="viewInvoiceImage('${fullImgUrl}', '${encodeURIComponent(f.description || 'Bukti Invoice')}')" class="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-400 border border-cyan-500/30 text-[10px] font-bold transition">
+                            <i data-lucide="image" class="w-3 h-3"></i> Lihat Invoice
+                        </button>
+                    ` : ''}
                 </td>
-                <td class="px-6 py-4 text-xs text-slate-300 font-medium">${f.admin_name || f.admin || f.penerima || '-'}</td>
-                <td class="px-6 py-4 text-right font-bold ${isIncome ? 'text-emerald-400' : 'text-rose-400'}">
+                <td class="px-6 py-4 text-xs">
+                    <div class="flex flex-col gap-1 items-start">
+                        ${badgeType}
+                        <span class="text-[11px] text-slate-400">${f.category || 'Operasional'}</span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 text-xs text-slate-300 font-medium">${f.admin_name || f.admin || '-'}</td>
+                <td class="px-6 py-4 text-right font-bold text-sm ${isIncome ? 'text-emerald-400' : isSetor ? 'text-amber-400' : 'text-rose-400'}">
                     ${isIncome ? '+' : '-'} ${formatRupiah(Math.abs(f.amount || 0))}
                 </td>
-                <td class="px-4 py-4 text-right">
-                    <button onclick="deleteFinanceTransaction(${f.id})" class="p-1.5 hover:bg-rose-500/10 text-rose-400 hover:text-rose-300 rounded-lg transition" title="Hapus Transaksi">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                <td class="px-6 py-4 text-right">
+                    <div class="flex items-center justify-end gap-1">
+                        <button onclick="editFinanceTransaction('${f.id}')" class="p-1.5 hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 rounded-lg transition" title="Edit Transaksi">
+                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="deleteFinanceTransaction('${f.id}')" class="p-1.5 hover:bg-rose-500/10 text-rose-400 hover:text-rose-300 rounded-lg transition" title="Hapus Transaksi">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function formatImageUrl(url) {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const base = API_BASE_URL.replace(/\/+$/, '');
+    const path = url.startsWith('/') ? url : `/${url}`;
+    return `${base}${path}`;
+}
+
+function renderUangAdminTable() {
+    const tbody = document.getElementById('uang-admin-table-body');
+    if (!tbody) return;
+
+    if (!uangAdminList || uangAdminList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="px-6 py-12 text-center text-slate-500">Belum ada data uang di admin / collector.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = uangAdminList.map(u => {
+        const diterima = Number(u.totalDiterima) || 0;
+        const setor = Number(u.setor) || 0;
+        const pengeluaran = Number(u.pengeluaran) || 0;
+        const sisaSaldo = diterima - setor - pengeluaran;
+
+        return `
+            <tr class="hover:bg-slate-800/40 transition">
+                <td class="px-6 py-4 font-bold text-white flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs border border-amber-500/30">
+                        ${(u.adminName || 'A').substring(0, 2).toUpperCase()}
+                    </div>
+                    <span>${u.adminName || '-'}</span>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <span class="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-xs font-bold border border-slate-700">${u.jmlPlggn || 0} Pelanggan</span>
+                </td>
+                <td class="px-6 py-4 text-right font-bold text-emerald-400">${formatRupiah(diterima)}</td>
+                <td class="px-6 py-4 text-right font-bold text-amber-400">${formatRupiah(setor)}</td>
+                <td class="px-6 py-4 text-right font-bold text-rose-400">${formatRupiah(pengeluaran)}</td>
+                <td class="px-6 py-4 text-right font-bold text-sm ${sisaSaldo > 0 ? 'text-cyan-400' : 'text-slate-400'}">${formatRupiah(sisaSaldo)}</td>
+                <td class="px-6 py-4 text-right">
+                    <button onclick="openSetoranModal('${encodeURIComponent(u.adminName || '')}')" class="px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 rounded-xl text-xs font-semibold border border-amber-500/30 transition flex items-center gap-1 ml-auto">
+                        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Catat Setoran
                     </button>
                 </td>
             </tr>
@@ -2237,66 +2350,238 @@ function renderKeuanganTable() {
     if (window.lucide) lucide.createIcons();
 }
 
-function calculateFinanceSummaries() {
-    let income = 0;
-    let expense = 0;
+function renderPembayaranTable() {
+    const tbody = document.getElementById('pembayaran-table-body');
+    const countBadge = document.getElementById('pembayaran-count-badge');
+    if (countBadge) countBadge.innerText = `${pembayaranHistoryList.length} Transaksi`;
+    if (!tbody) return;
+
+    if (!pembayaranHistoryList || pembayaranHistoryList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500">Belum ada riwayat pembayaran tagihan.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = pembayaranHistoryList.map(p => {
+        const txDate = p.created_at;
+        const formattedDate = txDate ? new Date(txDate).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+
+        return `
+            <tr class="hover:bg-slate-800/40 transition">
+                <td class="px-6 py-4 text-xs text-slate-400 font-mono whitespace-nowrap">${formattedDate}</td>
+                <td class="px-6 py-4">
+                    <p class="font-bold text-white">${p.customer_name || '-'}</p>
+                    <p class="text-[11px] text-slate-500 font-mono">ID: ${p.id || '-'}</p>
+                </td>
+                <td class="px-6 py-4 text-xs">
+                    <p class="text-slate-300 font-medium">${p.area || '-'}</p>
+                    <p class="text-[11px] text-slate-400">${p.phone || '-'}</p>
+                </td>
+                <td class="px-6 py-4 text-xs font-semibold text-emerald-400 uppercase">
+                    ${p.bulan || '-'} ${p.tahun || ''}
+                </td>
+                <td class="px-6 py-4 text-xs text-slate-300 font-medium">${p.admin_name || '-'}</td>
+                <td class="px-6 py-4 text-right font-bold text-emerald-400 text-sm">${formatRupiah(Number(p.amount) || 0)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function renderRangkumanKategori() {
+    const catListEl = document.getElementById('rangkuman-category-list');
+    const neracaEl = document.getElementById('rangkuman-neraca-card');
+
+    let categoryTotals = {};
+    let totalPemasukan = 0;
+    let totalPengeluaran = 0;
 
     financeList.forEach(f => {
-        const amt = Number(f.amount) || 0;
-        if (f.type === 'pemasukan' || (f.type !== 'pengeluaran' && amt > 0)) {
-            income += Math.abs(amt);
-        } else {
-            expense += Math.abs(amt);
+        const amt = Math.abs(Number(f.amount) || 0);
+        const type = (f.type || '').toLowerCase();
+        const cat = f.category || 'Operasional';
+
+        if (type === 'pemasukan') {
+            totalPemasukan += amt;
+        } else if (type === 'pengeluaran') {
+            totalPengeluaran += amt;
+            categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
         }
     });
 
-    const incEl = document.getElementById('fin-total-pemasukan');
-    if (incEl) incEl.innerText = formatRupiah(income);
+    if (catListEl) {
+        const catEntries = Object.entries(categoryTotals);
+        if (catEntries.length === 0) {
+            catListEl.innerHTML = `<p class="text-xs text-slate-500 text-center py-6">Belum ada rincian pengeluaran per kategori.</p>`;
+        } else {
+            catListEl.innerHTML = catEntries.map(([cat, amount]) => {
+                const percent = totalPengeluaran > 0 ? Math.round((amount / totalPengeluaran) * 100) : 0;
+                return `
+                    <div class="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="font-bold text-white">${cat}</span>
+                            <span class="font-bold text-rose-400">${formatRupiah(amount)} (${percent}%)</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                            <div class="bg-rose-500 h-2 rounded-full" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
 
-    const expEl = document.getElementById('fin-total-pengeluaran');
-    if (expEl) expEl.innerText = formatRupiah(expense);
-
-    const salEl = document.getElementById('fin-total-saldo');
-    if (salEl) salEl.innerText = formatRupiah(income - expense);
+    if (neracaEl) {
+        const labaBersih = totalPemasukan - totalPengeluaran;
+        neracaEl.innerHTML = `
+            <div class="flex flex-col gap-3">
+                <div class="flex justify-between items-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                    <span class="text-xs text-slate-300 font-semibold">Total Pemasukan Operasional:</span>
+                    <span class="text-sm font-bold text-emerald-400">${formatRupiah(totalPemasukan)}</span>
+                </div>
+                <div class="flex justify-between items-center p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                    <span class="text-xs text-slate-300 font-semibold">Total Pengeluaran Operasional:</span>
+                    <span class="text-sm font-bold text-rose-400">${formatRupiah(totalPengeluaran)}</span>
+                </div>
+                <div class="flex justify-between items-center p-4 rounded-xl bg-slate-900 border border-slate-700">
+                    <span class="text-xs text-white font-bold uppercase">Laba / Net Surplus:</span>
+                    <span class="text-base font-black ${labaBersih >= 0 ? 'text-cyan-400' : 'text-rose-400'}">${formatRupiah(labaBersih)}</span>
+                </div>
+            </div>
+        `;
+    }
 }
 
-function openFinanceDialog(type) {
+function openFinanceDialog(type, editItem = null) {
     document.getElementById('form-keuangan-trans').reset();
+    selectedFinanceImageFile = null;
+    removeFinanceImagePreview();
+
     document.getElementById('fin-type').value = type;
-    document.getElementById('modal-keuangan-title').innerText = type === 'pemasukan' ? 'Catat Pemasukan Kas' : 'Catat Pengeluaran Kas';
-    
-    const adminField = document.getElementById('fin-admin');
-    if (adminField) adminField.value = localStorage.getItem('username') || 'Admin';
+    document.getElementById('fin-edit-id').value = editItem ? editItem.id : '';
+    document.getElementById('fin-existing-image').value = editItem ? (editItem.image_url || editItem.invoice_url || '') : '';
+
+    const modalTitle = document.getElementById('modal-keuangan-title');
+    if (modalTitle) {
+        if (editItem) {
+            modalTitle.innerText = `Edit Transaksi Pembukuan (#${editItem.id})`;
+        } else {
+            modalTitle.innerText = type === 'pemasukan' ? 'Catat Pemasukan Kas' : 'Catat Pengeluaran Kas';
+        }
+    }
+
+    if (editItem) {
+        document.getElementById('fin-desc').value = editItem.description || editItem.keterangan || '';
+        document.getElementById('fin-category').value = editItem.category || 'Operasional';
+        document.getElementById('fin-admin').value = editItem.admin_name || editItem.admin || localStorage.getItem('username') || 'Admin';
+        document.getElementById('fin-amount').value = Math.abs(Number(editItem.amount) || 0);
+
+        const imgUrl = editItem.image_url || editItem.invoice_url;
+        if (imgUrl) {
+            const previewContainer = document.getElementById('fin-image-preview-container');
+            const previewImg = document.getElementById('fin-image-preview');
+            const filenameEl = document.getElementById('fin-image-filename');
+            if (previewContainer && previewImg) {
+                previewImg.src = formatImageUrl(imgUrl);
+                if (filenameEl) filenameEl.innerText = "Foto Invoice Tersimpan";
+                previewContainer.classList.remove('hidden');
+            }
+        }
+    } else {
+        const adminField = document.getElementById('fin-admin');
+        if (adminField) adminField.value = localStorage.getItem('username') || 'Admin';
+    }
 
     openModal('modal-keuangan-trans');
 }
 
+function handleFinanceImageChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    selectedFinanceImageFile = file;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const previewContainer = document.getElementById('fin-image-preview-container');
+        const previewImg = document.getElementById('fin-image-preview');
+        const filenameEl = document.getElementById('fin-image-filename');
+        if (previewImg) previewImg.src = event.target.result;
+        if (filenameEl) filenameEl.innerText = file.name;
+        if (previewContainer) previewContainer.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeFinanceImagePreview() {
+    selectedFinanceImageFile = null;
+    const fileInput = document.getElementById('fin-image-file');
+    if (fileInput) fileInput.value = '';
+    const existingInput = document.getElementById('fin-existing-image');
+    if (existingInput) existingInput.value = '';
+    const previewContainer = document.getElementById('fin-image-preview-container');
+    if (previewContainer) previewContainer.classList.add('hidden');
+}
+
+function editFinanceTransaction(id) {
+    const item = financeList.find(f => String(f.id) === String(id));
+    if (!item) {
+        showToast('Transaksi tidak ditemukan.', 'error');
+        return;
+    }
+    openFinanceDialog(item.type || 'pengeluaran', item);
+}
+
 async function saveFinanceTransaction(e) {
     e.preventDefault();
-    const type = document.getElementById('fin-type').value;
+    const editId = document.getElementById('fin-edit-id').value;
+    const type = document.getElementById('fin-type').value || 'pengeluaran';
     const amount = Number(document.getElementById('fin-amount').value) || 0;
     const adminName = document.getElementById('fin-admin').value.trim() || localStorage.getItem('username') || 'Admin';
+    let imageUrl = document.getElementById('fin-existing-image').value;
 
-    const payload = {
-        type: type,
-        description: document.getElementById('fin-desc').value.trim(),
-        category: document.getElementById('fin-category').value,
-        admin_name: adminName,
-        admin: adminName,
-        amount: amount,
-        created_at: new Date().toISOString()
-    };
+    showLoading(true, 'Memproses transaksi...');
 
-    showLoading(true, 'Menyimpan transaksi kas...');
     try {
-        const res = await fetch(`${API_BASE_URL}/api/pembukuan`, {
-            method: 'POST',
+        // Upload image file if user attached a new file
+        if (selectedFinanceImageFile) {
+            const formData = new FormData();
+            formData.append('image', selectedFinanceImageFile);
+
+            const uploadRes = await fetch(`${API_BASE_URL}/api/pembukuan/upload-invoice`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (uploadRes.ok) {
+                const uploadData = await uploadRes.json();
+                imageUrl = uploadData.url || uploadData.image_url || imageUrl;
+            } else {
+                console.warn('Upload invoice failed, proceeding without new image');
+            }
+        }
+
+        const payload = {
+            type: type,
+            description: document.getElementById('fin-desc').value.trim(),
+            category: document.getElementById('fin-category').value,
+            admin_name: adminName,
+            admin: adminName,
+            amount: amount,
+            image_url: imageUrl || '',
+            created_at: new Date().toISOString()
+        };
+
+        const targetUrl = editId ? `${API_BASE_URL}/api/pembukuan/${editId}` : `${API_BASE_URL}/api/pembukuan`;
+        const method = editId ? 'PUT' : 'POST';
+
+        const res = await fetch(targetUrl, {
+            method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
         if (res.ok) {
-            showToast('Transaksi kas berhasil disimpan ke database!', 'success');
+            showToast(editId ? 'Transaksi pembukuan berhasil diperbarui!' : 'Transaksi kas berhasil disimpan ke database!', 'success');
             closeModal('modal-keuangan-trans');
             await loadKeuanganData();
             await loadDashboardData();
@@ -2309,6 +2594,60 @@ async function saveFinanceTransaction(e) {
     } finally {
         showLoading(false);
     }
+}
+
+function openSetoranModal(adminName = '') {
+    document.getElementById('form-setoran').reset();
+    const inputEl = document.getElementById('setoran-admin-input');
+    if (inputEl) inputEl.value = adminName ? decodeURIComponent(adminName) : (localStorage.getItem('username') || 'Admin');
+    openModal('modal-setoran');
+}
+
+async function saveSetoranAdmin(e) {
+    e.preventDefault();
+    const adminName = document.getElementById('setoran-admin-input').value.trim();
+    const amount = Number(document.getElementById('setoran-amount').value) || 0;
+
+    if (!adminName || amount <= 0) {
+        showToast('Nama admin dan nominal setoran harus diisi!', 'error');
+        return;
+    }
+
+    showLoading(true, 'Menyimpan setoran admin...');
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/setoran`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adminName, amount })
+        });
+
+        if (res.ok) {
+            showToast('Setoran admin berhasil dicatat!', 'success');
+            closeModal('modal-setoran');
+            await loadKeuanganData();
+            await loadDashboardData();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Gagal menyimpan setoran admin.', 'error');
+        }
+    } catch (e) {
+        showToast('Koneksi server gagal.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function viewInvoiceImage(imageUrl, titleText = '') {
+    if (!imageUrl) return;
+    const imgEl = document.getElementById('view-invoice-img');
+    const titleEl = document.getElementById('view-invoice-title');
+    const dlEl = document.getElementById('view-invoice-download');
+
+    if (imgEl) imgEl.src = imageUrl;
+    if (titleEl && titleText) titleEl.innerText = decodeURIComponent(titleText);
+    if (dlEl) dlEl.href = imageUrl;
+
+    openModal('modal-view-invoice');
 }
 
 async function deleteFinanceTransaction(id) {
@@ -2334,6 +2673,7 @@ async function deleteFinanceTransaction(id) {
         showLoading(false);
     }
 }
+
 
 // ==========================================
 // GANGGUAN & TIKET MODULE
@@ -3034,6 +3374,9 @@ async function loadCompanySettings() {
             if (data.wa_notify_isolir !== undefined) waNotifyIsolir = data.wa_notify_isolir === 'true' || data.wa_notify_isolir === true;
             if (data.wa_notify_otp !== undefined) waNotifyOtp = data.wa_notify_otp === 'true' || data.wa_notify_otp === true;
 
+            if (data.company_logo) {
+                localStorage.setItem('company_logo', data.company_logo);
+            }
             localStorage.setItem('company_name', name);
             localStorage.setItem('company_address', addr);
             localStorage.setItem('company_phone', phone);
@@ -3042,6 +3385,13 @@ async function loadCompanySettings() {
         }
     } catch (e) {
         console.warn('Gagal memuat pengaturan profil dari MySQL:', e);
+    }
+
+    const storedLogo = localStorage.getItem('company_logo');
+    const logoPrev = document.getElementById('setting-company-logo-preview');
+    if (logoPrev && storedLogo) {
+        logoPrev.src = storedLogo.startsWith('http') ? storedLogo : (API_BASE_URL + storedLogo);
+        logoPrev.classList.remove('hidden');
     }
 
     const nameEl = document.getElementById('setting-isp-name');
@@ -3073,6 +3423,47 @@ async function loadCompanySettings() {
     const waOtpEl = document.getElementById('setting-wa-template-otp');
     if (waOtpEl) waOtpEl.value = waTemplateOtp;
 }
+
+async function uploadCompanyLogoFromWeb(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    const statusEl = document.getElementById('setting-company-logo-status');
+    const previewImg = document.getElementById('setting-company-logo-preview');
+    if (statusEl) statusEl.innerText = 'Mengunggah logo ke VPS...';
+
+    showLoading(true, 'Mengunggah logo perusahaan ke VPS Storage...');
+    try {
+        const formData = new FormData();
+        formData.append('logo', file);
+
+        const res = await fetch(`${API_BASE_URL}/api/settings/upload-logo`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            const logoUrl = data.logo_url;
+            localStorage.setItem('company_logo', logoUrl);
+            if (previewImg) {
+                previewImg.src = logoUrl.startsWith('http') ? logoUrl : (API_BASE_URL + logoUrl);
+                previewImg.classList.remove('hidden');
+            }
+            if (statusEl) statusEl.innerText = 'Logo tersimpan di VPS & tersinkronisasi!';
+            showToast('Logo perusahaan berhasil diunggah dan disimpan!', 'success');
+        } else {
+            if (statusEl) statusEl.innerText = 'Gagal mengunggah logo.';
+            showToast(data.error || 'Gagal mengunggah logo ke server VPS.', 'error');
+        }
+    } catch (err) {
+        if (statusEl) statusEl.innerText = 'Koneksi gagal saat mengunggah.';
+        showToast('Terjadi kesalahan koneksi saat unggah logo.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+window.uploadCompanyLogoFromWeb = uploadCompanyLogoFromWeb;
 
 async function saveCompanySettings(e) {
     e.preventDefault();
@@ -3779,6 +4170,111 @@ function populateAreasDropdowns() {
     const secretModalArea = document.getElementById('secret-area-id');
     if (secretModalArea) {
         secretModalArea.innerHTML = optionsWithId;
+    }
+
+    const acsEditAreaSelect = document.getElementById('acs-edit-area-select');
+    if (acsEditAreaSelect) {
+        acsEditAreaSelect.innerHTML = optionsWithId;
+        if (areasList.length > 0) {
+            onAcsAreaSelectedForEdit();
+        }
+    }
+}
+
+function onAcsAreaSelectedForEdit() {
+    const sel = document.getElementById('acs-edit-area-select');
+    if (!sel || !sel.value) return;
+
+    const area = areasList.find(a => String(a.id) === String(sel.value));
+    if (!area) return;
+
+    const domainInput = document.getElementById('acs-edit-domain');
+    const userInput = document.getElementById('acs-edit-user');
+    const passInput = document.getElementById('acs-edit-pass');
+
+    if (domainInput) domainInput.value = area.apiDomain || 'http://103.253.245.25:7557';
+    if (userInput) userInput.value = area.acsUser || 'admin';
+    if (passInput) passInput.value = area.acsPassword || '';
+}
+
+async function saveAcsCredentialsFromWeb(e) {
+    if (e) e.preventDefault();
+    const sel = document.getElementById('acs-edit-area-select');
+    if (!sel || !sel.value) {
+        showToast('Pilih area yang ingin diperbarui!', 'error');
+        return;
+    }
+
+    const area = areasList.find(a => String(a.id) === String(sel.value));
+    if (!area) return;
+
+    const apiDomain = document.getElementById('acs-edit-domain').value.trim();
+    const acsUser = document.getElementById('acs-edit-user').value.trim();
+    const acsPassword = document.getElementById('acs-edit-pass').value.trim();
+
+    const payload = {
+        name: area.name,
+        description: area.description || '',
+        routerIp: area.routerIp || '',
+        apiDomain: apiDomain,
+        customerCount: area.customerCount || 0,
+        mikrotikUser: area.mikrotikUser || '',
+        mikrotikPassword: area.mikrotikPassword || '',
+        acsUser: acsUser,
+        acsPassword: acsPassword
+    };
+
+    showLoading(true, 'Menyimpan kredensial ACS...');
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/areas/${area.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast(`Kredensial ACS untuk area ${area.name} berhasil diperbarui!`, 'success');
+            await loadAreas();
+            await loadAcsDevices();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Gagal memperbarui kredensial ACS.', 'error');
+        }
+    } catch (e) {
+        showToast('Koneksi server gagal.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function testAcsCredentialsFromWeb() {
+    const apiDomain = document.getElementById('acs-edit-domain').value.trim();
+    const acsUser = document.getElementById('acs-edit-user').value.trim();
+    const acsPassword = document.getElementById('acs-edit-pass').value.trim();
+
+    if (!apiDomain) {
+        showToast('URL / Alamat ACS NBI harus diisi!', 'error');
+        return;
+    }
+
+    showLoading(true, 'Menguji koneksi ke Server ACS...');
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/acs/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiDomain, acsUser, acsPassword })
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            showToast(`Koneksi ACS Berhasil! (${data.message || 'NBI Service Aktif'})`, 'success');
+        } else {
+            showToast(`Koneksi ACS Gagal: ${data.error || 'NBI Service tidak merespon'}`, 'error');
+        }
+    } catch (e) {
+        showToast('Gagal terhubung ke NBI Service ACS.', 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
@@ -4530,5 +5026,321 @@ window.applyAcsDeviceFilters = applyAcsDeviceFilters;
 window.switchMikrotikSubTab = switchMikrotikSubTab;
 window.loadAppSettings = loadAppSettings;
 window.saveAppSettingsFromWeb = saveAppSettingsFromWeb;
+
+// ================= EXPORT & IMPORT / RESTORE DATA PELANGGAN (.XLS) =================
+let parsedImportCustomers = [];
+
+const EXPORT_COLUMNS = [
+    "nama", "telepon", "ppoe", "tambahan", "biaya", "tambahan_2", "biaya_2",
+    "diskon", "tanggal", "area", "paket_nama", "paket_tarif", "alamat", "ID",
+    "PPN", "Total Bayar", "Bulan Tagihan", "Lat Long", "NIK", "Tanggal Bayar",
+    "Admin By", "Via", "Tanggal Register", "Mikrotik", "Modem", "ODP"
+];
+
+const COLUMN_ALIAS_MAP = {
+    // nama
+    'nama': 'nama', 'name': 'nama', 'nama_pelanggan': 'nama', 'nama pelanggan': 'nama', 'customer': 'nama', 'customer_name': 'nama',
+    // telepon
+    'telepon': 'telepon', 'phone': 'telepon', 'hp': 'telepon', 'no_hp': 'telepon', 'no hp': 'telepon', 'no. hp': 'telepon', 'no_telp': 'telepon', 'no telp': 'telepon', 'mobile': 'telepon',
+    // ppoe
+    'ppoe': 'ppoe', 'pppoe': 'ppoe', 'pppoe_secret': 'ppoe', 'pppoesecret': 'ppoe', 'pppoe secret': 'ppoe', 'secret': 'ppoe', 'username': 'ppoe',
+    // tambahan
+    'tambahan': 'tambahan', 'additional_cost_desc1': 'tambahan', 'additionalcostdesc1': 'tambahan', 'ket_tambahan_1': 'tambahan', 'tambahan 1': 'tambahan',
+    // biaya
+    'biaya': 'biaya', 'additional_cost1': 'biaya', 'additionalcost1': 'biaya', 'biaya_tambahan_1': 'biaya', 'biaya 1': 'biaya',
+    // tambahan_2
+    'tambahan_2': 'tambahan_2', 'additional_cost_desc2': 'tambahan_2', 'additionalcostdesc2': 'tambahan_2', 'ket_tambahan_2': 'tambahan_2', 'tambahan 2': 'tambahan_2',
+    // biaya_2
+    'biaya_2': 'biaya_2', 'additional_cost2': 'biaya_2', 'additionalcost2': 'biaya_2', 'biaya_tambahan_2': 'biaya_2', 'biaya 2': 'biaya_2',
+    // diskon
+    'diskon': 'diskon', 'discount': 'diskon', 'potongan': 'diskon',
+    // tanggal
+    'tanggal': 'tanggal', 'billingdate': 'tanggal', 'billing_date': 'tanggal', 'billing date': 'tanggal', 'tgl_tagihan': 'tanggal', 'tgl tagihan': 'tanggal', 'jatuh tempo': 'tanggal',
+    // area
+    'area': 'area', 'wilayah': 'area', 'zona': 'area',
+    // paket_nama
+    'paket_nama': 'paket_nama', 'package_name': 'paket_nama', 'packagename': 'paket_nama', 'package name': 'paket_nama', 'paket': 'paket_nama', 'nama paket': 'paket_nama',
+    // paket_tarif
+    'paket_tarif': 'paket_tarif', 'price': 'paket_tarif', 'tarif': 'paket_tarif', 'harga': 'paket_tarif', 'harga paket': 'paket_tarif',
+    // alamat
+    'alamat': 'alamat', 'address': 'alamat', 'lokasi': 'alamat',
+    // ID
+    'id': 'ID', 'ID': 'ID', 'customer_id': 'ID', 'id_pelanggan': 'ID', 'id pelanggan': 'ID',
+    // PPN
+    'ppn': 'PPN', 'PPN': 'PPN', 'vat': 'PPN', 'pajak': 'PPN',
+    // Total Bayar
+    'total bayar': 'Total Bayar', 'total_bayar': 'Total Bayar', 'totalbayar': 'Total Bayar', 'total': 'Total Bayar', 'amount': 'Total Bayar',
+    // Bulan Tagihan
+    'bulan tagihan': 'Bulan Tagihan', 'bulan_tagihan': 'Bulan Tagihan', 'bulan': 'Bulan Tagihan',
+    // Lat Long
+    'lat long': 'Lat Long', 'lat_long': 'Lat Long', 'latlong': 'Lat Long', 'koordinat': 'Lat Long', 'latitude': 'Lat Long',
+    // NIK
+    'nik': 'NIK', 'NIK': 'NIK', 'no_ktp': 'NIK', 'ktp': 'NIK',
+    // Tanggal Bayar
+    'tanggal bayar': 'Tanggal Bayar', 'tanggal_bayar': 'Tanggal Bayar', 'tgl_bayar': 'Tanggal Bayar', 'payment_date': 'Tanggal Bayar',
+    // Admin By
+    'admin by': 'Admin By', 'admin_by': 'Admin By', 'admin': 'Admin By', 'collector': 'Admin By',
+    // Via
+    'via': 'Via', 'Via': 'Via', 'metode': 'Via',
+    // Tanggal Register
+    'tanggal register': 'Tanggal Register', 'tanggal_register': 'Tanggal Register', 'register_date': 'Tanggal Register', 'tgl_register': 'Tanggal Register',
+    // Mikrotik
+    'mikrotik': 'Mikrotik', 'Mikrotik': 'Mikrotik', 'router': 'Mikrotik', 'router_ip': 'Mikrotik',
+    // Modem
+    'modem': 'Modem', 'Modem': 'Modem', 'ont': 'Modem', 'sn_modem': 'Modem',
+    // ODP
+    'odp': 'ODP', 'ODP': 'ODP', 'odp_name': 'ODP', 'odp_port': 'ODP'
+};
+
+function exportCustomersToExcel() {
+    if (typeof XLSX === 'undefined') {
+        showToast('Pustaka Excel (SheetJS) belum dimuat. Silakan muat ulang halaman.', 'error');
+        return;
+    }
+
+    if (!customersList || customersList.length === 0) {
+        showToast('Tidak ada data pelanggan untuk diexport!', 'warning');
+        return;
+    }
+
+    showLoading(true, 'Menyiapkan berkas backup Excel (.xls)...');
+    try {
+        const rows = customersList.map(c => {
+            const priceVal = parseFloat(String(c.price || '0').replace(/[^0-9]/g, '')) || 0;
+            const discVal = parseFloat(String(c.discount || '0').replace(/[^0-9]/g, '')) || 0;
+            const add1Val = parseFloat(String(c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9]/g, '')) || 0;
+            const add2Val = parseFloat(String(c.additionalCost2 || c.additional_cost2 || '0').replace(/[^0-9]/g, '')) || 0;
+            const totalBayar = Math.max(0, priceVal - discVal + add1Val + add2Val);
+
+            return {
+                "nama": c.name || '',
+                "telepon": c.phone || '',
+                "ppoe": c.pppoe_secret || c.pppoeSecret || c.username || '',
+                "tambahan": c.additionalCostDesc1 || c.additional_cost_desc1 || '',
+                "biaya": c.additionalCost1 || c.additional_cost1 || '',
+                "tambahan_2": c.additionalCostDesc2 || c.additional_cost_desc2 || '',
+                "biaya_2": c.additionalCost2 || c.additional_cost2 || '',
+                "diskon": c.discount || '0',
+                "tanggal": c.billingDate || c.billing_date || '',
+                "area": c.area || '',
+                "paket_nama": c.package_name || c.packageName || '',
+                "paket_tarif": c.price || '0',
+                "alamat": c.address || c.alamat || '',
+                "ID": c.id || '',
+                "PPN": c.ppn || '0',
+                "Total Bayar": totalBayar.toString(),
+                "Bulan Tagihan": c.billing_month || c.bulan_tagihan || '',
+                "Lat Long": c.lat_long || (c.latitude && c.longitude ? `${c.latitude}, ${c.longitude}` : ''),
+                "NIK": c.nik || '',
+                "Tanggal Bayar": c.payment_date || c.tanggal_bayar || '',
+                "Admin By": c.admin_name || c.adminBy || '',
+                "Via": c.via || '',
+                "Tanggal Register": c.register_date || c.registerDate || '',
+                "Mikrotik": c.mikrotik || c.router_ip || '',
+                "Modem": c.modem || c.modem_sn || '',
+                "ODP": c.odp_port ? `${c.odp_name || ''} / ${c.odp_port}` : (c.odp_name || c.odp || '')
+            };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows, { header: EXPORT_COLUMNS });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Backup Pelanggan");
+
+        const fileName = `Backup_Pelanggan_AkbarMedia_${new Date().toISOString().split('T')[0]}.xls`;
+        XLSX.writeFile(wb, fileName);
+
+        showToast(`Berhasil merilis backup ${rows.length} pelanggan ke ${fileName}!`, 'success');
+    } catch (e) {
+        console.error("Export Error:", e);
+        showToast('Gagal merilis berkas backup Excel: ' + e.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function openImportCustomerModal() {
+    parsedImportCustomers = [];
+    const fileInput = document.getElementById('file-import-xls');
+    if (fileInput) fileInput.value = '';
+
+    const mappingStatus = document.getElementById('import-mapping-status');
+    if (mappingStatus) mappingStatus.classList.add('hidden');
+
+    const modeCont = document.getElementById('import-mode-container');
+    if (modeCont) modeCont.classList.add('hidden');
+
+    const prevCont = document.getElementById('import-preview-table-container');
+    if (prevCont) prevCont.classList.add('hidden');
+
+    const btnSubmit = document.getElementById('btn-submit-import');
+    if (btnSubmit) btnSubmit.disabled = true;
+
+    const fileNameEl = document.getElementById('import-file-name');
+    if (fileNameEl) fileNameEl.innerText = 'Belum ada file dipilih';
+
+    openModal('modal-import-customers');
+}
+
+function onImportFileSelected(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (typeof XLSX === 'undefined') {
+        showToast('Pustaka Excel (SheetJS) belum dimuat.', 'error');
+        return;
+    }
+
+    const fileNameEl = document.getElementById('import-file-name');
+    if (fileNameEl) fileNameEl.innerText = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+
+    showLoading(true, 'Membaca & menyesuaikan otomatis kolom Excel...');
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+
+            const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+            if (!rawJson || rawJson.length === 0) {
+                showToast('Berkas Excel kosong atau tidak terisi data!', 'warning');
+                showLoading(false);
+                return;
+            }
+
+            const mappedCustomers = [];
+            let mappedKeysCount = new Set();
+
+            rawJson.forEach(row => {
+                const normCust = {};
+                EXPORT_COLUMNS.forEach(col => normCust[col] = "");
+
+                Object.keys(row).forEach(rawKey => {
+                    const cleanKey = String(rawKey).trim().toLowerCase().replace(/[^a-z0-9_ ]/g, '');
+                    let targetCol = COLUMN_ALIAS_MAP[cleanKey] || COLUMN_ALIAS_MAP[rawKey.trim()];
+
+                    if (!targetCol) {
+                        if (cleanKey.includes('nama') || cleanKey.includes('name')) targetCol = 'nama';
+                        else if (cleanKey.includes('telp') || cleanKey.includes('phone') || cleanKey.includes('hp')) targetCol = 'telepon';
+                        else if (cleanKey.includes('pppoe') || cleanKey.includes('secret') || cleanKey.includes('username')) targetCol = 'ppoe';
+                        else if (cleanKey.includes('alamat') || cleanKey.includes('address')) targetCol = 'alamat';
+                        else if (cleanKey.includes('paket') && cleanKey.includes('tarif')) targetCol = 'paket_tarif';
+                        else if (cleanKey.includes('paket')) targetCol = 'paket_nama';
+                        else if (cleanKey.includes('tarif') || cleanKey.includes('harga') || cleanKey.includes('price')) targetCol = 'paket_tarif';
+                        else if (cleanKey.includes('diskon') || cleanKey.includes('discount')) targetCol = 'diskon';
+                        else if (cleanKey.includes('area') || cleanKey.includes('wilayah')) targetCol = 'area';
+                        else if (cleanKey.includes('odp')) targetCol = 'ODP';
+                        else if (cleanKey.includes('nik') || cleanKey.includes('ktp')) targetCol = 'NIK';
+                    }
+
+                    if (targetCol) {
+                        normCust[targetCol] = String(row[rawKey]).trim();
+                        mappedKeysCount.add(targetCol);
+                    }
+                });
+
+                if (!normCust.nama && row['name']) normCust.nama = String(row['name']).trim();
+                if (!normCust.nama && row['nama']) normCust.nama = String(row['nama']).trim();
+
+                mappedCustomers.push(normCust);
+            });
+
+            parsedImportCustomers = mappedCustomers;
+
+            const mappingStatus = document.getElementById('import-mapping-status');
+            const countText = document.getElementById('import-parsed-count-text');
+            const colsText = document.getElementById('import-mapped-cols-text');
+
+            if (mappingStatus && countText && colsText) {
+                countText.innerText = `Berhasil Membaca ${parsedImportCustomers.length} Data Pelanggan`;
+                colsText.innerText = `Otomatisasi Berhasil: ${mappedKeysCount.size} dari 26 kolom standar terdeteksi dan disesuaikan secara presisi.`;
+                mappingStatus.classList.remove('hidden');
+            }
+
+            renderImportPreviewTable(parsedImportCustomers.slice(0, 5));
+
+            const modeCont = document.getElementById('import-mode-container');
+            if (modeCont) modeCont.classList.remove('hidden');
+
+            const prevCont = document.getElementById('import-preview-table-container');
+            if (prevCont) prevCont.classList.remove('hidden');
+
+            const btnSubmit = document.getElementById('btn-submit-import');
+            if (btnSubmit) btnSubmit.disabled = false;
+
+            showToast(`Selesai memproses ${parsedImportCustomers.length} data dari berkas backup`, 'success');
+        } catch (err) {
+            console.error("Error reading import file:", err);
+            showToast('Gagal memproses berkas Excel: ' + err.message, 'error');
+        } finally {
+            showLoading(false);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function renderImportPreviewTable(sampleRows) {
+    const thead = document.getElementById('import-preview-thead');
+    const tbody = document.getElementById('import-preview-tbody');
+    if (!thead || !tbody) return;
+
+    thead.innerHTML = EXPORT_COLUMNS.map(col => `<th class="px-3 py-2 border-r border-slate-800">${col}</th>`).join('');
+
+    tbody.innerHTML = sampleRows.map((row, idx) => `
+        <tr class="${idx % 2 === 0 ? 'bg-slate-900/40' : 'bg-slate-900/80'} hover:bg-slate-800/50">
+            ${EXPORT_COLUMNS.map(col => `<td class="px-3 py-2 font-mono border-r border-slate-800/50 truncate max-w-[150px]">${row[col] || '<span class="text-slate-600">-</span>'}</td>`).join('')}
+        </tr>
+    `).join('');
+}
+
+async function executeCustomerImport() {
+    if (!parsedImportCustomers || parsedImportCustomers.length === 0) {
+        showToast('Tidak ada data pelanggan untuk di-import!', 'warning');
+        return;
+    }
+
+    const selectedMode = document.querySelector('input[name="import_mode"]:checked')?.value || 'merge';
+    const isReplace = selectedMode === 'replace';
+
+    if (isReplace) {
+        const confirmRest = confirm("PERHATIAN: Anda memilih mode RESTORE & TIMPA SEMUA DATA.\nSeluruh data pelanggan lama akan DIHAPUS dan digantikan sepenuhnya dengan isi file backup.\n\nApakah Anda yakin ingin melanjutkan?");
+        if (!confirmRest) return;
+    }
+
+    showLoading(true, `Meng-import ${parsedImportCustomers.length} data pelanggan ke database...`);
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/customers/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: selectedMode,
+                customers: parsedImportCustomers
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || 'Import data pelanggan berhasil!', 'success');
+            closeModal('modal-import-customers');
+            await loadAllData();
+        } else {
+            showToast(data.error || 'Gagal meng-import data pelanggan.', 'error');
+        }
+    } catch (e) {
+        console.error("Execute import error:", e);
+        showToast('Koneksi server gagal: ' + e.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+window.exportCustomersToExcel = exportCustomersToExcel;
+window.openImportCustomerModal = openImportCustomerModal;
+window.onImportFileSelected = onImportFileSelected;
+window.executeCustomerImport = executeCustomerImport;
+
 
 

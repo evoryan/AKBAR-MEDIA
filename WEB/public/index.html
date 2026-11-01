@@ -10,6 +10,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Custom Styles -->
     <link rel="stylesheet" href="style.css">
+    <!-- SheetJS (XLSX) CDN for Excel Export/Import -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script>
@@ -476,7 +478,13 @@
                                 <h2 class="text-2xl font-bold tracking-tight text-white">Manajemen Pelanggan</h2>
                                 <p class="text-slate-400 text-sm">Data langganan, PPPoE Router, status isolir, dan mapping lokasi ODP.</p>
                             </div>
-                            <div class="flex gap-2">
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="exportCustomersToExcel()" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-sm" title="Export Backup Data Pelanggan (.XLS)">
+                                    <i data-lucide="download" class="w-4 h-4 text-emerald-400"></i> Export .XLS
+                                </button>
+                                <button onclick="openImportCustomerModal()" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-sm" title="Import / Restore Data Pelanggan (.XLS)">
+                                    <i data-lucide="upload" class="w-4 h-4 text-cyan-400"></i> Import / Restore
+                                </button>
                                 <button onclick="openAddCustomerModal()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition duration-150 shadow-md">
                                     <i data-lucide="user-plus" class="w-4 h-4"></i> Pelanggan Baru
                                 </button>
@@ -630,66 +638,237 @@
                     </div>
                 </section>
 
-                <!-- ================= TAB: KEUANGAN ================= -->
+                <!-- ================= TAB: KEUANGAN (PEMBUKUAN) ================= -->
                 <section id="tab-keuangan" class="tab-content hidden">
                     <div class="flex flex-col gap-6">
+                        <!-- Header & Actions -->
                         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
-                                <h2 class="text-2xl font-bold tracking-tight text-white">Pembukuan & Arus Kas</h2>
-                                <p class="text-slate-400 text-sm">Pencatatan kas masuk, biaya operasional keluar, dan setoran kasir.</p>
+                                <h2 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                                    <i data-lucide="wallet" class="w-6 h-6 text-emerald-400"></i> Pembukuan & Keuangan
+                                </h2>
+                                <p class="text-slate-400 text-sm">Rekapitulasi kas masuk, pengeluaran operasional, setoran admin, dan mutasi keuangan per periode.</p>
                             </div>
-                            <div class="flex gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <!-- Month & Year Filter -->
+                                <select id="fin-filter-month" onchange="loadKeuanganData()" class="bg-[#111827] border border-slate-800 rounded-xl py-2 px-3 text-xs text-slate-200">
+                                    <option value="Semua Waktu">Semua Bulan</option>
+                                    <option value="Januari">Januari</option>
+                                    <option value="Februari">Februari</option>
+                                    <option value="Maret">Maret</option>
+                                    <option value="April">April</option>
+                                    <option value="Mei">Mei</option>
+                                    <option value="Juni">Juni</option>
+                                    <option value="Juli">Juli</option>
+                                    <option value="Agustus">Agustus</option>
+                                    <option value="September">September</option>
+                                    <option value="Oktober">Oktober</option>
+                                    <option value="November">November</option>
+                                    <option value="Desember">Desember</option>
+                                </select>
+                                <select id="fin-filter-year" onchange="loadKeuanganData()" class="bg-[#111827] border border-slate-800 rounded-xl py-2 px-3 text-xs text-slate-200">
+                                    <option value="2024">2024</option>
+                                    <option value="2025">2025</option>
+                                    <option value="2026" selected>2026</option>
+                                    <option value="2027">2027</option>
+                                </select>
                                 <button onclick="openFinanceDialog('pemasukan')" class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-md">
                                     <i data-lucide="plus-circle" class="w-4 h-4"></i> Catat Pemasukan
                                 </button>
                                 <button onclick="openFinanceDialog('pengeluaran')" class="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-md">
                                     <i data-lucide="minus-circle" class="w-4 h-4"></i> Catat Pengeluaran
                                 </button>
+                                <button onclick="openSetoranModal()" class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition shadow-md">
+                                    <i data-lucide="arrow-down-left" class="w-4 h-4"></i> Catat Setoran Admin
+                                </button>
                             </div>
                         </div>
 
-                        <!-- Finance Stats -->
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <!-- 4 Summary Stat Cards -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 shadow-sm">
-                                <span class="text-xs text-slate-400 font-medium">TOTAL PEMASUKAN</span>
+                                <span class="text-xs text-emerald-400 font-semibold tracking-wider uppercase">TOTAL PEMASUKAN</span>
                                 <h3 class="text-2xl font-bold text-emerald-400 mt-1" id="fin-total-pemasukan">Rp 0</h3>
-                                <p class="text-[10px] text-slate-500 mt-2">Bulan Ini</p>
+                                <p class="text-[11px] text-slate-400 mt-1" id="fin-sub-pemasukan">Termasuk Tagihan & Non-Tagihan</p>
                             </div>
                             <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 shadow-sm">
-                                <span class="text-xs text-slate-400 font-medium">TOTAL PENGELUARAN</span>
+                                <span class="text-xs text-rose-400 font-semibold tracking-wider uppercase">TOTAL PENGELUARAN</span>
                                 <h3 class="text-2xl font-bold text-rose-400 mt-1" id="fin-total-pengeluaran">Rp 0</h3>
-                                <p class="text-[10px] text-slate-500 mt-2">Biaya Operasional, Perbaikan, Kabel</p>
+                                <p class="text-[11px] text-slate-400 mt-1">Biaya Operasional, Gaji & Peralatan</p>
                             </div>
                             <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 shadow-sm">
-                                <span class="text-xs text-slate-400 font-medium">SALDO KAS SAAT INI</span>
-                                <h3 class="text-2xl font-bold text-blue-400 mt-1" id="fin-total-saldo">Rp 0</h3>
-                                <p class="text-[10px] text-slate-500 mt-2">Pemasukan dikurangi Pengeluaran</p>
+                                <span class="text-xs text-cyan-400 font-semibold tracking-wider uppercase">SALDO KAS (NET)</span>
+                                <h3 class="text-2xl font-bold text-cyan-400 mt-1" id="fin-total-saldo">Rp 0</h3>
+                                <p class="text-[11px] text-slate-400 mt-1">Pemasukan dikurangi Pengeluaran</p>
+                            </div>
+                            <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 shadow-sm">
+                                <span class="text-xs text-amber-400 font-semibold tracking-wider uppercase">METODE PEMBAYARAN</span>
+                                <div class="flex flex-col gap-0.5 mt-1">
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-slate-400">Cash:</span>
+                                        <span class="font-bold text-amber-400" id="fin-transaksi-cash">Rp 0</span>
+                                    </div>
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-slate-400">Online/TF:</span>
+                                        <span class="font-bold text-blue-400" id="fin-transaksi-online">Rp 0</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Tabs for Cashbooks -->
-                        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
-                            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                                <h3 class="text-base font-semibold text-white">Mutasi Aliran Dana</h3>
-                                <span class="text-xs text-slate-400">Pencatatan kas operasional</span>
+                        <!-- Subtab Navigation Bar -->
+                        <div class="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
+                            <button onclick="switchKeuanganSubTab('semua')" id="btn-fin-subtab-semua" class="px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                <i data-lucide="list" class="w-4 h-4"></i> Semua Pembukuan
+                            </button>
+                            <button onclick="switchKeuanganSubTab('uang-admin')" id="btn-fin-subtab-uang-admin" class="px-4 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 text-slate-400 hover:text-white">
+                                <i data-lucide="user-check" class="w-4 h-4"></i> Uang di Admin / Collector
+                            </button>
+                            <button onclick="switchKeuanganSubTab('pembayaran')" id="btn-fin-subtab-pembayaran" class="px-4 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 text-slate-400 hover:text-white">
+                                <i data-lucide="receipt" class="w-4 h-4"></i> Riwayat Pembayaran Tagihan
+                            </button>
+                            <button onclick="switchKeuanganSubTab('rangkuman')" id="btn-fin-subtab-rangkuman" class="px-4 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2 text-slate-400 hover:text-white">
+                                <i data-lucide="pie-chart" class="w-4 h-4"></i> Rangkuman Kategori
+                            </button>
+                        </div>
+
+                        <!-- SUBTAB 1: SEMUA PEMBUKUAN -->
+                        <div id="fin-subtab-semua" class="flex flex-col gap-4">
+                            <!-- Filters for Pembukuan List -->
+                            <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+                                    <button onclick="filterSemuaPembukuan('all')" id="btn-fin-filter-all" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-white border border-slate-700">Semua Mutasi</button>
+                                    <button onclick="filterSemuaPembukuan('pemasukan')" id="btn-fin-filter-pemasukan" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white">Pemasukan</button>
+                                    <button onclick="filterSemuaPembukuan('pengeluaran')" id="btn-fin-filter-pengeluaran" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white">Pengeluaran</button>
+                                    <button onclick="filterSemuaPembukuan('has_invoice')" id="btn-fin-filter-invoice" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-1">
+                                        <i data-lucide="image" class="w-3.5 h-3.5 text-cyan-400"></i> Ada Invoice
+                                    </button>
+                                </div>
+                                <div class="relative w-full md:w-64">
+                                    <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
+                                    <input type="text" id="fin-search-input" oninput="renderKeuanganTable()" placeholder="Cari keterangan / admin..." class="w-full bg-[#111827] border border-slate-800 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                                </div>
                             </div>
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-left text-sm text-slate-300">
-                                    <thead class="bg-slate-900 text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                                        <tr>
-                                            <th class="px-6 py-3">Tanggal / Waktu</th>
-                                            <th class="px-6 py-3">Keterangan</th>
-                                            <th class="px-6 py-3">Kategori</th>
-                                            <th class="px-6 py-3">Penerima / Admin</th>
-                                            <th class="px-6 py-3 text-right">Jumlah</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="keuangan-table-body" class="divide-y divide-slate-800">
-                                        <tr>
-                                            <td colspan="5" class="px-6 py-8 text-center text-slate-500">Memuat mutasi keuangan...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+
+                            <!-- Table of Mutasi -->
+                            <div class="bg-[#151c2c] border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left text-sm text-slate-300">
+                                        <thead class="bg-slate-900 text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                                            <tr>
+                                                <th class="px-6 py-3.5">Tanggal / Waktu</th>
+                                                <th class="px-6 py-3.5">Keterangan & Invoice</th>
+                                                <th class="px-6 py-3.5">Tipe & Kategori</th>
+                                                <th class="px-6 py-3.5">Petugas / Admin</th>
+                                                <th class="px-6 py-3.5 text-right">Jumlah (Rp)</th>
+                                                <th class="px-6 py-3.5 text-right">Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="keuangan-table-body" class="divide-y divide-slate-800">
+                                            <tr>
+                                                <td colspan="6" class="px-6 py-12 text-center text-slate-500">Memuat mutasi pembukuan...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SUBTAB 2: UANG DI ADMIN / COLLECTOR -->
+                        <div id="fin-subtab-uang-admin" class="flex flex-col gap-4 hidden">
+                            <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+                                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <div>
+                                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                            <i data-lucide="user-check" class="w-5 h-5 text-amber-400"></i> Rekapitulasi Kasir & Collector (Uang di Admin)
+                                        </h3>
+                                        <p class="text-xs text-slate-400">Data penerimaan tunai, setoran, pengeluaran kasir, dan sisa saldo di tangan admin.</p>
+                                    </div>
+                                    <button onclick="openSetoranModal()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md">
+                                        <i data-lucide="plus" class="w-4 h-4"></i> Catat Setoran
+                                    </button>
+                                </div>
+
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left text-sm text-slate-300">
+                                        <thead class="bg-slate-900 text-xs text-slate-400 uppercase border-b border-slate-800">
+                                            <tr>
+                                                <th class="px-6 py-3.5">Nama Admin / Kasir</th>
+                                                <th class="px-6 py-3.5 text-center">Transaksi Pelanggan</th>
+                                                <th class="px-6 py-3.5 text-right">Total Diterima</th>
+                                                <th class="px-6 py-3.5 text-right">Sudah Disetor</th>
+                                                <th class="px-6 py-3.5 text-right">Pengeluaran</th>
+                                                <th class="px-6 py-3.5 text-right">Saldo di Admin</th>
+                                                <th class="px-6 py-3.5 text-right">Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="uang-admin-table-body" class="divide-y divide-slate-800">
+                                            <tr>
+                                                <td colspan="7" class="px-6 py-12 text-center text-slate-500">Memuat data uang di admin...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SUBTAB 3: RIWAYAT PEMBAYARAN TAGIHAN -->
+                        <div id="fin-subtab-pembayaran" class="flex flex-col gap-4 hidden">
+                            <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+                                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <div>
+                                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                            <i data-lucide="receipt" class="w-5 h-5 text-emerald-400"></i> Riwayat Pembayaran Tagihan Lunas
+                                        </h3>
+                                        <p class="text-xs text-slate-400">Daftar transaksi pembayaran tagihan bulanan pelanggan terkonfirmasi lunas.</p>
+                                    </div>
+                                    <span id="pembayaran-count-badge" class="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">0 Transaksi</span>
+                                </div>
+
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left text-sm text-slate-300">
+                                        <thead class="bg-slate-900 text-xs text-slate-400 uppercase border-b border-slate-800">
+                                            <tr>
+                                                <th class="px-6 py-3.5">Tanggal / Sesi</th>
+                                                <th class="px-6 py-3.5">Pelanggan</th>
+                                                <th class="px-6 py-3.5">Area / Kontak</th>
+                                                <th class="px-6 py-3.5">Periode Tagihan</th>
+                                                <th class="px-6 py-3.5">Penerima (Admin)</th>
+                                                <th class="px-6 py-3.5 text-right">Nominal Bayar</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="pembayaran-table-body" class="divide-y divide-slate-800">
+                                            <tr>
+                                                <td colspan="6" class="px-6 py-12 text-center text-slate-500">Memuat riwayat pembayaran tagihan...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SUBTAB 4: RANGKUMAN KATEGORI & CASHFLOW -->
+                        <div id="fin-subtab-rangkuman" class="flex flex-col gap-6 hidden">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Breakdowns by Categories -->
+                                <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+                                    <h3 class="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                                        <i data-lucide="pie-chart" class="w-5 h-5 text-cyan-400"></i> Rincian Pengeluaran per Kategori
+                                    </h3>
+                                    <div id="rangkuman-category-list" class="flex flex-col gap-3">
+                                        <!-- Dynamically generated -->
+                                    </div>
+                                </div>
+
+                                <!-- Financial Summary Card -->
+                                <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+                                    <h3 class="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                                        <i data-lucide="bar-chart-2" class="w-5 h-5 text-emerald-400"></i> Rekapitulasi Neraca Kas
+                                    </h3>
+                                    <div id="rangkuman-neraca-card" class="flex flex-col gap-3">
+                                        <!-- Dynamically generated -->
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -846,6 +1025,28 @@
                             </div>
 
                             <form id="form-app-settings" onsubmit="saveAppSettingsFromWeb(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Logo Perusahaan (Untuk Invoice & Cetak) -->
+                                <div class="flex flex-col gap-2 md:col-span-2 p-3.5 bg-slate-900/80 rounded-xl border border-slate-800">
+                                    <label class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                                        <span class="flex items-center gap-1.5">
+                                            <i data-lucide="image" class="w-4 h-4 text-cyan-400"></i> LOGO PERUSAHAAN (SINKRONISASI INVOICE)
+                                        </span>
+                                        <span class="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Local Storage VPS</span>
+                                    </label>
+                                    <div class="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                                        <div class="relative group">
+                                            <img id="setting-company-logo-preview" src="" alt="Preview Logo" class="h-16 w-32 object-contain bg-slate-950 border border-slate-700 rounded-xl p-1.5 hidden shadow-md">
+                                        </div>
+                                        <div class="flex flex-col gap-1.5 flex-1">
+                                            <p class="text-xs text-slate-400" id="setting-logo-status-text">Unggah gambar logo perusahaan (PNG, JPG) untuk ditampilkan pada invoice tagihan.</p>
+                                            <input type="file" id="setting-logo-file-input" accept="image/*" onchange="uploadCompanyLogoFromWeb(event)" class="hidden">
+                                            <button type="button" onclick="document.getElementById('setting-logo-file-input').click()" class="self-start px-3.5 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                                <i data-lucide="upload-cloud" class="w-4 h-4"></i> Upload Logo Perusahaan
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="flex flex-col gap-1.5">
                                     <label class="text-xs font-semibold text-slate-400">NAMA PERUSAHAAN</label>
                                     <input type="text" id="setting-company-name" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Contoh: Akbar Media">
@@ -1136,6 +1337,44 @@
 
                         <!-- SUBTAB 3: ACS SERVER & ONT BINDING AREA -->
                         <div id="mkt-subtab-acs" class="hidden flex-col gap-6">
+                            <!-- Form Edit Alamat & Kredensial ACS per Area -->
+                            <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+                                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                        <i data-lucide="settings-2" class="w-5 h-5 text-cyan-400"></i> Edit Alamat & Kredensial ACS (GenieACS TR-069)
+                                    </h3>
+                                    <span class="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">Tersimpan di MySQL (Sinkron Android)</span>
+                                </div>
+                                <form id="form-acs-credentials" onsubmit="saveAcsCredentialsFromWeb(event)" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-xs font-semibold text-slate-400">PILIH AREA / WILAYAH</label>
+                                        <select id="acs-edit-area-select" onchange="onAcsAreaSelectedForEdit()" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                            <!-- Populated dynamically -->
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col gap-1.5 sm:col-span-2 md:col-span-1">
+                                        <label class="text-xs font-semibold text-slate-400">URL / ALAMAT ACS NBI (PORT 7557)</label>
+                                        <input type="text" id="acs-edit-domain" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white font-mono" placeholder="http://ip-vps:7557">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-xs font-semibold text-slate-400">USERNAME ACS</label>
+                                        <input type="text" id="acs-edit-user" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="admin / tr069_user">
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label class="text-xs font-semibold text-slate-400">PASSWORD ACS</label>
+                                        <input type="password" id="acs-edit-pass" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white" placeholder="Password ACS NBI">
+                                    </div>
+                                    <div class="sm:col-span-2 md:col-span-4 flex justify-end gap-3 pt-2 border-t border-slate-800">
+                                        <button type="button" onclick="testAcsCredentialsFromWeb()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                                            <i data-lucide="zap" class="w-3.5 h-3.5"></i> Test Koneksi ACS
+                                        </button>
+                                        <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md">
+                                            <i data-lucide="save" class="w-3.5 h-3.5"></i> Simpan Kredensial ACS
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+
                             <!-- ACS Server Status & Info -->
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
@@ -1307,6 +1546,21 @@
                                             <input type="text" id="setting-isp-web" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="https://akbarmedia.net">
                                         </div>
                                     </div>
+                                    <!-- Logo Perusahaan Upload (VPS Local Storage Sync) -->
+                                    <div class="flex flex-col gap-1.5 pt-2 border-t border-slate-800/80">
+                                        <label class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                                            <span>LOGO PERUSAHAAN (SINKRONISASI INVOICE)</span>
+                                            <span class="text-[10px] text-cyan-400 font-mono">VPS Local Storage</span>
+                                        </label>
+                                        <div class="flex items-center gap-3 bg-slate-900/60 border border-slate-800 p-2.5 rounded-xl">
+                                            <img id="setting-company-logo-preview" src="" alt="Logo Perusahaan" class="hidden w-12 h-12 object-contain bg-slate-950 rounded-lg border border-slate-800 p-1">
+                                            <div class="flex-1 flex flex-col gap-1">
+                                                <input type="file" id="setting-company-logo-input" accept="image/*" onchange="uploadCompanyLogoFromWeb(event)" class="text-xs text-slate-300 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/10 file:text-cyan-400 hover:file:bg-cyan-500/20 cursor-pointer">
+                                                <p class="text-[10px] text-slate-500" id="setting-company-logo-status">Format PNG/JPG, tersimpan di VPS per tenant database.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <button type="submit" class="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition">
                                         Simpan Profil Perusahaan
                                     </button>
@@ -1611,9 +1865,12 @@
             </div>
             <div class="p-6 flex flex-col gap-4 text-sm" id="invoice-printable-area">
                 <div class="flex items-center justify-between border-b border-slate-800 pb-4">
-                    <div>
-                        <h4 class="text-lg font-bold text-white" id="inv-company-name">AKBAR MEDIA</h4>
-                        <p class="text-xs text-slate-400" id="inv-company-addr">Layanan Internet Cepat & Stabil</p>
+                    <div class="flex items-center gap-3">
+                        <img id="inv-company-logo" src="" alt="Logo" class="hidden h-12 w-auto max-w-[100px] object-contain rounded-lg border border-slate-800 bg-slate-900 p-1">
+                        <div>
+                            <h4 class="text-lg font-bold text-white" id="inv-company-name">AKBAR MEDIA</h4>
+                            <p class="text-xs text-slate-400" id="inv-company-addr">Layanan Internet Cepat & Stabil</p>
+                        </div>
                     </div>
                     <div class="text-right">
                         <span class="text-xs font-semibold px-2.5 py-1 rounded-full" id="inv-badge-status">LUNAS</span>
@@ -1640,13 +1897,21 @@
                         <span class="text-slate-300" id="inv-pkg-name">Paket Internet</span>
                         <span class="font-semibold text-slate-200" id="inv-pkg-price">Rp 0</span>
                     </div>
-                    <div class="flex justify-between text-xs" id="inv-row-add1">
+                    <div class="flex justify-between text-xs hidden" id="inv-row-add1">
                         <span class="text-slate-400" id="inv-add1-desc">Biaya Lain 1</span>
                         <span class="text-slate-300" id="inv-add1-val">Rp 0</span>
                     </div>
-                    <div class="flex justify-between text-xs" id="inv-row-disc">
+                    <div class="flex justify-between text-xs hidden" id="inv-row-add2">
+                        <span class="text-slate-400" id="inv-add2-desc">Biaya Lain 2</span>
+                        <span class="text-slate-300" id="inv-add2-val">Rp 0</span>
+                    </div>
+                    <div class="flex justify-between text-xs hidden" id="inv-row-disc">
                         <span class="text-slate-400">Diskon / Potongan</span>
                         <span class="text-rose-400" id="inv-disc-val">- Rp 0</span>
+                    </div>
+                    <div class="flex justify-between text-xs hidden" id="inv-row-ppn">
+                        <span class="text-slate-400" id="inv-ppn-desc">PPN (Tax)</span>
+                        <span class="text-slate-300" id="inv-ppn-val">Rp 0</span>
                     </div>
                     <div class="border-t border-slate-800 pt-2 flex justify-between text-sm font-bold">
                         <span class="text-white">TOTAL PEMBAYARAN</span>
@@ -1707,6 +1972,66 @@
                     <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
                         <span class="text-slate-500">Terkoneksi ke ODP:</span>
                         <p class="font-bold text-blue-400 mt-0.5" id="det-cust-odp">-</p>
+                    </div>
+                </div>
+
+                <!-- Status Sesi Mikrotik Secret -->
+                <div class="bg-slate-900/70 p-3.5 rounded-xl border border-cyan-500/20 flex flex-col gap-2">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="text-xs font-bold text-cyan-400 flex items-center gap-1.5 uppercase tracking-wider">
+                            <i data-lucide="router" class="w-4 h-4"></i> Status Sesi Mikrotik (PPPoE)
+                        </span>
+                        <span id="det-mkt-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">Memuat...</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                            <span class="text-slate-500">Router / Area:</span>
+                            <p class="font-bold text-slate-200" id="det-mkt-router-name">-</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Profile / Limit:</span>
+                            <p class="font-bold text-emerald-400" id="det-mkt-profile">-</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Local / Remote IP:</span>
+                            <p class="font-mono text-slate-300" id="det-mkt-ip">-</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Uptime Sesi:</span>
+                            <p class="font-bold text-amber-400" id="det-mkt-uptime">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Perangkat Remote ACS TR-069 -->
+                <div class="bg-slate-900/70 p-3.5 rounded-xl border border-emerald-500/20 flex flex-col gap-2">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
+                            <i data-lucide="radio" class="w-4 h-4"></i> Remote TR-069 ACS (Modem ONT)
+                        </span>
+                        <span id="det-acs-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">Memuat...</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div>
+                            <span class="text-slate-500">Serial Number (SN):</span>
+                            <p class="font-mono font-bold text-white" id="det-acs-sn">-</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Redaman (Rx Power):</span>
+                            <p class="font-bold text-emerald-400" id="det-acs-rx-power">-</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">SSID Wi-Fi:</span>
+                            <p class="font-bold text-cyan-400" id="det-acs-ssid">-</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Model / Hardware:</span>
+                            <p class="font-medium text-slate-300" id="det-acs-model">-</p>
+                        </div>
+                        <div class="col-span-2 flex justify-between items-center bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                            <span class="text-slate-500">IP CPE & Last Inform:</span>
+                            <span class="font-mono text-slate-300" id="det-acs-ip-inform">-</span>
+                        </div>
                     </div>
                 </div>
 
@@ -2001,9 +2326,9 @@
         </div>
     </div>
 
-    <!-- Modal: Catat Pemasukan / Pengeluaran (Keuangan) -->
+    <!-- Modal: Catat / Edit Transaksi Keuangan -->
     <div id="modal-keuangan-trans" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
-        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl">
+        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div class="p-6 border-b border-slate-800 flex items-center justify-between">
                 <h3 id="modal-keuangan-title" class="text-lg font-bold text-white">Catat Transaksi Keuangan</h3>
                 <button onclick="closeModal('modal-keuangan-trans')" class="text-slate-400 hover:text-white transition">
@@ -2011,34 +2336,117 @@
                 </button>
             </div>
             <form id="form-keuangan-trans" class="p-6 flex flex-col gap-4" onsubmit="saveFinanceTransaction(event)">
+                <input type="hidden" id="fin-edit-id">
                 <input type="hidden" id="fin-type">
+                <input type="hidden" id="fin-existing-image">
+                
                 <div class="flex flex-col gap-1.5">
                     <label class="text-xs font-semibold text-slate-400">DESKRIPSI / KETERANGAN</label>
-                    <input type="text" id="fin-desc" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Misal: Pembayaran kabel FO, Iuran Bulanan">
+                    <input type="text" id="fin-desc" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Misal: Pembelian kabel FO 1000m, Gaji Teknisi">
                 </div>
+                
                 <div class="flex flex-col gap-1.5">
                     <label class="text-xs font-semibold text-slate-400">KATEGORI</label>
                     <select id="fin-category" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-300">
                         <option value="Operasional">Biaya Operasional Lapangan</option>
                         <option value="Gaji">Gaji / Insentif Pegawai</option>
-                        <option value="Alat">Pembelian Peralatan / Inventaris</option>
-                        <option value="Iklan">Pemasaran / Sponsorship</option>
-                        <option value="Lainnya">Lainnya</option>
+                        <option value="Alat">Pembelian Peralatan & Material</option>
+                        <option value="Kabel FO">Kabel & Aksesoris Fiber Optic</option>
+                        <option value="Kasir">Pembayaran Cash Kasir</option>
+                        <option value="Online">Pembayaran Transfer / Online</option>
+                        <option value="BBM & Konsumsi">BBM & Transportasi</option>
+                        <option value="Iklan">Pemasaran & Advertising</option>
+                        <option value="Lainnya">Lainnya / Non-Operasional</option>
                     </select>
                 </div>
+                
                 <div class="flex flex-col gap-1.5">
-                    <label class="text-xs font-semibold text-slate-400">NAMA ADMIN / PENERIMA</label>
+                    <label class="text-xs font-semibold text-slate-400">NAMA ADMIN / PETUGAS</label>
                     <input type="text" id="fin-admin" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Admin Akbar Media">
                 </div>
+                
                 <div class="flex flex-col gap-1.5">
                     <label class="text-xs font-semibold text-slate-400">NILAI NOMINAL (RP)</label>
-                    <input type="number" id="fin-amount" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" min="1">
+                    <input type="number" id="fin-amount" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" min="1" placeholder="100000">
                 </div>
-                <div class="p-4 border-t border-slate-800 flex justify-end gap-3 mt-4">
+
+                <!-- Invoice Photo Upload (Optional, Saved to VPS Local Storage isolated per tenant) -->
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                        <span>FOTO INVOICE / STRUK (OPSIONAL)</span>
+                        <span class="text-[10px] text-cyan-400">VPS Storage</span>
+                    </label>
+                    <input type="file" id="fin-image-file" accept="image/*" onchange="handleFinanceImageChange(event)" class="bg-slate-900 border border-slate-800 rounded-xl p-2 text-xs text-slate-300 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 cursor-pointer">
+                    <div id="fin-image-preview-container" class="hidden mt-2 p-2 bg-slate-900 border border-slate-800 rounded-xl flex items-center gap-3">
+                        <img id="fin-image-preview" src="" class="w-12 h-12 object-cover rounded-lg border border-slate-700">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs text-emerald-400 font-semibold truncate" id="fin-image-filename">Foto Invoice Terlampir</p>
+                            <button type="button" onclick="removeFinanceImagePreview()" class="text-[10px] text-rose-400 hover:underline">Hapus Foto</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 border-t border-slate-800 flex justify-end gap-3 mt-2">
                     <button type="button" onclick="closeModal('modal-keuangan-trans')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition duration-150">Batal</button>
                     <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition duration-150 shadow-md" id="btn-save-fin">Simpan Transaksi</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal: Catat Setoran Admin -->
+    <div id="modal-setoran" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="arrow-down-left" class="w-5 h-5 text-amber-400"></i> Catat Setoran Admin / Collector
+                </h3>
+                <button onclick="closeModal('modal-setoran')" class="text-slate-400 hover:text-white transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form id="form-setoran" class="p-6 flex flex-col gap-4" onsubmit="saveSetoranAdmin(event)">
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400">NAMA ADMIN / COLLECTOR</label>
+                    <input type="text" id="setoran-admin-input" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Masukkan nama admin / kasir">
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400">NOMINAL SETORAN (RP)</label>
+                    <input type="number" id="setoran-amount" required min="1" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Contoh: 1500000">
+                </div>
+
+                <div class="p-4 border-t border-slate-800 flex justify-end gap-3 mt-2">
+                    <button type="button" onclick="closeModal('modal-setoran')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition">Batal</button>
+                    <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold transition shadow-md">Simpan Setoran</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal View Invoice Image -->
+    <div id="modal-view-invoice" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                <h3 class="text-base font-bold text-white flex items-center gap-2" id="view-invoice-title">
+                    <i data-lucide="image" class="w-5 h-5 text-cyan-400"></i> Foto Bukti Invoice / Struk
+                </h3>
+                <button onclick="closeModal('modal-view-invoice')" class="text-slate-400 hover:text-white transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-4 flex-1 overflow-auto flex items-center justify-center bg-slate-950">
+                <img id="view-invoice-img" src="" alt="Bukti Invoice" class="max-w-full max-h-[70vh] object-contain rounded-xl border border-slate-800">
+            </div>
+            <div class="p-4 border-t border-slate-800 flex items-center justify-between bg-slate-900">
+                <span id="view-invoice-sub" class="text-xs text-slate-400">Disimpan di VPS Storage</span>
+                <div class="flex gap-2">
+                    <a id="view-invoice-download" href="" target="_blank" class="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1.5">
+                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Buka Ukuran Penuh
+                    </a>
+                    <button type="button" onclick="closeModal('modal-view-invoice')" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition">Tutup</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2498,6 +2906,93 @@
                     <button type="submit" class="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold transition duration-150 shadow-md">Simpan Secret</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal: Import / Restore Data Pelanggan (.XLS) -->
+    <div id="modal-import-customers" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/60 shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-cyan-500/10 rounded-xl border border-cyan-500/20 text-cyan-400">
+                        <i data-lucide="file-spreadsheet" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Import & Restore Data Pelanggan (.XLS / .XLSX)</h3>
+                        <p class="text-xs text-slate-400">Backup, restore, dan otomatisasi sinkronisasi struktur kolom file excel.</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-import-customers')" class="text-slate-400 hover:text-white transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto flex flex-col gap-5 flex-1">
+                <!-- Dropzone / File Picker -->
+                <div class="border-2 border-dashed border-slate-700 hover:border-cyan-500 bg-slate-900/50 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition" onclick="document.getElementById('file-import-xls').click()">
+                    <i data-lucide="upload-cloud" class="w-10 h-10 text-cyan-400 mb-2 animate-bounce"></i>
+                    <p class="text-sm font-semibold text-slate-200">Pilih Berkas Backup (.xls / .xlsx / .csv)</p>
+                    <p class="text-xs text-slate-400 mt-1">Sistem akan membaca dan mencocokkan nama kolom secara otomatis</p>
+                    <input type="file" id="file-import-xls" accept=".xls,.xlsx,.csv" class="hidden" onchange="onImportFileSelected(event)">
+                </div>
+
+                <!-- Column Auto-Mapping Banner (Populated when file is loaded) -->
+                <div id="import-mapping-status" class="hidden bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-xs text-emerald-300 flex items-start gap-3">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5"></i>
+                    <div>
+                        <p class="font-bold text-emerald-300" id="import-parsed-count-text">0 data terdeteksi</p>
+                        <p class="text-slate-300 mt-1" id="import-mapped-cols-text">Semua kolom standar terpetakan secara otomatis.</p>
+                    </div>
+                </div>
+
+                <!-- Mode Selection -->
+                <div id="import-mode-container" class="hidden flex-col gap-2">
+                    <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Mode Impor / Restorasi:</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label class="flex items-start gap-3 bg-slate-900 border border-slate-800 hover:border-cyan-500/50 p-3.5 rounded-xl cursor-pointer transition">
+                            <input type="radio" name="import_mode" value="merge" checked class="mt-1 text-cyan-500 focus:ring-0">
+                            <div>
+                                <span class="text-xs font-bold text-white block">Sinkron & Perbarui (Upsert)</span>
+                                <span class="text-[11px] text-slate-400 block mt-0.5">Memperbarui pelanggan yang cocok (berdasarkan ID / PPPoE / Nama) dan menambahkan data baru tanpa menghapus data lama.</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 bg-slate-900 border border-slate-800 hover:border-rose-500/50 p-3.5 rounded-xl cursor-pointer transition">
+                            <input type="radio" name="import_mode" value="replace" class="mt-1 text-rose-500 focus:ring-0">
+                            <div>
+                                <span class="text-xs font-bold text-rose-400 block">Restore & Timpa Semua Data</span>
+                                <span class="text-[11px] text-slate-400 block mt-0.5">Menghapus seluruh data pelanggan lama dan menggantinya dengan isi data dari berkas backup.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Live Data Preview Table -->
+                <div id="import-preview-table-container" class="hidden flex-col gap-2">
+                    <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Pratinjau Hasil Pemetaan Kolom (5 Data Pertama):</label>
+                    <div class="border border-slate-800 rounded-xl overflow-hidden overflow-x-auto max-h-60 bg-slate-900">
+                        <table class="w-full text-left text-[11px] text-slate-300 min-w-[1200px]">
+                            <thead class="bg-slate-950 text-slate-400 uppercase border-b border-slate-800 sticky top-0">
+                                <tr id="import-preview-thead">
+                                    <!-- Populated dynamically -->
+                                </tr>
+                            </thead>
+                            <tbody id="import-preview-tbody" class="divide-y divide-slate-800">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-slate-800 bg-slate-900/60 flex items-center justify-between shrink-0">
+                <span id="import-file-name" class="text-xs text-slate-400 font-mono italic">Belum ada file dipilih</span>
+                <div class="flex gap-3">
+                    <button type="button" onclick="closeModal('modal-import-customers')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition">Batal</button>
+                    <button type="button" id="btn-submit-import" onclick="executeCustomerImport()" disabled class="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition shadow-md flex items-center gap-2">
+                        <i data-lucide="check" class="w-4 h-4"></i> Proses Import Data
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 

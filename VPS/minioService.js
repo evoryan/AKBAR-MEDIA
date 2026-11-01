@@ -32,8 +32,9 @@ const baseUploadsDir = path.join(__dirname, 'uploads');
 const baseInvoicesDir = path.join(baseUploadsDir, 'invoices');
 const baseProfilesDir = path.join(baseUploadsDir, 'profiles');
 const baseCustomersDir = path.join(baseUploadsDir, 'customers');
+const baseLogosDir = path.join(baseUploadsDir, 'logos');
 
-[baseUploadsDir, baseInvoicesDir, baseProfilesDir, baseCustomersDir].forEach(dir => {
+[baseUploadsDir, baseInvoicesDir, baseProfilesDir, baseCustomersDir, baseLogosDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -140,9 +141,44 @@ async function uploadCustomerHeaderBg(fileBuffer, originalName, mimeType, tenant
     };
 }
 
+/**
+ * Upload company logo image to Local VPS Storage with per-tenant folder isolation.
+ * Path: VPS/uploads/logos/<tenant_db_name>/logo_<timestamp>.<ext>
+ */
+async function uploadCompanyLogo(fileBuffer, originalName, mimeType, tenantDbName) {
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+        throw new Error("File buffer tidak valid atau kosong");
+    }
+    const safeOriginalName = originalName || 'logo.png';
+    const ext = path.extname(safeOriginalName) || '.png';
+    const timestamp = Date.now();
+    const cleanTenantDb = (tenantDbName || 'default_tenant').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `logo_${timestamp}${ext}`;
+
+    const tenantDir = path.join(baseLogosDir, cleanTenantDb);
+    if (!fs.existsSync(tenantDir)) {
+        fs.mkdirSync(tenantDir, { recursive: true });
+    }
+
+    const localFilePath = path.join(tenantDir, filename);
+    fs.writeFileSync(localFilePath, fileBuffer);
+
+    const relativeUrl = `/uploads/logos/${cleanTenantDb}/${filename}`;
+    console.log(`🏢 Company logo saved to Local VPS Storage: ${localFilePath}`);
+
+    return {
+        url: relativeUrl,
+        localUrl: relativeUrl,
+        localPath: localFilePath,
+        storage: 'local_vps'
+    };
+}
+
 module.exports = {
     minioClient,
     uploadInvoiceImage,
     uploadProfilePicture,
-    uploadCustomerHeaderBg
+    uploadCustomerHeaderBg,
+    uploadCompanyLogo
 };
+

@@ -82,7 +82,18 @@ object InvoiceGenerator {
 
         // 3. KOP SURAT (Letterhead with Logo)
         val logoPath = SettingsManager.invoiceLogoPath
-        val logoFile = logoPath?.let { File(it) }
+        var logoFile = logoPath?.let { File(it) }
+        if (logoFile == null || !logoFile.exists()) {
+            val localDefault = File(context.filesDir, "invoice_kop_logo.png")
+            if (localDefault.exists()) {
+                logoFile = localDefault
+            } else {
+                context.getExternalFilesDir(null)?.let { extDir ->
+                    val extDefault = File(extDir, "invoice_kop_logo.png")
+                    if (extDefault.exists()) logoFile = extDefault
+                }
+            }
+        }
         var logoBitmap: Bitmap? = null
         if (logoFile != null && logoFile.exists()) {
             try {

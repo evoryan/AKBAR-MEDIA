@@ -12,7 +12,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const { minioClient, uploadInvoiceImage, uploadProfilePicture, uploadCustomerHeaderBg } = require('./minioService');
+const { minioClient, uploadInvoiceImage, uploadProfilePicture, uploadCustomerHeaderBg, uploadCompanyLogo } = require('./minioService');
 
 const app = express();
 app.use(cors({
@@ -46,6 +46,10 @@ if (!fs.existsSync(profileUploadDir)) {
 const customerUploadDir = path.join(__dirname, 'uploads', 'customers');
 if (!fs.existsSync(customerUploadDir)) {
     fs.mkdirSync(customerUploadDir, { recursive: true });
+}
+const logosUploadDir = path.join(__dirname, 'uploads', 'logos');
+if (!fs.existsSync(logosUploadDir)) {
+    fs.mkdirSync(logosUploadDir, { recursive: true });
 }
 
 const invoiceMemoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -2169,6 +2173,46 @@ app.post('/api/customers/:id/header-bg', handleUploadMiddleware(invoiceMemoryUpl
     }
 });
 
+// Upload Company Logo for Invoice Synchronization (Local VPS Storage isolated per tenant)
+app.post('/api/settings/upload-logo', handleUploadMiddleware(invoiceMemoryUpload.single('image')), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "File logo perusahaan tidak ditemukan" });
+        }
+        const tenantDbName = req.tenantDb || (req.user ? req.user.db_name : 'default');
+        const result = await uploadCompanyLogo(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+            tenantDbName
+        );
+
+        if (req.pool) {
+            await req.pool.query(`CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key VARCHAR(100) PRIMARY KEY,
+                setting_value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )`).catch(() => {});
+
+            await req.pool.query(
+                `INSERT INTO app_settings (setting_key, setting_value) VALUES ('company_logo', ?)
+                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                [result.url]
+            );
+        }
+
+        res.json({
+            status: "success",
+            message: "Logo perusahaan berhasil diunggah ke VPS local storage",
+            company_logo: result.url,
+            url: result.url
+        });
+    } catch (error) {
+        console.error("Company logo upload error:", error);
+        res.status(500).json({ error: "Gagal mengunggah logo perusahaan: " + error.message });
+    }
+});
+
 app.get('/api/pembukuan/all', async (req, res) => {
     try {
         await req.pool.query("ALTER TABLE pembukuan ADD COLUMN image_url TEXT").catch(e => {});
@@ -2942,6 +2986,154 @@ app.post('/api/customers', async (req, res) => {
     }
 });
 
+// Import & Restore Customer Backup (.XLS / Data Backup)
+app.post('/api/customers/import', async (req, res) => {
+    try {
+        const { mode, customers } = req.body;
+        if (!Array.isArray(customers) || customers.length === 0) {
+            return res.status(400).json({ error: "Data pelanggan untuk di-import tidak valid atau kosong" });
+        }
+
+        if (mode === 'replace') {
+            await req.pool.query('DELETE FROM tagihan_bulanan').catch(() => {});
+            await req.pool.query('DELETE FROM customers').catch(() => {});
+        }
+
+        let insertedCount = 0;
+        let updatedCount = 0;
+
+        for (const cust of customers) {
+            const name = cust.nama || cust.name || 'Tanpa Nama';
+            const phone = cust.telepon || cust.phone || '';
+            const pppoeSecret = cust.ppoe || cust.pppoe_secret || cust.pppoeSecret || cust.username || '';
+            const area = cust.area || '';
+            const address = cust.alamat || cust.address || '';
+            const billingDate = cust.tanggal || cust.billingDate || '1';
+            const status = cust.status || 'BELUM BAYAR';
+            const price = String(cust.paket_tarif || cust.price || '0');
+            const discount = String(cust.diskon || cust.discount || '0');
+            const packageName = cust.paket_nama || cust.package_name || cust.packageName || '';
+            const registerDate = cust.tanggal_register || cust.register_date || cust.registerDate || '';
+            const additionalCostDesc1 = cust.tambahan || cust.additionalCostDesc1 || cust.additional_cost_desc1 || '';
+            const additionalCost1 = String(cust.biaya || cust.additionalCost1 || cust.additional_cost1 || '');
+            const additionalCostDesc2 = cust.tambahan_2 || cust.additionalCostDesc2 || cust.additional_cost_desc2 || '';
+            const additionalCost2 = String(cust.biaya_2 || cust.additionalCost2 || cust.additional_cost2 || '');
+            const odpPort = cust.odp || cust.odp_port || '';
+
+            let existingId = null;
+            if (mode === 'merge') {
+                if (cust.ID || cust.id) {
+                    const [rowsById] = await req.pool.query('SELECT id FROM customers WHERE id = ?', [cust.ID || cust.id]).catch(() => [[]]);
+                    if (rowsById && rowsById.length > 0) existingId = rowsById[0].id;
+                }
+                if (!existingId && pppoeSecret) {
+                    const [rowsByPppoe] = await req.pool.query('SELECT id FROM customers WHERE pppoe_secret = ? OR username = ?', [pppoeSecret, pppoeSecret]).catch(() => [[]]);
+                    if (rowsByPppoe && rowsByPppoe.length > 0) existingId = rowsByPppoe[0].id;
+                }
+                if (!existingId && name && name !== 'Tanpa Nama') {
+                    const [rowsByName] = await req.pool.query('SELECT id FROM customers WHERE name = ?', [name]).catch(() => [[]]);
+                    if (rowsByName && rowsByName.length > 0) existingId = rowsByName[0].id;
+                }
+            }
+
+            if (existingId) {
+                await req.pool.query(
+                    `UPDATE customers SET 
+                        name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, 
+                        status = ?, price = ?, discount = ?, register_date = ?, package_name = ?, 
+                        pppoe_secret = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, 
+                        additionalCostDesc1 = ?, additionalCostDesc2 = ?, additional_cost_desc1 = ?, additional_cost_desc2 = ?
+                     WHERE id = ?`,
+                    [
+                        name, phone, area, address, pppoeSecret, billingDate,
+                        status, price, discount, registerDate, packageName,
+                        pppoeSecret, odpPort, additionalCost1, additionalCost2,
+                        additionalCostDesc1, additionalCostDesc2, additionalCostDesc1, additionalCostDesc2,
+                        existingId
+                    ]
+                );
+                updatedCount++;
+            } else {
+                let insRes;
+                try {
+                    [insRes] = await req.pool.query(
+                        `INSERT INTO customers (
+                            name, phone, area, address, username, billingDate, status, price, 
+                            discount, register_date, package_name, pppoe_secret, odp_port, 
+                            additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2, 
+                            additional_cost_desc1, additional_cost_desc2
+                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            name, phone, area, address, pppoeSecret, billingDate, status, price,
+                            discount, registerDate, packageName, pppoeSecret, odpPort,
+                            additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2,
+                            additionalCostDesc1, additionalCostDesc2
+                        ]
+                    );
+                } catch (e) {
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN address TEXT`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN register_date VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN package_name VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN pppoe_secret VARCHAR(100) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+
+                    [insRes] = await req.pool.query(
+                        `INSERT INTO customers (
+                            name, phone, area, address, username, billingDate, status, price, 
+                            discount, register_date, package_name, pppoe_secret, odp_port, 
+                            additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2, 
+                            additional_cost_desc1, additional_cost_desc2
+                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            name, phone, area, address, pppoeSecret, billingDate, status, price,
+                            discount, registerDate, packageName, pppoeSecret, odpPort,
+                            additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2,
+                            additionalCostDesc1, additionalCostDesc2
+                        ]
+                    );
+                }
+                const newId = insRes.insertId;
+                insertedCount++;
+
+                // Generate initial bill
+                try {
+                    const today = new Date();
+                    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+                    let billMonth = monthNames[today.getMonth()];
+                    let billYear = today.getFullYear();
+
+                    const base = parseFloat(String(price).replace(/[^0-9]/g, '')) || 0;
+                    const disc = parseFloat(String(discount).replace(/[^0-9]/g, '')) || 0;
+                    const add1 = parseFloat(String(additionalCost1).replace(/[^0-9]/g, '')) || 0;
+                    const add2 = parseFloat(String(additionalCost2).replace(/[^0-9]/g, '')) || 0;
+                    const initialAmount = Math.max(0, base - disc + add1 + add2);
+
+                    await req.pool.query(
+                        'INSERT INTO tagihan_bulanan (customer_id, bulan, tahun, amount, status) VALUES (?, ?, ?, ?, ?)',
+                        [newId, billMonth, billYear, initialAmount, status]
+                    ).catch(() => {});
+                } catch (e) {}
+            }
+        }
+
+        res.json({
+            message: `Import / Restore berhasil! (${insertedCount} data baru ditambahkan, ${updatedCount} data diperbarui)`,
+            insertedCount,
+            updatedCount,
+            totalProcessed: customers.length
+        });
+    } catch (error) {
+        console.error("Import Customer API Error:", error);
+        res.status(500).json({ error: "Terjadi kesalahan server saat import data: " + error.message });
+    }
+});
+
 app.get('/api/packages', async (req, res) => {
     try {
         const [rows] = await req.pool.query('SELECT * FROM packages');
@@ -3027,6 +3219,7 @@ app.get('/api/settings', async (req, res) => {
             company_slogan: 'PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS',
             company_address: 'Jln. Raya Akbar Media, Indonesia',
             company_contact: 'WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id',
+            company_logo: '',
             invoice_header: 'Akbar Media\nPENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS\nJln. Raya Akbar Media, Indonesia\nWhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id',
             invoice_footer: 'L U N A S',
             invoice_help_text: 'Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890',

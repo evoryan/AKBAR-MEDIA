@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 object SettingsManager {
     private const val PREFS_NAME = "app_settings"
@@ -177,6 +179,14 @@ object SettingsManager {
             persistInvoiceSettings()
         }
 
+    private const val KEY_COMPANY_LOGO_URL = "company_logo"
+    var companyLogoUrl: String
+        get() = prefs.getString(KEY_COMPANY_LOGO_URL, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_COMPANY_LOGO_URL, value).apply()
+            persistInvoiceSettings()
+        }
+
     var invoiceHeader: String
         get() = prefs.getString("invoice_header", "$companyName\n$companySlogan\n$companyAddress\n$companyContact") ?: "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
         set(value) {
@@ -270,6 +280,7 @@ object SettingsManager {
                 put("company_slogan", prefs.getString(KEY_COMPANY_SLOGAN, "PENYEDIA LAYANAN INTERNET BROADBAND & RT/RW NET BERKUALITAS"))
                 put("company_address", prefs.getString(KEY_COMPANY_ADDRESS, "Jln. Raya Akbar Media, Indonesia"))
                 put("company_contact", prefs.getString(KEY_COMPANY_CONTACT, "WhatsApp: 0812-3456-7890 • Email: cs@akbarmedia.my.id"))
+                put("company_logo", prefs.getString(KEY_COMPANY_LOGO_URL, ""))
                 put("invoice_header", prefs.getString("invoice_header", ""))
                 put("invoice_footer", prefs.getString(KEY_INVOICE_FOOTER, "L U N A S"))
                 put("invoice_help_text", prefs.getString(KEY_INVOICE_HELP_TEXT, "Layanan bantuan & konfirmasi WhatsApp: 0812-3456-7890"))
@@ -315,6 +326,7 @@ object SettingsManager {
                 settingsMap["company_slogan"] = companySlogan
                 settingsMap["company_address"] = companyAddress
                 settingsMap["company_contact"] = companyContact
+                settingsMap["company_logo"] = companyLogoUrl
                 settingsMap["invoice_header"] = invoiceHeader
                 settingsMap["invoice_footer"] = invoiceFooterText
                 settingsMap["invoice_help_text"] = invoiceHelpText
@@ -359,6 +371,12 @@ object SettingsManager {
                     remote["company_slogan"]?.let { if (it.isNotBlank()) editor.putString(KEY_COMPANY_SLOGAN, it) }
                     remote["company_address"]?.let { if (it.isNotBlank()) editor.putString(KEY_COMPANY_ADDRESS, it) }
                     remote["company_contact"]?.let { if (it.isNotBlank()) editor.putString(KEY_COMPANY_CONTACT, it) }
+                    remote["company_logo"]?.let { logoUrl ->
+                        if (logoUrl.isNotBlank()) {
+                            editor.putString(KEY_COMPANY_LOGO_URL, logoUrl)
+                            downloadAndCacheLogo(ctx, logoUrl)
+                        }
+                    }
                     remote["invoice_header"]?.let { if (it.isNotBlank()) editor.putString("invoice_header", it) }
                     remote["invoice_footer"]?.let { if (it.isNotBlank()) editor.putString(KEY_INVOICE_FOOTER, it) }
                     remote["invoice_help_text"]?.let { if (it.isNotBlank()) editor.putString(KEY_INVOICE_HELP_TEXT, it) }
@@ -422,6 +440,71 @@ object SettingsManager {
         }
     }
 
+    fun downloadAndCacheLogo(context: Context, logoUrl: String) {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val fullUrl = if (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) {
+                    logoUrl
+                } else {
+                    val base = apiBaseUrl.removeSuffix("/")
+                    val relative = if (logoUrl.startsWith("/")) logoUrl else "/$logoUrl"
+                    "$base$relative"
+                }
+                val destinationFile = java.io.File(context.filesDir, "invoice_kop_logo.png")
+                val url = java.net.URL(fullUrl)
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                connection.doInput = true
+                connection.connect()
+                if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                    connection.inputStream.use { input ->
+                        java.io.FileOutputStream(destinationFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    context.getExternalFilesDir(null)?.let { extDir ->
+                        val extFile = java.io.File(extDir, "invoice_kop_logo.png")
+                        destinationFile.copyTo(extFile, overwrite = true)
+                    }
+                    prefs.edit().putString("invoice_logo_path", destinationFile.absolutePath).apply()
+                    android.util.Log.d("SettingsManager", "Logo perusahaan tersinkronisasi & tersimpan di ${destinationFile.absolutePath}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SettingsManager", "Gagal mengunduh logo perusahaan dari remote ($logoUrl): ${e.message}")
+            }
+        }
+    }
+
+    fun uploadCompanyLogoToServer(context: Context, logoFile: java.io.File, onComplete: ((Boolean, String?) -> Unit)? = null) {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val bytes = logoFile.readBytes()
+                val mimeType = if (logoFile.name.endsWith(".png", ignoreCase = true)) "image/png" else "image/jpeg"
+                val reqFile = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+                val bodyPart = okhttp3.MultipartBody.Part.createFormData("image", logoFile.name, reqFile)
+                val response = com.example.ui.data.remote.ApiClient.apiService.uploadCompanyLogo(bodyPart)
+                val logoUrl = response.company_logo ?: response.url
+                if (!logoUrl.isNullOrBlank()) {
+                    companyLogoUrl = logoUrl
+                    syncSettingsToRemote()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onComplete?.invoke(true, logoUrl)
+                    }
+                } else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onComplete?.invoke(false, response.message ?: "Gagal upload logo")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SettingsManager", "Error uploading company logo: ${e.message}")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete?.invoke(false, e.message)
+                }
+            }
+        }
+    }
+
     private fun restoreInvoiceSettingsIfPresent(context: Context) {
         try {
             val internalFile = java.io.File(context.filesDir, "invoice_settings_persistent.json")
@@ -449,6 +532,9 @@ object SettingsManager {
                 }
                 if (json.has("company_contact") && !prefs.contains(KEY_COMPANY_CONTACT)) {
                     editor.putString(KEY_COMPANY_CONTACT, json.getString("company_contact"))
+                }
+                if (json.has("company_logo") && !prefs.contains(KEY_COMPANY_LOGO_URL)) {
+                    editor.putString(KEY_COMPANY_LOGO_URL, json.getString("company_logo"))
                 }
                 if (json.has("invoice_header") && !prefs.contains("invoice_header")) {
                     editor.putString("invoice_header", json.getString("invoice_header"))

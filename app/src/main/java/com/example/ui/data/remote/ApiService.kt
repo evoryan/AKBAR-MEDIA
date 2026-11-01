@@ -44,6 +44,13 @@ data class CustomerHeaderUploadResponse(
     val url: String? = null
 )
 
+data class CompanyLogoUploadResponse(
+    val status: String? = null,
+    val message: String? = null,
+    val company_logo: String? = null,
+    val url: String? = null
+)
+
 data class UpdateProfileRequest(
     val name: String,
     val username: String,
@@ -306,6 +313,12 @@ interface ApiService {
         @Path("id") id: String,
         @Part image: okhttp3.MultipartBody.Part
     ): CustomerHeaderUploadResponse
+
+    @Multipart
+    @POST("api/settings/upload-logo")
+    suspend fun uploadCompanyLogo(
+        @Part image: okhttp3.MultipartBody.Part
+    ): CompanyLogoUploadResponse
 
     @PUT("api/pembukuan/{id}")
     suspend fun updatePembukuan(@Path("id") id: String, @Body request: PembukuanRequest): ApiResponse

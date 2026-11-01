@@ -88,7 +88,15 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                 SettingsManager.useInvoiceLogo = true
                 SettingsManager.persistInvoiceSettings(context)
                 previewRefreshKey++
-                Toast.makeText(context, "Logo kop invoice berhasil diunggah", Toast.LENGTH_SHORT).show()
+
+                Toast.makeText(context, "Mengunggah logo ke server...", Toast.LENGTH_SHORT).show()
+                SettingsManager.uploadCompanyLogoToServer(context, destinationFile) { success, result ->
+                    if (success) {
+                        Toast.makeText(context, "Logo kop invoice berhasil diunggah & tersinkronisasi!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Logo disimpan di HP. Gagal sinkron ke server: $result", Toast.LENGTH_SHORT).show()
+                    }
+                }
             } catch (e: Exception) {
                 Toast.makeText(context, "Gagal mengunggah logo: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -272,6 +280,8 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                             } catch (_: Exception) {}
                                             logoPath = null
                                             SettingsManager.invoiceLogoPath = null
+                                            SettingsManager.companyLogoUrl = ""
+                                            SettingsManager.syncSettingsToRemote()
                                             previewRefreshKey++
                                             Toast.makeText(context, "Logo kop dihapus", Toast.LENGTH_SHORT).show()
                                         },
