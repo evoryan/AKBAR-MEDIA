@@ -203,30 +203,36 @@ object SettingsManager {
 
     var invoiceLogoPath: String?
         get() {
+            if (!useInvoiceLogo) return null
             val saved = prefs.getString("invoice_logo_path", prefs.getString("custom_invoice_template_path", null))
             if (!saved.isNullOrBlank() && java.io.File(saved).exists()) {
                 return saved
             }
             appContext?.let { ctx ->
-                val localFile = java.io.File(ctx.filesDir, "invoice_kop_logo.png")
-                if (localFile.exists()) {
-                    return localFile.absolutePath
-                }
-                val extFile = ctx.getExternalFilesDir(null)?.let { java.io.File(it, "invoice_kop_logo.png") }
-                if (extFile != null && extFile.exists()) {
-                    try {
-                        extFile.copyTo(localFile, overwrite = true)
+                for (fileName in listOf("invoice_kop_logo.png", "invoice_kop_logo.jpg", "invoice_kop_logo.jpeg")) {
+                    val localFile = java.io.File(ctx.filesDir, fileName)
+                    if (localFile.exists()) {
                         return localFile.absolutePath
-                    } catch (_: Exception) {
-                        return extFile.absolutePath
+                    }
+                    val extFile = ctx.getExternalFilesDir(null)?.let { java.io.File(it, fileName) }
+                    if (extFile != null && extFile.exists()) {
+                        try {
+                            extFile.copyTo(localFile, overwrite = true)
+                            return localFile.absolutePath
+                        } catch (_: Exception) {
+                            return extFile.absolutePath
+                        }
                     }
                 }
             }
-            return saved
+            return null
         }
         set(value) {
-            prefs.edit().putString("invoice_logo_path", value).apply()
-            prefs.edit().putString("custom_invoice_template_path", value).apply()
+            if (value.isNullOrBlank()) {
+                prefs.edit().remove("invoice_logo_path").remove("custom_invoice_template_path").apply()
+            } else {
+                prefs.edit().putString("invoice_logo_path", value).putString("custom_invoice_template_path", value).apply()
+            }
             persistInvoiceSettings()
         }
 
@@ -236,6 +242,31 @@ object SettingsManager {
             prefs.edit().putBoolean("use_invoice_logo", value).apply()
             persistInvoiceSettings()
         }
+
+    fun clearInvoiceLogo(context: Context? = null) {
+        val ctx = context ?: appContext
+        prefs.edit()
+            .remove("invoice_logo_path")
+            .remove("custom_invoice_template_path")
+            .putString(KEY_COMPANY_LOGO_URL, "")
+            .putBoolean("use_invoice_logo", false)
+            .apply()
+
+        ctx?.let { c ->
+            val logoNames = listOf("invoice_kop_logo.png", "invoice_kop_logo.jpg", "invoice_kop_logo.jpeg")
+            for (name in logoNames) {
+                try { java.io.File(c.filesDir, name).delete() } catch (_: Exception) {}
+                try {
+                    c.getExternalFilesDir(null)?.let { extDir ->
+                        java.io.File(extDir, name).delete()
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        persistInvoiceSettings(ctx)
+        syncSettingsToRemote()
+    }
 
     var useCustomInvoiceTemplate: Boolean
         get() = prefs.getBoolean("use_custom_invoice_template", true)
@@ -302,12 +333,15 @@ object SettingsManager {
             }
 
             // Also backup logo file to external files dir if available
-            val localLogo = java.io.File(ctx.filesDir, "invoice_kop_logo.png")
-            if (localLogo.exists()) {
-                ctx.getExternalFilesDir(null)?.let { extDir ->
-                    val extLogo = java.io.File(extDir, "invoice_kop_logo.png")
-                    if (!extLogo.exists() || extLogo.length() != localLogo.length()) {
-                        localLogo.copyTo(extLogo, overwrite = true)
+            val currentPath = invoiceLogoPath
+            if (!currentPath.isNullOrBlank()) {
+                val localLogo = java.io.File(currentPath)
+                if (localLogo.exists()) {
+                    ctx.getExternalFilesDir(null)?.let { extDir ->
+                        val extLogo = java.io.File(extDir, localLogo.name)
+                        if (!extLogo.exists() || extLogo.length() != localLogo.length()) {
+                            try { localLogo.copyTo(extLogo, overwrite = true) } catch (_: Exception) {}
+                        }
                     }
                 }
             }
@@ -375,6 +409,11 @@ object SettingsManager {
                         if (logoUrl.isNotBlank()) {
                             editor.putString(KEY_COMPANY_LOGO_URL, logoUrl)
                             downloadAndCacheLogo(ctx, logoUrl)
+                        } else {
+                            editor.putString(KEY_COMPANY_LOGO_URL, "")
+                            editor.putBoolean("use_invoice_logo", false)
+                            editor.remove("invoice_logo_path")
+                            editor.remove("custom_invoice_template_path")
                         }
                     }
                     remote["invoice_header"]?.let { if (it.isNotBlank()) editor.putString("invoice_header", it) }
@@ -441,6 +480,7 @@ object SettingsManager {
     }
 
     fun downloadAndCacheLogo(context: Context, logoUrl: String) {
+        if (logoUrl.isBlank()) return
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             try {
                 val fullUrl = if (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) {
@@ -450,7 +490,15 @@ object SettingsManager {
                     val relative = if (logoUrl.startsWith("/")) logoUrl else "/$logoUrl"
                     "$base$relative"
                 }
-                val destinationFile = java.io.File(context.filesDir, "invoice_kop_logo.png")
+                val ext = if (logoUrl.endsWith(".jpg", ignoreCase = true) || logoUrl.endsWith(".jpeg", ignoreCase = true)) "jpg" else "png"
+                val fileName = "invoice_kop_logo.$ext"
+
+                listOf("invoice_kop_logo.png", "invoice_kop_logo.jpg", "invoice_kop_logo.jpeg").forEach { oldName ->
+                    try { java.io.File(context.filesDir, oldName).delete() } catch (_: Exception) {}
+                    try { context.getExternalFilesDir(null)?.let { java.io.File(it, oldName).delete() } } catch (_: Exception) {}
+                }
+
+                val destinationFile = java.io.File(context.filesDir, fileName)
                 val url = java.net.URL(fullUrl)
                 val connection = url.openConnection() as java.net.HttpURLConnection
                 connection.connectTimeout = 10000
@@ -464,10 +512,12 @@ object SettingsManager {
                         }
                     }
                     context.getExternalFilesDir(null)?.let { extDir ->
-                        val extFile = java.io.File(extDir, "invoice_kop_logo.png")
+                        val extFile = java.io.File(extDir, fileName)
                         destinationFile.copyTo(extFile, overwrite = true)
                     }
-                    prefs.edit().putString("invoice_logo_path", destinationFile.absolutePath).apply()
+                    prefs.edit().putString("invoice_logo_path", destinationFile.absolutePath).putBoolean("use_invoice_logo", true).apply()
+                    addSavedLogo(logoUrl, "Logo VPS Storage", isRemote = true)
+                    addSavedLogo(destinationFile.absolutePath, "Logo Cache Lokal", isRemote = false)
                     android.util.Log.d("SettingsManager", "Logo perusahaan tersinkronisasi & tersimpan di ${destinationFile.absolutePath}")
                 }
             } catch (e: Exception) {
@@ -487,6 +537,8 @@ object SettingsManager {
                 val logoUrl = response.company_logo ?: response.url
                 if (!logoUrl.isNullOrBlank()) {
                     companyLogoUrl = logoUrl
+                    addSavedLogo(logoUrl, "Logo VPS Storage", isRemote = true)
+                    addSavedLogo(logoFile.absolutePath, "Logo Lokal", isRemote = false)
                     syncSettingsToRemote()
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         onComplete?.invoke(true, logoUrl)
@@ -765,4 +817,191 @@ object SettingsManager {
     fun setTrafficAccumTx(areaId: String, value: Long) {
         prefs.edit().putLong("traffic_accum_tx_$areaId", value).apply()
     }
+
+    private const val KEY_SAVED_LOGOS_HISTORY = "saved_vps_logos_history_v2"
+
+    fun addSavedLogo(urlOrPath: String, name: String = "", isRemote: Boolean = true) {
+        if (urlOrPath.isBlank()) return
+        try {
+            val historyJsonStr = prefs.getString(KEY_SAVED_LOGOS_HISTORY, "[]") ?: "[]"
+            val array = org.json.JSONArray(historyJsonStr)
+            var exists = false
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                if (obj.optString("urlOrPath") == urlOrPath) {
+                    exists = true
+                    break
+                }
+            }
+            if (!exists) {
+                val newObj = org.json.JSONObject().apply {
+                    put("id", java.util.UUID.randomUUID().toString())
+                    put("name", name.ifBlank { if (isRemote) "Logo VPS Storage" else "Logo Storage Lokal" })
+                    put("urlOrPath", urlOrPath)
+                    put("isRemote", isRemote)
+                    put("timestamp", System.currentTimeMillis())
+                }
+                array.put(newObj)
+                prefs.edit().putString(KEY_SAVED_LOGOS_HISTORY, array.toString()).apply()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsManager", "Error saving logo to history: ${e.message}")
+        }
+    }
+
+    fun getSavedLogosList(context: Context): List<VpsLogoItem> {
+        val result = mutableListOf<VpsLogoItem>()
+        val addedPaths = mutableSetOf<String>()
+
+        // 1. Current active remote VPS logo URL
+        val activeRemoteLogo = companyLogoUrl
+        if (activeRemoteLogo.isNotBlank()) {
+            addSavedLogo(activeRemoteLogo, "Logo Perusahaan VPS", isRemote = true)
+        }
+
+        // 2. Load from SharedPreferences history
+        try {
+            val historyJsonStr = prefs.getString(KEY_SAVED_LOGOS_HISTORY, "[]") ?: "[]"
+            val array = org.json.JSONArray(historyJsonStr)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val path = obj.optString("urlOrPath")
+                if (path.isNotBlank() && !addedPaths.contains(path)) {
+                    val isRemote = obj.optBoolean("isRemote", path.startsWith("http") || path.startsWith("uploads/"))
+                    val name = obj.optString("name", if (isRemote) "Logo VPS Storage" else "Logo Storage Lokal")
+                    val id = obj.optString("id", i.toString())
+                    result.add(VpsLogoItem(id = id, name = name, urlOrPath = path, isRemote = isRemote))
+                    addedPaths.add(path)
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 3. Scan local filesDir and externalFilesDir for existing saved logo files
+        val logoNames = listOf("invoice_kop_logo.png", "invoice_kop_logo.jpg", "invoice_kop_logo.jpeg")
+        for (fileName in logoNames) {
+            val localFile = java.io.File(context.filesDir, fileName)
+            if (localFile.exists() && localFile.length() > 0) {
+                val p = localFile.absolutePath
+                if (!addedPaths.contains(p)) {
+                    result.add(VpsLogoItem(id = "local_$fileName", name = "Logo Cache Lokal ($fileName)", urlOrPath = p, isRemote = false))
+                    addedPaths.add(p)
+                }
+            }
+            context.getExternalFilesDir(null)?.let { extDir ->
+                val extFile = java.io.File(extDir, fileName)
+                if (extFile.exists() && extFile.length() > 0) {
+                    val p = extFile.absolutePath
+                    if (!addedPaths.contains(p)) {
+                        result.add(VpsLogoItem(id = "ext_$fileName", name = "Logo External ($fileName)", urlOrPath = p, isRemote = false))
+                        addedPaths.add(p)
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    fun removeSavedLogo(context: Context, logoItem: VpsLogoItem) {
+        try {
+            val historyJsonStr = prefs.getString(KEY_SAVED_LOGOS_HISTORY, "[]") ?: "[]"
+            val array = org.json.JSONArray(historyJsonStr)
+            val newArray = org.json.JSONArray()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                if (obj.optString("urlOrPath") != logoItem.urlOrPath) {
+                    newArray.put(obj)
+                }
+            }
+            prefs.edit().putString(KEY_SAVED_LOGOS_HISTORY, newArray.toString()).apply()
+
+            if (!logoItem.isRemote) {
+                val f = java.io.File(logoItem.urlOrPath)
+                if (f.exists()) {
+                    f.delete()
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsManager", "Error removing logo: ${e.message}")
+        }
+    }
+
+    fun getFullLogoUrl(urlOrPath: String): String {
+        if (urlOrPath.startsWith("http://") || urlOrPath.startsWith("https://")) return urlOrPath
+        val base = apiBaseUrl.removeSuffix("/")
+        val relative = if (urlOrPath.startsWith("/")) urlOrPath else "/$urlOrPath"
+        return "$base$relative"
+    }
+
+    fun selectSavedLogo(context: Context, logoItem: VpsLogoItem, onComplete: (Boolean, String?) -> Unit) {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                if (logoItem.isRemote || logoItem.urlOrPath.startsWith("http") || logoItem.urlOrPath.startsWith("uploads/")) {
+                    val fullUrl = getFullLogoUrl(logoItem.urlOrPath)
+                    val ext = if (logoItem.urlOrPath.endsWith(".jpg", ignoreCase = true) || logoItem.urlOrPath.endsWith(".jpeg", ignoreCase = true)) "jpg" else "png"
+                    val fileName = "invoice_kop_logo.$ext"
+                    val destinationFile = java.io.File(context.filesDir, fileName)
+
+                    val url = java.net.URL(fullUrl)
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    conn.doInput = true
+                    conn.connect()
+                    if (conn.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                        conn.inputStream.use { input ->
+                            java.io.FileOutputStream(destinationFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        context.getExternalFilesDir(null)?.let { extDir ->
+                            val extFile = java.io.File(extDir, fileName)
+                            destinationFile.copyTo(extFile, overwrite = true)
+                        }
+                    }
+
+                    invoiceLogoPath = destinationFile.absolutePath
+                    companyLogoUrl = logoItem.urlOrPath
+                    useInvoiceLogo = true
+                    persistInvoiceSettings(context)
+                    syncSettingsToRemote()
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onComplete(true, destinationFile.absolutePath)
+                    }
+                } else {
+                    val file = java.io.File(logoItem.urlOrPath)
+                    if (file.exists()) {
+                        invoiceLogoPath = file.absolutePath
+                        useInvoiceLogo = true
+                        persistInvoiceSettings(context)
+                        
+                        uploadCompanyLogoToServer(context, file)
+                        
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            onComplete(true, file.absolutePath)
+                        }
+                    } else {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            onComplete(false, "File logo lokal tidak ditemukan")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SettingsManager", "Error selecting logo: ${e.message}")
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(false, e.message)
+                }
+            }
+        }
+    }
 }
+
+data class VpsLogoItem(
+    val id: String,
+    val name: String,
+    val urlOrPath: String,
+    val isRemote: Boolean = false,
+    val dateAdded: String = ""
+)
+

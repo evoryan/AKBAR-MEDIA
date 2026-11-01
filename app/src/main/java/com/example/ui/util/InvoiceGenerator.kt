@@ -81,24 +81,38 @@ object InvoiceGenerator {
         canvas.drawRect(28f, 28f, INVOICE_WIDTH - 28f, INVOICE_HEIGHT - 28f, innerFramePaint)
 
         // 3. KOP SURAT (Letterhead with Logo)
-        val logoPath = SettingsManager.invoiceLogoPath
-        var logoFile = logoPath?.let { File(it) }
-        if (logoFile == null || !logoFile.exists()) {
-            val localDefault = File(context.filesDir, "invoice_kop_logo.png")
-            if (localDefault.exists()) {
-                logoFile = localDefault
-            } else {
-                context.getExternalFilesDir(null)?.let { extDir ->
-                    val extDefault = File(extDir, "invoice_kop_logo.png")
-                    if (extDefault.exists()) logoFile = extDefault
+        var logoBitmap: Bitmap? = null
+        if (SettingsManager.useInvoiceLogo) {
+            val logoPath = SettingsManager.invoiceLogoPath
+            if (!logoPath.isNullOrBlank() && !logoPath.startsWith("http") && !logoPath.startsWith("uploads/")) {
+                val logoFile = File(logoPath)
+                if (logoFile.exists() && logoFile.length() > 0) {
+                    try {
+                        logoBitmap = BitmapFactory.decodeFile(logoFile.absolutePath)
+                    } catch (_: Exception) {}
                 }
             }
-        }
-        var logoBitmap: Bitmap? = null
-        if (logoFile != null && logoFile.exists()) {
-            try {
-                logoBitmap = BitmapFactory.decodeFile(logoFile.absolutePath)
-            } catch (_: Exception) {}
+
+            // Fetch directly from VPS Storage URL if logoBitmap is null
+            val companyLogoUrl = SettingsManager.companyLogoUrl
+            if (logoBitmap == null && companyLogoUrl.isNotBlank()) {
+                val fullUrl = SettingsManager.getFullLogoUrl(companyLogoUrl)
+                try {
+                    val policy = android.os.StrictMode.ThreadPolicy.Builder().permitAll().build()
+                    android.os.StrictMode.setThreadPolicy(policy)
+                    val url = java.net.URL(fullUrl)
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    conn.doInput = true
+                    conn.connect()
+                    if (conn.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                        logoBitmap = BitmapFactory.decodeStream(conn.inputStream)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("InvoiceGenerator", "Gagal memuat logo dari VPS URL ($fullUrl): ${e.message}")
+                }
+            }
         }
 
         val kopLeft = 60f

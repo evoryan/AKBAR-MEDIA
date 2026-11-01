@@ -32,8 +32,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import coil.compose.AsyncImage
 import com.example.ui.data.SettingsManager
+import com.example.ui.data.VpsLogoItem
 import com.example.ui.util.InvoiceGenerator
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -65,40 +70,53 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
     var previewStatus by remember { mutableStateOf("BELUM BAYAR") }
     var previewRefreshKey by remember { mutableStateOf(0) }
 
+    var savedLogos by remember { mutableStateOf<List<VpsLogoItem>>(emptyList()) }
+    var isLoadingSavedLogos by remember { mutableStateOf(false) }
+
+    fun refreshSavedLogosList() {
+        isLoadingSavedLogos = true
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val list = SettingsManager.getSavedLogosList(context)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                savedLogos = list
+                isLoadingSavedLogos = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshSavedLogosList()
+    }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         uri?.let { selectedUri ->
             try {
-                val destinationFile = File(context.filesDir, "invoice_kop_logo.png")
+                val tempFile = File(context.cacheDir, "temp_logo_upload_${System.currentTimeMillis()}.png")
                 context.contentResolver.openInputStream(selectedUri)?.use { input ->
-                    FileOutputStream(destinationFile).use { output ->
+                    FileOutputStream(tempFile).use { output ->
                         input.copyTo(output)
                     }
                 }
-                try {
-                    context.getExternalFilesDir(null)?.let { extDir ->
-                        val extFile = File(extDir, "invoice_kop_logo.png")
-                        destinationFile.copyTo(extFile, overwrite = true)
-                    }
-                } catch (_: Exception) {}
 
-                logoPath = destinationFile.absolutePath
-                SettingsManager.invoiceLogoPath = destinationFile.absolutePath
-                SettingsManager.useInvoiceLogo = true
-                SettingsManager.persistInvoiceSettings(context)
-                previewRefreshKey++
-
-                Toast.makeText(context, "Mengunggah logo ke server...", Toast.LENGTH_SHORT).show()
-                SettingsManager.uploadCompanyLogoToServer(context, destinationFile) { success, result ->
-                    if (success) {
-                        Toast.makeText(context, "Logo kop invoice berhasil diunggah & tersinkronisasi!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Mengunggah logo ke VPS storage...", Toast.LENGTH_SHORT).show()
+                SettingsManager.uploadCompanyLogoToServer(context, tempFile) { success, logoUrl ->
+                    try { tempFile.delete() } catch (_: Exception) {}
+                    if (success && !logoUrl.isNullOrBlank()) {
+                        SettingsManager.companyLogoUrl = logoUrl
+                        SettingsManager.useInvoiceLogo = true
+                        SettingsManager.persistInvoiceSettings(context)
+                        logoPath = logoUrl
+                        previewRefreshKey++
+                        refreshSavedLogosList()
+                        Toast.makeText(context, "Logo kop invoice berhasil disimpan di VPS & tersinkronisasi!", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(context, "Logo disimpan di HP. Gagal sinkron ke server: $result", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Gagal mengunggah logo ke VPS storage: $logoUrl", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Gagal mengunggah logo: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Gagal mengunggah logo ke VPS: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -201,10 +219,10 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    val currentLogoFile = logoPath?.let { File(it) }
-                    val isLogoReady = currentLogoFile != null && currentLogoFile.exists()
+                    val activeLogoUrl = SettingsManager.companyLogoUrl.ifBlank { logoPath }
+                    val isLogoActive = SettingsManager.useInvoiceLogo && !activeLogoUrl.isNullOrBlank()
 
-                    if (isLogoReady) {
+                    if (isLogoActive) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -214,13 +232,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val logoBitmap = remember(currentLogoFile, previewRefreshKey) {
-                                try {
-                                    BitmapFactory.decodeFile(currentLogoFile!!.absolutePath)
-                                } catch (_: Exception) {
-                                    null
-                                }
-                            }
+                            val fullLogoUrl = SettingsManager.getFullLogoUrl(activeLogoUrl!!)
 
                             Box(
                                 modifier = Modifier
@@ -230,31 +242,28 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                     .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (logoBitmap != null) {
-                                    Image(
-                                        bitmap = logoBitmap.asImageBitmap(),
-                                        contentDescription = "Logo Kop",
-                                        modifier = Modifier.fillMaxSize().padding(6.dp),
-                                        contentScale = ContentScale.Fit
-                                    )
-                                } else {
-                                    Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color.Gray)
-                                }
+                                AsyncImage(
+                                    model = fullLogoUrl,
+                                    contentDescription = "Logo Kop VPS Storage",
+                                    modifier = Modifier.fillMaxSize().padding(6.dp),
+                                    contentScale = ContentScale.Fit
+                                )
                             }
 
                             Spacer(modifier = Modifier.width(14.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "Logo Terpasang pada Kop",
+                                    "Logo Terpasang dari VPS Storage",
                                     color = Color(0xFF0F2C59),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
                                 )
                                 Text(
-                                    "Siap dicetak pada kop surat faktur",
-                                    color = Color(0xFF64748B),
-                                    fontSize = 11.sp
+                                    "Tersimpan di VPS server & tersinkron",
+                                    color = Color(0xFF0284C7),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -275,15 +284,10 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
 
                                     OutlinedButton(
                                         onClick = {
-                                            try {
-                                                currentLogoFile?.delete()
-                                            } catch (_: Exception) {}
+                                            SettingsManager.clearInvoiceLogo(context)
                                             logoPath = null
-                                            SettingsManager.invoiceLogoPath = null
-                                            SettingsManager.companyLogoUrl = ""
-                                            SettingsManager.syncSettingsToRemote()
                                             previewRefreshKey++
-                                            Toast.makeText(context, "Logo kop dihapus", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Logo kop berhasil dihapus!", Toast.LENGTH_SHORT).show()
                                         },
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                         shape = RoundedCornerShape(8.dp),
@@ -321,7 +325,7 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    "Upload Logo Perusahaan (.png / .jpg)",
+                                    "Upload Logo Perusahaan (.png / .jpg / .jpeg)",
                                     color = textMain,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
@@ -334,6 +338,177 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                                     fontSize = 11.sp,
                                     textAlign = TextAlign.Center
                                 )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = cardBorder.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.CloudQueue,
+                                contentDescription = null,
+                                tint = neonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Logo Tersimpan di Storage VPS / Local",
+                                color = textMain,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                        IconButton(
+                            onClick = { refreshSavedLogosList() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh VPS Logos",
+                                tint = neonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "Pilih salah satu logo yang sudah tersimpan sebelumnya untuk langsung dipasang pada kop invoice:",
+                        color = textSecondary,
+                        fontSize = 11.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (isLoadingSavedLogos) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = neonCyan)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Memuat logo tersimpan...", fontSize = 12.sp, color = textSecondary)
+                        }
+                    } else if (savedLogos.isEmpty()) {
+                        Text(
+                            "Belum ada logo tersimpan sebelumnya di VPS storage.",
+                            color = textSecondary,
+                            fontSize = 11.sp,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    } else {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            items(savedLogos) { item ->
+                                val fullUrlOrPath = if (item.isRemote) SettingsManager.getFullLogoUrl(item.urlOrPath) else item.urlOrPath
+                                val isCurrentActive = logoPath == item.urlOrPath ||
+                                        (logoPath != null && item.urlOrPath.contains(File(logoPath!!).name)) ||
+                                        (item.isRemote && SettingsManager.companyLogoUrl == item.urlOrPath)
+
+                                Card(
+                                    modifier = Modifier
+                                        .width(134.dp)
+                                        .clickable {
+                                            Toast.makeText(context, "Memasang logo dari VPS storage...", Toast.LENGTH_SHORT).show()
+                                            SettingsManager.selectSavedLogo(context, item) { success, resultPath ->
+                                                if (success && resultPath != null) {
+                                                    logoPath = resultPath
+                                                    previewRefreshKey++
+                                                    refreshSavedLogosList()
+                                                    Toast.makeText(context, "Logo kop berhasil dipasang!", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Gagal memilih logo: $resultPath", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isCurrentActive) neonCyan.copy(alpha = 0.12f) else if (isDark) Color(0xFF1E1E1E) else Color(0xFFF8FAFC)
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        if (isCurrentActive) 2.dp else 1.dp,
+                                        if (isCurrentActive) neonCyan else cardBorder
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(70.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.White)
+                                                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(6.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (item.isRemote) {
+                                                AsyncImage(
+                                                    model = fullUrlOrPath,
+                                                    contentDescription = item.name,
+                                                    modifier = Modifier.fillMaxSize().padding(4.dp),
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            } else {
+                                                val b = remember(item.urlOrPath) {
+                                                    try { BitmapFactory.decodeFile(item.urlOrPath) } catch (_: Exception) { null }
+                                                }
+                                                if (b != null) {
+                                                    Image(
+                                                        bitmap = b.asImageBitmap(),
+                                                        contentDescription = item.name,
+                                                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                                                        contentScale = ContentScale.Fit
+                                                    )
+                                                } else {
+                                                    Icon(Icons.Default.Image, contentDescription = null, tint = Color.Gray)
+                                                }
+                                            }
+
+                                            if (isCurrentActive) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.TopEnd)
+                                                        .padding(2.dp)
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(Color(0xFF10B981))
+                                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("AKTIF", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        Text(
+                                            text = if (item.isRemote) "VPS Server" else "Lokal HP",
+                                            color = if (item.isRemote) neonCyan else textSecondary,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = item.name,
+                                            color = textMain,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -792,9 +967,13 @@ fun InvoiceSettingsScreen(onBack: () -> Unit) {
                     SettingsManager.invoiceHeader = "$companyName\n$companySlogan\n$companyAddress\n$companyContact"
                     SettingsManager.invoiceFooterText = footerText
                     SettingsManager.invoiceHelpText = invoiceHelpText
-                    SettingsManager.invoiceLogoPath = logoPath
-                    SettingsManager.useInvoiceLogo = true
-                    SettingsManager.persistInvoiceSettings(context)
+                    if (logoPath.isNullOrBlank()) {
+                        SettingsManager.clearInvoiceLogo(context)
+                    } else {
+                        SettingsManager.invoiceLogoPath = logoPath
+                        SettingsManager.useInvoiceLogo = true
+                        SettingsManager.persistInvoiceSettings(context)
+                    }
                     Toast.makeText(context, "Pengaturan invoice berhasil disimpan", Toast.LENGTH_SHORT).show()
                     onBack()
                 },

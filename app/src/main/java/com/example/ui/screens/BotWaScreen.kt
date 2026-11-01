@@ -1115,13 +1115,13 @@ fun BotWaPackageQrScreen() {
         ) {
             item {
                 Text(
-                    text = "Upload QR Pembayaran Paket",
+                    text = "Upload QR Pembayaran Paket (VPS Storage)",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     color = textMain
                 )
                 Text(
-                    text = "Gambar ini akan dikirimkan secara otomatis bersama dengan pesan WA (Notifikasi Tagihan/Isolir) untuk pelanggan yang menggunakan paket tersebut.",
+                    text = "Gambar QR disimpan di VPS server storage agar tersinkronisasi di seluruh HP android & web portal. Gambar ini dikirimkan otomatis bersama pesan WhatsApp ke pelanggan.",
                     fontSize = 13.sp,
                     color = textSecondary,
                     modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
@@ -1148,11 +1148,11 @@ fun BotWaPackageQrScreen() {
                                     val requestBody = bytes.toRequestBody(mediaType)
                                     val part = okhttp3.MultipartBody.Part.createFormData("image", "qr_${pkg.id}.jpg", requestBody)
                                     com.example.ui.data.remote.ApiClient.apiService.uploadPackageImage(pkg.id, part)
-                                    android.widget.Toast.makeText(context, "QR Gambar Berhasil Diupload", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(context, "QR Gambar Berhasil Disimpan di VPS Storage & Tersinkronkan!", android.widget.Toast.LENGTH_SHORT).show()
                                     loadPackages()
                                 }
                             } catch (e: Exception) {
-                                android.widget.Toast.makeText(context, "Gagal upload: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, "Gagal upload ke VPS server: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                             } finally {
                                 isUploading = false
                             }
@@ -1168,12 +1168,12 @@ fun BotWaPackageQrScreen() {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Delete, contentDescription = null, tint = dangerRed)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Hapus Gambar QR?", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("Hapus Gambar QR VPS?", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                         },
                         text = {
                             Text(
-                                "Apakah Anda yakin ingin menghapus gambar QR pembayaran untuk paket \"${pkg.name}\"?",
+                                "Apakah Anda yakin ingin menghapus gambar QR pembayaran dari VPS storage untuk paket \"${pkg.name}\"?",
                                 color = textSecondary,
                                 fontSize = 13.sp
                             )
@@ -1185,7 +1185,7 @@ fun BotWaPackageQrScreen() {
                                     coroutineScope.launch {
                                         try {
                                             com.example.ui.data.remote.ApiClient.apiService.deletePackageImage(pkg.id)
-                                            android.widget.Toast.makeText(context, "Gambar QR berhasil dihapus", android.widget.Toast.LENGTH_SHORT).show()
+                                            android.widget.Toast.makeText(context, "Gambar QR berhasil dihapus dari VPS storage", android.widget.Toast.LENGTH_SHORT).show()
                                             showDeleteConfirmDialog = false
                                             loadPackages()
                                         } catch (e: Exception) {
@@ -1238,7 +1238,7 @@ fun BotWaPackageQrScreen() {
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
                                     Text(
-                                        "✓ QR Terpasang",
+                                        "✓ QR Terpasang di VPS",
                                         color = Color(0xFF10B981),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
