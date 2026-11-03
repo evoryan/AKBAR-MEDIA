@@ -203,7 +203,13 @@ fun getAmountForMonth(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: () -> Unit, onNavigateToSuccess: (String, String, String) -> Unit) {
+fun PaymentScreen(
+    customerId: String,
+    initialMonth: String? = null,
+    onBack: () -> Unit,
+    onNavigateToDetail: () -> Unit,
+    onNavigateToSuccess: (String, String, String) -> Unit
+) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF1F5F9)
     val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFE2E8F0)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF0F172A)
@@ -463,14 +469,18 @@ fun PaymentScreen(customerId: String, onBack: () -> Unit, onNavigateToDetail: ()
         val cust = resolvedCustomer
         if (cust != null && !hasAutoLoadedMonths) {
             if (localTagihanList.isNotEmpty() || !isBackgroundLoading) {
-                val unpaid = getCustomerAllUnpaidMonths(cust, localTagihanList, monthsList)
                 monthsToPay.clear()
-                if (unpaid.isNotEmpty()) {
-                    monthsToPay.addAll(unpaid)
+                if (!initialMonth.isNullOrBlank()) {
+                    monthsToPay.add(initialMonth)
                 } else {
-                    val isCurPaid = isCustomerPaidForMonth(cust, currentMonthName, currentYearStr, localTagihanList, monthsList)
-                    if (!isCurPaid) {
-                        monthsToPay.add(currentMonth)
+                    val unpaid = getCustomerAllUnpaidMonths(cust, localTagihanList, monthsList)
+                    if (unpaid.isNotEmpty()) {
+                        monthsToPay.addAll(unpaid)
+                    } else {
+                        val isCurPaid = isCustomerPaidForMonth(cust, currentMonthName, currentYearStr, localTagihanList, monthsList)
+                        if (!isCurPaid) {
+                            monthsToPay.add(currentMonth)
+                        }
                     }
                 }
                 hasAutoLoadedMonths = true
@@ -1279,11 +1289,14 @@ $monthsDetailText
                             showConfirmDialog = false 
                             coroutineScope.launch {
                                 try {
+                                    val targetMonthStr = monthsToPay.firstOrNull() ?: initialMonth ?: currentMonth
+                                    val formattedCreatedAt = formatCreatedAtFromMonthYear(targetMonthStr)
                                     val req = com.example.ui.data.remote.PaymentRequest(
                                         customerId = customerId,
                                         adminName = currentUser?.name ?: "Admin",
                                         totalAmount = finalAmount.toDouble(),
-                                        months = monthsToPay.toList()
+                                        months = monthsToPay.toList(),
+                                        created_at = formattedCreatedAt
                                     )
                                     ApiClient.apiService.payBilling(req)
 
@@ -1297,7 +1310,7 @@ $monthsDetailText
                                                 val p = m.trim().split(" ")
                                                 isTagihanInMonthRecap(t, p.getOrNull(0) ?: "", p.getOrNull(1) ?: "", monthsList)
                                             }) {
-                                                t.copy(status = "LUNAS CASH", admin_name = currentUser?.name ?: "Admin", amount = perMonthAmount)
+                                                t.copy(status = "LUNAS CASH", admin_name = currentUser?.name ?: "Admin", amount = perMonthAmount, created_at = formattedCreatedAt)
                                             } else {
                                                 t
                                             }

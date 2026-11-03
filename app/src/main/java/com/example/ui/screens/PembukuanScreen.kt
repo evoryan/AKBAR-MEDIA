@@ -38,6 +38,11 @@ import androidx.compose.foundation.shape.CircleShape
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Calendar
+import java.util.Locale
+import java.text.SimpleDateFormat
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +83,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
     var selectedType by remember { mutableStateOf("") }
     var inputAmount by remember { mutableStateOf("") }
     var inputDescription by remember { mutableStateOf("") }
+    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     var isSaving by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -301,9 +307,10 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                 modifier = Modifier.weight(1f).clickable {
                                     selectedCategory = "Pemasukkan Lain2"
                                     selectedType = "pemasukan"
-                                    inputAmount = ""
-                                    inputDescription = ""
-                                    showAddDialog = true
+                                            inputAmount = ""
+                                            inputDescription = ""
+                                            selectedCalendar = Calendar.getInstance()
+                                            showAddDialog = true
                                 }
                             )
                             Box(modifier = Modifier.weight(1f))
@@ -361,6 +368,7 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                             val detail = pengeluaranDetails.find { it.category == cat1 }
                                             inputAmount = ""
                                             inputDescription = ""
+                                            selectedCalendar = Calendar.getInstance()
                                             showAddDialog = true
                                         }
                                     }
@@ -537,6 +545,68 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        // Waktu & Tanggal Transaksi
+                        val dateTimeDisplay = remember(selectedCalendar) {
+                            SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("id", "ID")).format(selectedCalendar.time)
+                        }
+                        Column {
+                            Text("Waktu & Tanggal Transaksi", color = textSecondary, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                color = textSecondary.copy(alpha = 0.08f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Icon(Icons.Default.Schedule, contentDescription = null, tint = primaryCyan, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(dateTimeDisplay, color = textMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        IconButton(
+                                            onClick = {
+                                                val year = selectedCalendar.get(Calendar.YEAR)
+                                                val month = selectedCalendar.get(Calendar.MONTH)
+                                                val day = selectedCalendar.get(Calendar.DAY_OF_MONTH)
+                                                DatePickerDialog(context, { _, y, m, d ->
+                                                    val newCal = selectedCalendar.clone() as Calendar
+                                                    newCal.set(Calendar.YEAR, y)
+                                                    newCal.set(Calendar.MONTH, m)
+                                                    newCal.set(Calendar.DAY_OF_MONTH, d)
+                                                    selectedCalendar = newCal
+                                                }, year, month, day).show()
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.CalendarToday, contentDescription = "Ubah Tanggal", tint = primaryCyan, modifier = Modifier.size(18.dp))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                val hour = selectedCalendar.get(Calendar.HOUR_OF_DAY)
+                                                val minute = selectedCalendar.get(Calendar.MINUTE)
+                                                TimePickerDialog(context, { _, h, min ->
+                                                    val newCal = selectedCalendar.clone() as Calendar
+                                                    newCal.set(Calendar.HOUR_OF_DAY, h)
+                                                    newCal.set(Calendar.MINUTE, min)
+                                                    selectedCalendar = newCal
+                                                }, hour, minute, true).show()
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.AccessTime, contentDescription = "Ubah Jam", tint = primaryCyan, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Input Gambar/Foto Invoice (Opsional)
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text("Foto Invoice / Bukti (Opsional)", color = textSecondary, fontSize = 12.sp)
@@ -604,13 +674,15 @@ fun PembukuanScreen(onNavigateToBilling: (Int) -> Unit, onBack: () -> Unit, onNa
                                     }
 
                                     val amount = inputAmount.replace(Regex("[^0-9]"), "").toLongOrNull() ?: 0L
+                                    val formattedCreatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(selectedCalendar.time)
                                     ApiClient.apiService.addPembukuan(
                                         com.example.ui.data.remote.PembukuanRequest(
                                             selectedType,
                                             selectedCategory,
                                             amount.toDouble(),
                                             inputDescription,
-                                            image_url = imageUrl
+                                            image_url = imageUrl,
+                                            created_at = formattedCreatedAt
                                         )
                                     )
                                     fetchData()

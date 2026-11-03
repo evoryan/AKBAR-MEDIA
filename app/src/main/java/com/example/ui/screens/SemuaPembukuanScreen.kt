@@ -39,6 +39,28 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
+import java.util.Locale
+import java.text.SimpleDateFormat
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+
+fun parseDateTimeToCalendar(dateStr: String?): Calendar {
+    val cal = Calendar.getInstance()
+    if (!dateStr.isNullOrBlank()) {
+        try {
+            val clean = dateStr.take(19).replace("T", " ")
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val parsed = sdf.parse(clean)
+            if (parsed != null) {
+                cal.time = parsed
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    return cal
+}
 
 fun formatInvoiceUrl(url: String?): String? {
     if (url.isNullOrBlank()) return null
@@ -202,6 +224,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
     var pembukuanList by remember { mutableStateOf(emptyList<PembukuanItem>()) }
     var isBackgroundLoading by remember { mutableStateOf(true) }
     var editingItem by remember { mutableStateOf<PembukuanItem?>(null) }
+    var selectedCalendar by remember { mutableStateOf(Calendar.getInstance()) }
     val coroutineScope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
 
@@ -322,6 +345,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             selectedImageUri = null
                             keterangan = ""
                             jumlah = ""
+                            selectedCalendar = Calendar.getInstance()
                             tipePembukuan = when (selectedTab) {
                                 0 -> "Pemasukan"
                                 1 -> "Pengeluaran"
@@ -611,6 +635,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             onEdit = {
                                 editingItem = item
                                 selectedImageUri = null
+                                selectedCalendar = parseDateTimeToCalendar(item.created_at)
                                 tipePembukuan = when (item.type.lowercase()) {
                                     "pemasukan" -> "Pemasukan"
                                     "pengeluaran" -> "Pengeluaran"
@@ -781,6 +806,7 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                             if (curr != null) {
                                 editingItem = curr
                                 selectedImageUri = null
+                                selectedCalendar = parseDateTimeToCalendar(curr.created_at)
                                 tipePembukuan = when (curr.type.lowercase()) {
                                     "pemasukan" -> "Pemasukan"
                                     "pengeluaran" -> "Pengeluaran"
@@ -928,6 +954,68 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                         }
                     }
 
+                    // Waktu & Tanggal Transaksi
+                    val dateTimeDisplay = remember(selectedCalendar) {
+                        SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("id", "ID")).format(selectedCalendar.time)
+                    }
+                    Column {
+                        Text("Waktu & Tanggal Transaksi", color = textSecondary, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            color = textSecondary.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(Icons.Default.Schedule, contentDescription = null, tint = primaryBlue, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(dateTimeDisplay, color = textMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    IconButton(
+                                        onClick = {
+                                            val year = selectedCalendar.get(Calendar.YEAR)
+                                            val month = selectedCalendar.get(Calendar.MONTH)
+                                            val day = selectedCalendar.get(Calendar.DAY_OF_MONTH)
+                                            DatePickerDialog(context, { _, y, m, d ->
+                                                val newCal = selectedCalendar.clone() as Calendar
+                                                newCal.set(Calendar.YEAR, y)
+                                                newCal.set(Calendar.MONTH, m)
+                                                newCal.set(Calendar.DAY_OF_MONTH, d)
+                                                selectedCalendar = newCal
+                                            }, year, month, day).show()
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.CalendarToday, contentDescription = "Ubah Tanggal", tint = primaryBlue, modifier = Modifier.size(18.dp))
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val hour = selectedCalendar.get(Calendar.HOUR_OF_DAY)
+                                            val minute = selectedCalendar.get(Calendar.MINUTE)
+                                            TimePickerDialog(context, { _, h, min ->
+                                                val newCal = selectedCalendar.clone() as Calendar
+                                                newCal.set(Calendar.HOUR_OF_DAY, h)
+                                                newCal.set(Calendar.MINUTE, min)
+                                                selectedCalendar = newCal
+                                            }, hour, minute, true).show()
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.AccessTime, contentDescription = "Ubah Jam", tint = primaryBlue, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Input Gambar / Foto Invoice (Opsional)
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text("Foto Invoice / Bukti (Opsional)", color = textSecondary, fontSize = 12.sp)
@@ -1043,8 +1131,9 @@ fun SemuaPembukuanScreen(initialType: String = "Pilih Tipe Pembukuan", onBack: (
                                         if (editingItem == null) category = "Lain-lain"
                                     }
                                     
+                                    val formattedCreatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(selectedCalendar.time)
                                     val req = com.example.ui.data.remote.PembukuanRequest(
-                                        type, category, amountDouble, keterangan, image_url = imageUrl
+                                        type, category, amountDouble, keterangan, image_url = imageUrl, created_at = formattedCreatedAt
                                     )
                                     if (editingItem != null) {
                                         ApiClient.apiService.updatePembukuan(editingItem!!.id, req)

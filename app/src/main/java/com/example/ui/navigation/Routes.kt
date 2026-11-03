@@ -36,7 +36,7 @@ data class EditCustomerRoute(val customerId: String)
 data class CustomerDetailRoute(val customerId: String)
 
 @Serializable
-data class PaymentRoute(val customerId: String)
+data class PaymentRoute(val customerId: String, val initialMonth: String? = null)
 
 @Serializable
 data class PaymentSuccessRoute(

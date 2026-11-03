@@ -236,8 +236,8 @@ fun AkbarMediaNavGraph() {
                 BillingScreen(
                     initialTab = args.initialTab,
                     onBack = { navController.popBackStack() },
-                    onNavigateToPayment = { customerId ->
-                        navController.navigate(PaymentRoute(customerId))
+                    onNavigateToPayment = { customerId, initialMonth ->
+                        navController.navigate(PaymentRoute(customerId, initialMonth))
                     },
                     onNavigateToSuccess = { customerId, totalAmount, months, status ->
                         navController.navigate(PaymentSuccessRoute(customerId, totalAmount, months, status))
@@ -249,11 +249,12 @@ fun AkbarMediaNavGraph() {
                 val route = backStackEntry.toRoute<PaymentRoute>()
                 PaymentScreen(
                     customerId = route.customerId,
+                    initialMonth = route.initialMonth,
                     onBack = { navController.popBackStack() },
                     onNavigateToDetail = { navController.navigate(CustomerDetailRoute(route.customerId)) },
                     onNavigateToSuccess = { customerId, totalAmount, months -> 
                         navController.navigate(PaymentSuccessRoute(customerId, totalAmount, months, "LUNAS")) {
-                            popUpTo(PaymentRoute(customerId)) { inclusive = true }
+                            popUpTo(PaymentRoute(route.customerId, route.initialMonth)) { inclusive = true }
                         }
                     }
                 )

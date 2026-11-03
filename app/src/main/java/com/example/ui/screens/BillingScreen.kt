@@ -360,9 +360,46 @@ fun getCustomerUnpaidPastMonths(
     return unpaidMonths
 }
 
+fun formatCreatedAtFromMonthYear(monthStr: String?): String {
+    if (monthStr.isNullOrBlank()) {
+        return java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+    }
+    val monthsList = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    val parts = monthStr.trim().split(" ")
+    val mName = parts.getOrNull(0) ?: ""
+    val mIdx = monthsList.indexOfFirst { it.equals(mName, ignoreCase = true) }
+    
+    val nowCal = java.util.Calendar.getInstance()
+    val curYear = nowCal.get(java.util.Calendar.YEAR)
+    val curDay = nowCal.get(java.util.Calendar.DAY_OF_MONTH)
+    val curHour = nowCal.get(java.util.Calendar.HOUR_OF_DAY)
+    val curMin = nowCal.get(java.util.Calendar.MINUTE)
+    val curSec = nowCal.get(java.util.Calendar.SECOND)
+
+    val year = parts.getOrNull(1)?.toIntOrNull() ?: curYear
+    val cal = java.util.Calendar.getInstance()
+    cal.set(java.util.Calendar.YEAR, year)
+    if (mIdx >= 0) {
+        cal.set(java.util.Calendar.MONTH, mIdx)
+    }
+    val maxDays = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+    cal.set(java.util.Calendar.DAY_OF_MONTH, curDay.coerceAtMost(maxDays))
+    cal.set(java.util.Calendar.HOUR_OF_DAY, curHour)
+    cal.set(java.util.Calendar.MINUTE, curMin)
+    cal.set(java.util.Calendar.SECOND, curSec)
+
+    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+    return sdf.format(cal.time)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: (String) -> Unit, onNavigateToSuccess: (String, String, String, String) -> Unit) {
+fun BillingScreen(
+    initialTab: Int = 0,
+    onBack: () -> Unit,
+    onNavigateToPayment: (String, String?) -> Unit,
+    onNavigateToSuccess: (String, String, String, String) -> Unit
+) {
     val bgMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF0A0A0A) else androidx.compose.ui.graphics.Color(0xFFF1F5F9)
     val headerBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF1F0216) else androidx.compose.ui.graphics.Color(0xFFE2E8F0)
     val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF0F172A)
@@ -684,6 +721,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 val currentUser = com.example.ui.data.UserSession.currentUser.value
                                 val adminName = currentUser?.name ?: "Admin"
                                 val periodStr = "$selectedMonth $selectedYear"
+                                val formattedCreatedAt = formatCreatedAtFromMonthYear(periodStr)
 
                                 val paymentsList = selectedCustomersList.map { cust ->
                                     val custId = cust.id.toIntOrNull()
@@ -702,7 +740,8 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                         totalAmount = amountVal,
                                         months = listOf(periodStr),
                                         skipNotification = true,
-                                        isBulk = true
+                                        isBulk = true,
+                                        created_at = formattedCreatedAt
                                     )
                                 }
 
@@ -733,7 +772,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                         isTagihanInMonthRecap(t, selectedMonth, selectedYear, months)) {
                                         val cust = selectedCustomersList.find { it.id == t.customer_id.toString() }
                                         val amt = if (t.amount > 0.0) t.amount else (cust?.getTotalBillAmount()?.toDouble() ?: 0.0)
-                                        t.copy(status = "LUNAS CASH", admin_name = adminName, amount = amt)
+                                        t.copy(status = "LUNAS CASH", admin_name = adminName, amount = amt, created_at = formattedCreatedAt)
                                     } else {
                                         t
                                     }
@@ -1263,7 +1302,7 @@ fun BillingScreen(initialTab: Int = 0, onBack: () -> Unit, onNavigateToPayment: 
                                 textSecondary = textSecondary, 
                                 neonCyan = neonCyan, 
                                 neonPink = neonPink, 
-                                onPayClick = { onNavigateToPayment(customer.id) },
+                                onPayClick = { onNavigateToPayment(customer.id, "$selectedMonth $selectedYear") },
                                 onDetailClick = {
                                     val amount = customer.getTotalBillAmount().toString()
                                     onNavigateToSuccess(customer.id, amount, "$selectedMonth $selectedYear", if (isCustomerIsolir) "ISOLIR" else "BELUM BAYAR")
