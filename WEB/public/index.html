@@ -428,6 +428,13 @@
                                 </button>
                             </div>
 
+                            <!-- Tab Filter Paket (Semua, Reguler, Dedicated) -->
+                            <div class="flex items-center gap-1 bg-[#111827] border border-slate-800 p-1 rounded-xl">
+                                <button onclick="switchBillingPackageFilter('all')" id="btn-billing-pkg-all" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Semua</button>
+                                <button onclick="switchBillingPackageFilter('reguler')" id="btn-billing-pkg-reguler" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200">Reguler</button>
+                                <button onclick="switchBillingPackageFilter('dedicated')" id="btn-billing-pkg-dedicated" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200">Dedicated</button>
+                            </div>
+
                             <!-- Search and Area filter -->
                             <div class="flex flex-wrap items-center gap-2 flex-1 md:justify-end">
                                 <div class="relative w-full md:w-64">
@@ -1099,6 +1106,35 @@
                                 </div>
                             </form>
                         </div>
+
+                        <!-- Card: Multi Akun (Beralih Akun Santai) -->
+                        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-6 flex flex-col gap-5">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                                        <i data-lucide="users-round" class="w-5 h-5"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                            MULTI AKUN (BERALIH AKUN SANTAI)
+                                            <span class="text-[10px] font-semibold bg-purple-500/15 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">Isolasi Data Database</span>
+                                        </h3>
+                                        <p class="text-xs text-slate-400">Simpan beberapa akun administrator dan beralih antar akun dengan cepat tanpa mencampur data tenant.</p>
+                                    </div>
+                                </div>
+                                <button type="button" onclick="openAddMultiAccountModal()" class="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto shadow-md">
+                                    <i data-lucide="user-plus" class="w-4 h-4"></i> + Tambah Akun Lain
+                                </button>
+                            </div>
+
+                            <!-- List of Saved Accounts -->
+                            <div class="flex flex-col gap-3">
+                                <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Daftar Akun Tersimpan:</label>
+                                <div id="multi-account-list" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -1653,6 +1689,20 @@
                                         <span class="text-[10px] text-slate-500">Variabel: {otp}</span>
                                     </div>
 
+                                    <!-- Kelola Template Pesan WA Custom -->
+                                    <div class="flex flex-col gap-2 p-3 bg-slate-900/60 rounded-xl border border-slate-800 mt-2">
+                                        <div class="flex items-center justify-between">
+                                            <label class="text-xs font-bold text-slate-300 uppercase">Kelola Template Pesan WhatsApp (Kirim WA)</label>
+                                            <button type="button" onclick="openAddWaTemplateModal()" class="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg text-xs font-bold border border-emerald-500/30 transition flex items-center gap-1">
+                                                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah Template
+                                            </button>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400">Template yang Anda tambahkan di sini dapat dipilih secara fleksibel saat mengeklik tombol Kirim WA pada halaman tagihan.</p>
+                                        <div id="wa-templates-list-container" class="flex flex-col gap-2 mt-1">
+                                            <!-- Populated dynamically by loadWaTemplates() -->
+                                        </div>
+                                    </div>
+
                                     <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2">
                                         <i data-lucide="save" class="w-4 h-4"></i> Simpan Pengaturan WhatsApp ke MySQL
                                     </button>
@@ -2170,6 +2220,50 @@
                     </div>
                 </div>
 
+                <!-- Section Rincian Tarif, Biaya Tambahan & Diskon -->
+                <div class="p-4 rounded-xl bg-slate-900/50 border border-slate-800 flex flex-col gap-3">
+                    <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="tag" class="w-4 h-4"></i> Rincian Tarif & Biaya Tambahan
+                    </h4>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[11px] font-semibold text-slate-400">HARGA OVERRIDE (RP)</label>
+                            <input type="number" id="cust-price" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Otomatis paket">
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[11px] font-semibold text-slate-400">DISKON / POTONGAN (RP)</label>
+                            <input type="number" id="cust-discount" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="0">
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[11px] font-semibold text-slate-400">PPN PAJAK (%)</label>
+                            <input type="number" id="cust-ppn" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="0">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[11px] font-semibold text-slate-400">BIAYA TAMBAHAN 1 (RP)</label>
+                            <input type="number" id="cust-additionalCost1" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="0">
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[11px] font-semibold text-slate-400">KETERANGAN BIAYA TAMBAHAN 1</label>
+                            <input type="text" id="cust-additionalCostDesc1" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Contoh: Sewa Router / IP Publik">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[11px] font-semibold text-slate-400">BIAYA TAMBAHAN 2 (RP)</label>
+                            <input type="number" id="cust-additionalCost2" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="0">
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <label class="text-[11px] font-semibold text-slate-400">KETERANGAN BIAYA TAMBAHAN 2</label>
+                            <input type="text" id="cust-additionalCostDesc2" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Contoh: Kabel Tambahan / Jasa Pasang">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="p-4 border-t border-slate-800 flex justify-end gap-3 mt-4">
                     <button type="button" onclick="closeModal('modal-customer')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium transition duration-150">Batal</button>
                     <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition duration-150 shadow-md">Simpan Data</button>
@@ -2368,6 +2462,11 @@
                 <div class="flex flex-col gap-1.5">
                     <label class="text-xs font-semibold text-slate-400">NILAI NOMINAL (RP)</label>
                     <input type="number" id="fin-amount" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" min="1" placeholder="100000">
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400">WAKTU & TANGGAL TRANSAKSI</label>
+                    <input type="datetime-local" id="fin-created-at" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200">
                 </div>
 
                 <!-- Invoice Photo Upload (Optional, Saved to VPS Local Storage isolated per tenant) -->
@@ -2993,6 +3092,113 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal: Pilih Template Pesan WA (Kirim WA Tagihan) -->
+    <div id="modal-select-wa-template" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="message-square" class="w-5 h-5 text-emerald-400"></i>
+                    <h3 class="text-base font-bold text-white">Pilih Template Pesan WA</h3>
+                </div>
+                <button onclick="closeModal('modal-select-wa-template')" class="text-slate-400 hover:text-white transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-5 flex flex-col gap-4 overflow-y-auto max-h-[75vh]">
+                <p class="text-xs text-slate-400">Pilih template pesan yang ingin dikirimkan ke <span id="wa-modal-cust-name" class="font-bold text-emerald-400">-</span>:</p>
+                <input type="hidden" id="wa-modal-cust-id" value="">
+
+                <!-- Available Templates Radio Choices -->
+                <div id="wa-modal-template-choices" class="flex flex-col gap-2">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <div class="border-t border-slate-800 pt-3">
+                    <label class="text-xs font-bold text-slate-300 uppercase block mb-1">Pratinjau Pesan WA:</label>
+                    <textarea id="wa-modal-preview-text" rows="5" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"></textarea>
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-800 bg-slate-900/60 flex items-center justify-end gap-3">
+                <button type="button" onclick="closeModal('modal-select-wa-template')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition">Batal</button>
+                <button type="button" onclick="sendWaFromModal()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md">
+                    <i data-lucide="send" class="w-4 h-4"></i> Kirim via WhatsApp
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Tambah / Edit Template Pesan WA -->
+    <div id="modal-edit-wa-template" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="edit-3" class="w-5 h-5 text-emerald-400"></i>
+                    <h3 class="text-base font-bold text-white" id="modal-tpl-title-heading">Kelola Template WA</h3>
+                </div>
+                <button onclick="closeModal('modal-edit-wa-template')" class="text-slate-400 hover:text-white transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form onsubmit="saveWaTemplateItem(event)" class="p-5 flex flex-col gap-4">
+                <input type="hidden" id="tpl-edit-id" value="">
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase">Judul Template</label>
+                    <input type="text" id="tpl-edit-title" required class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" placeholder="mis. Tagihan Jatuh Tempo">
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase">Isi Pesan Template</label>
+                    <textarea id="tpl-edit-content" rows="6" required class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500" placeholder="Ketik pesan dengan variabel placeholder..."></textarea>
+                    <span class="text-[10px] text-emerald-400">Variabel: {nama}, {telepon}, {area}, {paket}, {tagihan}, {periode}, {jatuh_tempo}</span>
+                </div>
+                <div class="pt-2 border-t border-slate-800 flex items-center justify-end gap-3">
+                    <button type="button" onclick="closeModal('modal-edit-wa-template')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition">Batal</button>
+                    <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md">
+                        <i data-lucide="save" class="w-4 h-4"></i> Simpan Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Tambah Multi Akun -->
+    <div id="modal-add-multi-account" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="user-plus" class="w-5 h-5 text-purple-400"></i>
+                    <h3 class="text-base font-bold text-white">Tambah Akun Administrator Baru</h3>
+                </div>
+                <button onclick="closeModal('modal-add-multi-account')" class="text-slate-400 hover:text-white transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <form onsubmit="saveNewMultiAccountFromModal(event)" class="p-5 flex flex-col gap-4">
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase">Nama Label Akun / Tenant</label>
+                    <input type="text" id="multi-acc-name" required class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500" placeholder="mis. Akun Cabang B / Tenant 2">
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase">URL VPS / Domain API</label>
+                    <input type="text" id="multi-acc-url" required class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-500" placeholder="https://amg.akbarmediagroup.my.id">
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase">Username Admin</label>
+                    <input type="text" id="multi-acc-username" required class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500" placeholder="Masukkan username">
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold text-slate-400 uppercase">Password Admin</label>
+                    <input type="password" id="multi-acc-password" required class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500" placeholder="Masukkan password">
+                </div>
+                <div class="pt-2 border-t border-slate-800 flex items-center justify-end gap-3">
+                    <button type="button" onclick="closeModal('modal-add-multi-account')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition">Batal</button>
+                    <button type="submit" id="btn-save-multi-acc" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md">
+                        <i data-lucide="check" class="w-4 h-4"></i> Verifikasi & Simpan Akun
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 

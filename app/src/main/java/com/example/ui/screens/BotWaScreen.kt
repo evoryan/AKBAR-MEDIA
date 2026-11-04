@@ -94,6 +94,12 @@ fun BotWaScreen(onBack: () -> Unit) {
     var waTemplateIsolir by remember { mutableStateOf(com.example.ui.data.SettingsManager.waTemplateIsolir) }
     var waTemplateOtp by remember { mutableStateOf(com.example.ui.data.SettingsManager.waTemplateOtp) }
 
+    var customTemplates by remember { mutableStateOf(com.example.ui.data.SettingsManager.getWaTemplates()) }
+    var showAddEditTemplateDialog by remember { mutableStateOf(false) }
+    var editingTemplate by remember { mutableStateOf<com.example.ui.data.WaTemplateItem?>(null) }
+    var templateTitleInput by remember { mutableStateOf("") }
+    var templateContentInput by remember { mutableStateOf("") }
+
     var testDestination by remember { mutableStateOf("") }
     var testMessage by remember { mutableStateOf("") }
     var isTestSending by remember { mutableStateOf(false) }
@@ -690,6 +696,188 @@ fun BotWaScreen(onBack: () -> Unit) {
                         successGreen = successGreen,
                         neonCyan = neonCyan
                     )
+
+                    // 5. Custom Templates List Management Card (Tambah, Edit, Hapus)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = cardBg),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Chat, contentDescription = null, tint = neonCyan, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Kelola Template Pesan WA", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = textMain)
+                                }
+                                Button(
+                                    onClick = {
+                                        editingTemplate = null
+                                        templateTitleInput = ""
+                                        templateContentInput = ""
+                                        showAddEditTemplateDialog = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan.copy(alpha = 0.15f), contentColor = neonCyan),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Tambah Template", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Text(
+                                "Template pesan ini dapat dipilih saat mengirim WA ke pelanggan di halaman tagihan.",
+                                fontSize = 12.sp,
+                                color = textSecondary
+                            )
+
+                            customTemplates.forEach { tpl ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = bgMain),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, textSecondary.copy(alpha = 0.2f)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                            Text(tpl.title, color = neonCyan, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                tpl.content,
+                                                color = textMain,
+                                                fontSize = 11.sp,
+                                                maxLines = 3,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            IconButton(
+                                                onClick = {
+                                                    editingTemplate = tpl
+                                                    templateTitleInput = tpl.title
+                                                    templateContentInput = tpl.content
+                                                    showAddEditTemplateDialog = true
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = neonCyan, modifier = Modifier.size(16.dp))
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    val updated = customTemplates.filter { it.id != tpl.id }
+                                                    customTemplates = updated
+                                                    com.example.ui.data.SettingsManager.saveWaTemplates(updated)
+                                                    Toast.makeText(context, "Template berhasil dihapus", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color(0xFFFF003C), modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (showAddEditTemplateDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showAddEditTemplateDialog = false },
+                            containerColor = cardBg,
+                            title = {
+                                Text(
+                                    if (editingTemplate == null) "Tambah Template WA Baru" else "Edit Template WA",
+                                    color = textMain,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedTextField(
+                                        value = templateTitleInput,
+                                        onValueChange = { templateTitleInput = it },
+                                        label = { Text("Judul Template", color = textMain.copy(alpha = 0.7f)) },
+                                        placeholder = { Text("mis. Reminder Tagihan", color = textSecondary) },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = neonCyan,
+                                            unfocusedBorderColor = textMain.copy(alpha = 0.3f),
+                                            focusedTextColor = textMain,
+                                            unfocusedTextColor = textMain
+                                        )
+                                    )
+
+                                    OutlinedTextField(
+                                        value = templateContentInput,
+                                        onValueChange = { templateContentInput = it },
+                                        label = { Text("Isi Pesan Template", color = textMain.copy(alpha = 0.7f)) },
+                                        placeholder = { Text("Ketik pesan dengan placeholder...", color = textSecondary) },
+                                        minLines = 4,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = neonCyan,
+                                            unfocusedBorderColor = textMain.copy(alpha = 0.3f),
+                                            focusedTextColor = textMain,
+                                            unfocusedTextColor = textMain
+                                        )
+                                    )
+
+                                    Text(
+                                        "Gunakan placeholder otomatis: {nama}, {telepon}, {area}, {paket}, {tagihan}, {periode}, {jatuh_tempo}",
+                                        fontSize = 10.sp,
+                                        color = neonCyan
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        if (templateTitleInput.isBlank() || templateContentInput.isBlank()) {
+                                            Toast.makeText(context, "Judul dan isi template tidak boleh kosong!", Toast.LENGTH_SHORT).show()
+                                            return@Button
+                                        }
+                                        val updatedList = if (editingTemplate == null) {
+                                            customTemplates + com.example.ui.data.WaTemplateItem(
+                                                title = templateTitleInput.trim(),
+                                                content = templateContentInput.trim()
+                                            )
+                                        } else {
+                                            customTemplates.map {
+                                                if (it.id == editingTemplate!!.id) {
+                                                    it.copy(title = templateTitleInput.trim(), content = templateContentInput.trim())
+                                                } else it
+                                            }
+                                        }
+                                        customTemplates = updatedList
+                                        com.example.ui.data.SettingsManager.saveWaTemplates(updatedList)
+                                        showAddEditTemplateDialog = false
+                                        Toast.makeText(context, "Template berhasil disimpan!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan)
+                                ) {
+                                    Text("Simpan", fontWeight = FontWeight.Bold, color = Color.Black)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showAddEditTemplateDialog = false }) {
+                                    Text("Batal", color = textSecondary)
+                                }
+                            }
+                        )
+                    }
 
                     // Save Button
                     Button(

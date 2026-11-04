@@ -683,6 +683,72 @@ object SettingsManager {
             syncSettingsToRemote()
         }
 
+    fun getWaTemplates(): List<WaTemplateItem> {
+        val jsonStr = prefs.getString("wa_custom_templates_list", null)
+        if (!jsonStr.isNullOrBlank()) {
+            try {
+                val array = org.json.JSONArray(jsonStr)
+                val list = mutableListOf<WaTemplateItem>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        WaTemplateItem(
+                            id = obj.optString("id", i.toString()),
+                            title = obj.optString("title", "Template ${i + 1}"),
+                            content = obj.optString("content", "")
+                        )
+                    )
+                }
+                if (list.isNotEmpty()) return list
+            } catch (_: Exception) {}
+        }
+        return getDefaultWaTemplates()
+    }
+
+    fun getDefaultWaTemplates(): List<WaTemplateItem> {
+        return listOf(
+            WaTemplateItem(
+                id = "tpl_tagihan_bulanan",
+                title = "Tagihan Bulanan",
+                content = "Halo *{nama}*,\n\nBerikut adalah rincian tagihan internet Anda periode *{periode}*:\n- Nama: {nama}\n- No HP: {telepon}\n- Area: {area}\n- Paket: {paket}\n- Total Tagihan: {tagihan}\n- Status: BELUM BAYAR\n\nMohon segera melakukan pembayaran. Terima kasih."
+            ),
+            WaTemplateItem(
+                id = "tpl_pengingat_jatuh_tempo",
+                title = "Pengingat Jatuh Tempo",
+                content = "Halo *{nama}*,\n\nMengingatkan kembali bahwa tagihan internet AKBAR MEDIA Anda periode *{periode}* sebesar {tagihan} mendekati/telah jatuh tempo. Mohon segera melakukan pembayaran agar koneksi internet tetap lancar. Terima kasih."
+            ),
+            WaTemplateItem(
+                id = "tpl_pemberitahuan_isolir",
+                title = "Pemberitahuan Isolir",
+                content = "Halo *{nama}*,\n\nInformasi: Layanan internet Anda saat ini sedang dinonaktifkan (TERISOLIR) karena tagihan periode *{periode}* sebesar {tagihan} belum dibayar. Segera lakukan pembayaran agar akses internet otomatis diaktifkan kembali. Terima kasih."
+            ),
+            WaTemplateItem(
+                id = "tpl_bukti_lunas",
+                title = "Bukti Pembayaran Lunas",
+                content = "Halo *{nama}*,\n\nTerima kasih, pembayaran tagihan internet AKBAR MEDIA periode *{periode}* sejumlah {tagihan} telah kami terima dan dinyatakan LUNAS.\n\nSalam,\nAKBAR MEDIA"
+            )
+        )
+    }
+
+    fun saveWaTemplates(templates: List<WaTemplateItem>) {
+        try {
+            val array = org.json.JSONArray()
+            for (item in templates) {
+                val obj = org.json.JSONObject().apply {
+                    put("id", item.id)
+                    put("title", item.title)
+                    put("content", item.content)
+                }
+                array.put(obj)
+            }
+            val jsonStr = array.toString()
+            prefs.edit().putString("wa_custom_templates_list", jsonStr).apply()
+            syncSettingsToRemote()
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsManager", "Error saving WA templates: ${e.message}")
+        }
+    }
+
     fun getActiveDbName(): String {
         return UserSession.currentUser.value?.db_name?.takeIf { it.isNotBlank() }
             ?: appContext?.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
@@ -1003,5 +1069,11 @@ data class VpsLogoItem(
     val urlOrPath: String,
     val isRemote: Boolean = false,
     val dateAdded: String = ""
+)
+
+data class WaTemplateItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val content: String
 )
 

@@ -71,6 +71,8 @@ fun SettingScreen(
     val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
     val cardBorder = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF333333) else androidx.compose.ui.graphics.Color(0xFFCBD5E1)
     val currentUser by UserSession.currentUser.collectAsState()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         containerColor = bgMain,
@@ -120,11 +122,207 @@ fun SettingScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // MULTI AKUN
+            var savedMultiAccounts by remember { mutableStateOf(UserSession.getSavedAccounts(context)) }
+            var showAddAccountDialog by remember { mutableStateOf(false) }
+            var newAccUsername by remember { mutableStateOf("") }
+            var newAccPassword by remember { mutableStateOf("") }
+            var isAddingAcc by remember { mutableStateOf(false) }
+
+            Text("MULTI AKUN (BERALIH AKUN SANTAI)", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cardBg)
+                    .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Akun Aktif Saat Ini", color = textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text("${currentUser?.name} (${currentUser?.username})", color = textMain, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Database/Tenant DB: ${currentUser?.db_name ?: "default"} • Role: ${currentUser?.role}", color = primaryBg, fontSize = 11.sp)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = primaryBg.copy(alpha = 0.2f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, primaryBg)
+                        ) {
+                            Text("AKTIF", color = primaryBg, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                        }
+                    }
+
+                    HorizontalDivider(color = cardBorder)
+
+                    Text("Daftar Akun Tersimpan (Beralih Cepat)", color = textMain, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+
+                    val otherAccounts = savedMultiAccounts.filter { !(it.username.equals(currentUser?.username, ignoreCase = true) && (it.db_name == currentUser?.db_name || currentUser?.db_name.isNullOrBlank())) }
+
+                    if (otherAccounts.isEmpty()) {
+                        Text("Belum ada akun lain tersimpan. Klik tombol di bawah untuk menambahkan akun.", color = textSecondary, fontSize = 11.sp)
+                    } else {
+                        otherAccounts.forEach { acc ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(bgMain)
+                                    .border(1.dp, cardBorder, RoundedCornerShape(8.dp))
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("${acc.name} (${acc.username})", color = textMain, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("DB: ${acc.db_name ?: "default"} • Role: ${acc.role}", color = textSecondary, fontSize = 10.sp)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Button(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                UserSession.switchAccount(context, acc)
+                                                Toast.makeText(context, "Berhasil beralih ke akun ${acc.name}", Toast.LENGTH_SHORT).show()
+                                                savedMultiAccounts = UserSession.getSavedAccounts(context)
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = primaryBg, contentColor = Color.Black),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Text("Beralih", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            UserSession.removeSavedAccount(context, acc.username, acc.db_name)
+                                            savedMultiAccounts = UserSession.getSavedAccounts(context)
+                                            Toast.makeText(context, "Akun ${acc.username} dihapus dari daftar", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = Color(0xFFFF003C), modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            newAccUsername = ""
+                            newAccPassword = ""
+                            showAddAccountDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth().height(38.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryBg),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, primaryBg),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Tambah Akun Lain", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (showAddAccountDialog) {
+                AlertDialog(
+                    onDismissRequest = { if (!isAddingAcc) showAddAccountDialog = false },
+                    containerColor = cardBg,
+                    title = { Text("Tambah Akun Lain", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Masukkan username dan password akun lain untuk disimpan di daftar multi-akun:", color = textSecondary, fontSize = 12.sp)
+                            OutlinedTextField(
+                                value = newAccUsername,
+                                onValueChange = { newAccUsername = it },
+                                label = { Text("Username", color = textMain.copy(alpha = 0.7f)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBg,
+                                    unfocusedBorderColor = cardBorder,
+                                    focusedTextColor = textMain,
+                                    unfocusedTextColor = textMain
+                                )
+                            )
+                            OutlinedTextField(
+                                value = newAccPassword,
+                                onValueChange = { newAccPassword = it },
+                                label = { Text("Password", color = textMain.copy(alpha = 0.7f)) },
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBg,
+                                    unfocusedBorderColor = cardBorder,
+                                    focusedTextColor = textMain,
+                                    unfocusedTextColor = textMain
+                                )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (newAccUsername.isBlank() || newAccPassword.isBlank()) {
+                                    Toast.makeText(context, "Username dan password wajib diisi!", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                isAddingAcc = true
+                                coroutineScope.launch {
+                                    try {
+                                        val loginRes = com.example.ui.data.remote.ApiClient.apiService.login(
+                                            com.example.ui.data.remote.LoginRequest(newAccUsername.trim(), newAccPassword.trim())
+                                        )
+                                        val role = try { UserRole.valueOf(loginRes.role.name) } catch (_: Exception) { UserRole.ADMIN }
+                                        val newAcc = com.example.ui.data.AdminUser(
+                                            id = loginRes.id,
+                                            name = loginRes.name,
+                                            username = loginRes.username,
+                                            role = role,
+                                            token = loginRes.token,
+                                            db_name = loginRes.db_name,
+                                            area_id = loginRes.area_id,
+                                            avatar_url = loginRes.avatar_url
+                                        )
+                                        UserSession.saveAccountToMultiList(context, newAcc)
+                                        savedMultiAccounts = UserSession.getSavedAccounts(context)
+                                        showAddAccountDialog = false
+                                        isAddingAcc = false
+                                        Toast.makeText(context, "Akun ${newAcc.name} berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        isAddingAcc = false
+                                        Toast.makeText(context, "Gagal login akun: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isAddingAcc,
+                            colors = ButtonDefaults.buttonColors(containerColor = primaryBg)
+                        ) {
+                            Text(if (isAddingAcc) "Verifikasi..." else "Simpan Akun", fontWeight = FontWeight.Bold, color = Color.Black)
+                        }
+                    },
+                    dismissButton = {
+                        if (!isAddingAcc) {
+                            TextButton(onClick = { showAddAccountDialog = false }) {
+                                Text("Batal", color = textSecondary)
+                            }
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // TAMPILAN APLIKASI
             Text("TAMPILAN APLIKASI", color = primaryBg, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(bottom = 8.dp))
-            val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    var showUpdateDialog by remember { mutableStateOf(false) }
+            var showUpdateDialog by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<GithubRelease?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var latestReleaseTag by remember { mutableStateOf<String?>(null) }

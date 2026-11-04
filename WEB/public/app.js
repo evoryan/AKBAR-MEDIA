@@ -152,6 +152,8 @@ function updateUserSessionUI() {
     const settingApi = document.getElementById('setting-api-url');
     if (settingApi) settingApi.innerText = API_BASE_URL;
 
+    renderMultiAccountSection();
+
     if (window.lucide) {
         lucide.createIcons();
     }
@@ -329,6 +331,16 @@ async function handleLogin(event) {
                 localStorage.setItem('role', data.role || 'ADMIN');
                 localStorage.setItem('db_name', data.db_name || 'app_db');
                 
+                saveCurrentAccountToMultiList({
+                    id: 'acc_' + (data.db_name || username),
+                    name: data.db_name ? `Akun ${data.db_name}` : `Akun ${username}`,
+                    username: data.username || username,
+                    password: password,
+                    vpsUrl: targetUrl,
+                    dbName: data.db_name || 'app_db',
+                    role: data.role || 'ADMIN'
+                });
+
                 showToast(`Selamat datang, ${data.username || username}!`, 'success');
                 showAppScreen();
                 
@@ -442,11 +454,275 @@ async function testLoginApiConnection() {
     }
 }
 
-function handleLogout(customMessage = null) {
+function getSavedMultiAccounts() {
+    try {
+        const json = localStorage.getItem('saved_multi_accounts_json');
+        return json ? JSON.parse(json) : [];
+    } catch (e) {
+        console.error('Failed to parse saved_multi_accounts_json:', e);
+        return [];
+    }
+}
+
+function saveMultiAccountsList(list) {
+    localStorage.setItem('saved_multi_accounts_json', JSON.stringify(list));
+}
+
+function saveCurrentAccountToMultiList(accountObj) {
+    if (!accountObj || !accountObj.username) return;
+    let list = getSavedMultiAccounts();
+    const existingIdx = list.findIndex(a => a.id === accountObj.id || (a.username === accountObj.username && a.vpsUrl === accountObj.vpsUrl));
+    if (existingIdx >= 0) {
+        list[existingIdx] = { ...list[existingIdx], ...accountObj };
+    } else {
+        list.push(accountObj);
+    }
+    saveMultiAccountsList(list);
+    renderMultiAccountSection();
+}
+
+function removeMultiAccount(id) {
+    let list = getSavedMultiAccounts();
+    list = list.filter(a => a.id !== id);
+    saveMultiAccountsList(list);
+    renderMultiAccountSection();
+    showToast('Akun berhasil dihapus dari daftar multi-akun.', 'info');
+}
+
+function renderMultiAccountSection() {
+    const container = document.getElementById('multi-account-list');
+    if (!container) return;
+
+    const list = getSavedMultiAccounts();
+    const currentUsername = localStorage.getItem('username') || '';
+    const currentDbName = localStorage.getItem('db_name') || '';
+
+    if (!list || list.length === 0) {
+        container.innerHTML = `
+            <div class="md:col-span-2 p-4 bg-slate-900/60 border border-slate-800 rounded-xl text-center text-xs text-slate-500 italic">
+                Belum ada akun lain yang tersimpan. Klik "+ Tambah Akun Lain" untuk menambahkan akun administrator.
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    list.forEach(acc => {
+        const isActive = (acc.username === currentUsername && (acc.dbName === currentDbName || !acc.dbName));
+        html += `
+            <div class="p-3.5 rounded-xl border transition ${isActive ? 'bg-purple-950/40 border-purple-500/50 shadow-md' : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'} flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="${isActive ? 'user-check' : 'user'}" class="w-4 h-4 ${isActive ? 'text-purple-400' : 'text-slate-400'}"></i>
+                        <span class="text-xs font-bold ${isActive ? 'text-purple-200' : 'text-white'}">${acc.name || acc.username}</span>
+                    </div>
+                    ${isActive ? '<span class="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/40 font-bold">Aktif Sekarang</span>' : ''}
+                </div>
+                <div class="flex flex-col gap-0.5 text-[11px] text-slate-400 font-mono bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                    <div><span class="text-slate-500">User:</span> ${acc.username}</div>
+                    <div><span class="text-slate-500">Tenant / DB:</span> ${acc.dbName || acc.name || 'app_db'}</div>
+                    <div class="truncate"><span class="text-slate-500">VPS URL:</span> ${acc.vpsUrl || API_BASE_URL}</div>
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-800/80">
+                    ${!isActive ? `
+                        <button type="button" onclick="switchMultiAccount('${acc.id}')" class="px-3 py-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-lg text-xs font-bold transition flex items-center gap-1">
+                            <i data-lucide="refresh-cw" class="w-3 h-3"></i> Beralih Akun
+                        </button>
+                    ` : ''}
+                    <button type="button" onclick="removeMultiAccount('${acc.id}')" class="px-2.5 py-1 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/20 rounded-lg text-xs font-semibold transition flex items-center gap-1">
+                        <i data-lucide="trash-2" class="w-3 h-3"></i> Hapus
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+    if (window.lucide) lucide.createIcons();
+}
+
+function openAddMultiAccountModal() {
+    const modal = document.getElementById('modal-add-multi-account');
+    if (modal) {
+        document.getElementById('multi-acc-name').value = '';
+        document.getElementById('multi-acc-url').value = API_BASE_URL;
+        document.getElementById('multi-acc-username').value = '';
+        document.getElementById('multi-acc-password').value = '';
+        modal.classList.remove('hidden');
+    }
+}
+
+async function saveNewMultiAccountFromModal(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const name = document.getElementById('multi-acc-name').value.trim();
+    const vpsUrl = document.getElementById('multi-acc-url').value.trim().replace(/\/+$/, '');
+    const username = document.getElementById('multi-acc-username').value.trim();
+    const password = document.getElementById('multi-acc-password').value.trim();
+
+    if (!name || !vpsUrl || !username || !password) {
+        showToast('Semua kolom data akun wajib diisi!', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('btn-save-multi-acc');
+    if (btn) btn.disabled = true;
+
+    showLoading(true, 'Memverifikasi kredensial akun...');
+
+    try {
+        const response = await originalFetch(`${vpsUrl}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok && data.token) {
+            const accObj = {
+                id: 'acc_' + Date.now(),
+                name: name,
+                username: username,
+                password: password,
+                vpsUrl: vpsUrl,
+                dbName: data.db_name || 'app_db',
+                role: data.role || 'ADMIN'
+            };
+
+            saveCurrentAccountToMultiList(accObj);
+            closeModal('modal-add-multi-account');
+            showToast(`Berhasil menyimpan akun ${username} (${accObj.dbName})!`, 'success');
+        } else {
+            showToast(data.error || 'Gagal memverifikasi kredensial akun. Pastikan URL, username, dan password benar.', 'error');
+        }
+    } catch (e) {
+        showToast('Gagal terhubung ke server VPS: ' + e.message, 'error');
+    } finally {
+        showLoading(false);
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function switchMultiAccount(id) {
+    const list = getSavedMultiAccounts();
+    const targetAcc = list.find(a => a.id === id);
+
+    if (!targetAcc) {
+        showToast('Akun tujuan tidak ditemukan.', 'error');
+        return;
+    }
+
+    showLoading(true, `Beralih ke akun ${targetAcc.username}...`);
+
+    if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+
     localStorage.removeItem('token');
     localStorage.removeItem('username');
     localStorage.removeItem('role');
     localStorage.removeItem('db_name');
+
+    if (document.cookie) {
+        document.cookie.split(";").forEach(function(c) {
+            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        });
+    }
+
+    if (typeof window !== 'undefined' && 'caches' in window) {
+        try {
+            const cacheKeys = await caches.keys();
+            await Promise.all(cacheKeys.map(key => caches.delete(key)));
+        } catch (e) {
+            console.warn('Could not clear caches:', e);
+        }
+    }
+
+    customersList = [];
+    areasList = [];
+    packagesList = [];
+    odcList = [];
+    odpList = [];
+    rasioList = [];
+    inventoryList = [];
+    financeList = [];
+    gangguanList = [];
+    adminsList = [];
+    acsDevicesList = [];
+    tagihanList = [];
+    if (selectedBillingBulkIds) selectedBillingBulkIds.clear();
+
+    API_BASE_URL = targetAcc.vpsUrl.replace(/\/+$/, '');
+    localStorage.setItem('api_base_url', API_BASE_URL);
+
+    try {
+        const response = await originalFetch(`${API_BASE_URL}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: targetAcc.username, password: targetAcc.password })
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok && data.token) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('username', data.username || targetAcc.username);
+            localStorage.setItem('role', data.role || targetAcc.role || 'ADMIN');
+            localStorage.setItem('db_name', data.db_name || targetAcc.dbName || 'app_db');
+
+            targetAcc.dbName = data.db_name || targetAcc.dbName;
+            saveCurrentAccountToMultiList(targetAcc);
+
+            updateUserSessionUI();
+            showToast(`Berhasil beralih ke akun ${data.username || targetAcc.username}!`, 'success');
+            
+            await loadAllData();
+            pingApi();
+        } else {
+            showToast('Gagal beralih akun: ' + (data.error || 'Password atau token tidak valid.'), 'error');
+            showLoginScreen();
+        }
+    } catch (e) {
+        showToast('Gagal terhubung ke VPS akun tujuan: ' + e.message, 'error');
+        showLoginScreen();
+    } finally {
+        showLoading(false);
+    }
+}
+
+function handleLogout(customMessage = null) {
+    if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    localStorage.removeItem('role');
+    localStorage.removeItem('db_name');
+
+    if (document.cookie) {
+        document.cookie.split(";").forEach(function(c) {
+            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        });
+    }
+
+    if (typeof window !== 'undefined' && 'caches' in window) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+    }
+
+    customersList = [];
+    areasList = [];
+    packagesList = [];
+    odcList = [];
+    odpList = [];
+    rasioList = [];
+    inventoryList = [];
+    financeList = [];
+    gangguanList = [];
+    adminsList = [];
+    acsDevicesList = [];
+    tagihanList = [];
+    if (selectedBillingBulkIds) selectedBillingBulkIds.clear();
     
     // Clear inputs
     const usernameInput = document.getElementById('login-username');
@@ -991,6 +1267,21 @@ function switchBillingStatus(status) {
     filterBilling();
 }
 
+let currentBillingPackageFilter = 'all';
+
+function switchBillingPackageFilter(pkg) {
+    currentBillingPackageFilter = pkg;
+    const btnAll = document.getElementById('btn-billing-pkg-all');
+    const btnReg = document.getElementById('btn-billing-pkg-reguler');
+    const btnDed = document.getElementById('btn-billing-pkg-dedicated');
+
+    if (btnAll) btnAll.className = pkg === 'all' ? "px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200";
+    if (btnReg) btnReg.className = pkg === 'reguler' ? "px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200";
+    if (btnDed) btnDed.className = pkg === 'dedicated' ? "px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200";
+
+    filterBilling();
+}
+
 function filterBilling() {
     const searchVal = (document.getElementById('billing-search')?.value || '').toLowerCase().trim();
     const areaVal = document.getElementById('billing-filter-area')?.value || '';
@@ -1053,6 +1344,11 @@ function filterBilling() {
     // Filter by current active tab
     const sourceList = currentBillingStatus === 'unpaid' ? unpaidList : paidList;
 
+    const isDedicatedPkg = (c) => {
+        const pkg = (c.package_name || c.packageName || '').toLowerCase();
+        return pkg.includes('dedicated') || pkg.includes('1:1');
+    };
+
     const filtered = sourceList.filter(c => {
         const matchSearch = !searchVal || 
             (c.name && c.name.toLowerCase().includes(searchVal)) ||
@@ -1060,33 +1356,287 @@ function filterBilling() {
             (c.username && c.username.toLowerCase().includes(searchVal));
 
         const matchArea = !areaVal || c.area === areaVal;
-        return matchSearch && matchArea;
+
+        let matchPkg = true;
+        if (currentBillingPackageFilter === 'reguler') {
+            matchPkg = !isDedicatedPkg(c);
+        } else if (currentBillingPackageFilter === 'dedicated') {
+            matchPkg = isDedicatedPkg(c);
+        }
+
+        return matchSearch && matchArea && matchPkg;
     });
 
     renderBillingTable(filtered);
 }
 
+function renderBillingTable(list) {
+    const tbody = document.getElementById('billing-table-body');
+    if (!tbody) return;
+
+    const checkAll = document.getElementById('check-all-billing');
+    if (checkAll) checkAll.checked = false;
+    updateBulkSelectedCount();
+
+    if (!list || list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-12 text-center text-slate-500">Tidak ada data tagihan ditemukan.</td></tr>`;
+        return;
+    }
+
+    const selMonthVal = document.getElementById('billing-filter-month')?.value || (new Date().getMonth() + 1).toString();
+    const selYearVal = document.getElementById('billing-filter-year')?.value || new Date().getFullYear().toString();
+
+    tbody.innerHTML = list.map(c => {
+        const isPaid = isCustomerPaidForPeriod(c, selMonthVal, selYearVal);
+        const amount = getCustomerBillAmount(c);
+
+        let statusClass = "bg-rose-500/15 text-rose-400 border-rose-500/30";
+        let statusText = "BELUM BAYAR";
+
+        if (isPaid) {
+            statusClass = "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+            statusText = "LUNAS";
+        } else if ((c.status || '').toUpperCase().includes('ISOLIR')) {
+            statusClass = "bg-amber-500/15 text-amber-400 border-amber-500/30";
+            statusText = "ISOLIR";
+        }
+
+        const basePrice = parseMoney(c.price);
+        const add1 = parseMoney(c.add1 || c.additionalCost1 || c.additional_cost1);
+        const add2 = parseMoney(c.add2 || c.additionalCost2 || c.additional_cost2);
+        const disc = parseMoney(c.discount || c.diskon);
+
+        let breakdownStr = formatRupiah(amount);
+        if (add1 > 0 || add2 > 0 || disc > 0) {
+            breakdownStr += `<span class="text-[10px] text-slate-400 block">(Paket: ${formatRupiah(basePrice)}`;
+            if (add1 > 0) breakdownStr += ` + Tambahan: ${formatRupiah(add1)}`;
+            if (add2 > 0) breakdownStr += ` + Tambahan2: ${formatRupiah(add2)}`;
+            if (disc > 0) breakdownStr += ` - Diskon: ${formatRupiah(disc)}`;
+            breakdownStr += `)</span>`;
+        }
+
+        return `
+            <tr class="hover:bg-slate-800/40 transition duration-150">
+                <td class="px-4 py-3.5 text-center">
+                    ${!isPaid ? `<input type="checkbox" value="${c.id}" onchange="updateBulkSelectedCount()" class="cb-billing-item rounded bg-slate-900 border-slate-700 text-emerald-600 focus:ring-0">` : '-'}
+                </td>
+                <td class="px-4 py-3.5">
+                    <div class="flex flex-col">
+                        <span class="font-bold text-white text-sm cursor-pointer hover:text-emerald-400 transition" onclick="openCustomerDetailModal(${c.id})">${c.name}</span>
+                        <span class="text-xs text-slate-400">${c.phone ? 'WA: ' + c.phone : 'Secret: ' + (c.pppoeSecret || c.username || '-')}</span>
+                    </div>
+                </td>
+                <td class="px-4 py-3.5">
+                    <div class="flex flex-col">
+                        <span class="font-semibold text-slate-200 text-xs">${c.packageName || c.package_name || 'Paket Standar'}</span>
+                        <span class="text-sm font-bold text-emerald-400">${breakdownStr}</span>
+                    </div>
+                </td>
+                <td class="px-4 py-3.5">
+                    <div class="flex flex-col text-xs">
+                        <span class="font-semibold text-indigo-400">${c.area || '-'}</span>
+                        <span class="text-slate-400">Jatuh Tempo: Tgl ${c.billingDate || c.billing_date || '5'}</span>
+                    </div>
+                </td>
+                <td class="px-4 py-3.5 text-center">
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold border ${statusClass}">
+                        ${statusText}
+                    </span>
+                </td>
+                <td class="px-4 py-3.5 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                        ${!isPaid ? `
+                            <button onclick="openPayBillingModal(${c.id})" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1 shadow-sm">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i> Bayar
+                            </button>
+                            <button onclick="openWaTemplateModal(${c.id})" class="p-1.5 bg-slate-800 hover:bg-emerald-950/60 text-emerald-400 rounded-xl transition border border-slate-700" title="Kirim Tagihan WhatsApp">
+                                <i data-lucide="message-square" class="w-4 h-4"></i>
+                            </button>
+                            ${(c.status || '').toUpperCase().includes('ISOLIR') ? `
+                                <button onclick="toggleCustomerIsolir(${c.id}, true)" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-semibold rounded-xl transition border border-slate-700" title="Buka Isolir">
+                                    Buka Isolir
+                                </button>
+                            ` : `
+                                <button onclick="toggleCustomerIsolir(${c.id}, false)" class="p-1.5 bg-slate-800 hover:bg-rose-950/60 text-rose-400 rounded-xl transition border border-slate-700" title="Isolir Pelanggan">
+                                    <i data-lucide="lock" class="w-4 h-4"></i>
+                                </button>
+                            `}
+                        ` : `
+                            <button onclick="openInvoiceModal(${c.id})" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-bold rounded-xl transition flex items-center gap-1">
+                                <i data-lucide="receipt" class="w-3.5 h-3.5"></i> Invoice
+                            </button>
+                        `}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function openPayBillingModal(customerId) {
+    const c = customersList.find(cust => cust.id == customerId);
+    if (!c) return;
+
+    document.getElementById('pay-customer-id').value = c.id;
+    document.getElementById('pay-customer-name').innerText = c.name;
+
+    const amount = getCustomerBillAmount(c);
+    document.getElementById('pay-customer-amount').innerText = formatRupiah(amount);
+
+    const adminField = document.getElementById('pay-admin-name');
+    if (adminField) adminField.value = localStorage.getItem('username') || 'Admin';
+
+    openModal('modal-billing-pay');
+}
+
+async function submitPayBilling(e) {
+    e.preventDefault();
+    const customerId = document.getElementById('pay-customer-id').value;
+    const c = customersList.find(cust => cust.id == customerId);
+    if (!c) return;
+
+    const adminName = document.getElementById('pay-admin-name').value.trim() || localStorage.getItem('username') || 'Admin';
+    const method = document.getElementById('pay-method').value || 'Tunai / Cash';
+    const note = document.getElementById('pay-note').value.trim();
+
+    const monthIdx = (parseInt(document.getElementById('billing-filter-month')?.value) || (new Date().getMonth() + 1)) - 1;
+    const monthName = INDO_MONTHS[monthIdx] || INDO_MONTHS[new Date().getMonth()];
+    const yearVal = document.getElementById('billing-filter-year')?.value || new Date().getFullYear().toString();
+
+    const amount = getCustomerBillAmount(c);
+
+    showLoading(true, 'Memproses pembayaran tagihan...');
+    try {
+        const payload = {
+            customerId: customerId,
+            adminName: adminName,
+            months: [`${monthName} ${yearVal}`],
+            totalAmount: amount,
+            payment_method: method,
+            note: note
+        };
+
+        const res = await fetch(`${API_BASE_URL}/api/billing/pay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            showToast(`Pembayaran tagihan ${c.name} berhasil dicatat!`, 'success');
+            closeModal('modal-billing-pay');
+            await loadCustomersData();
+            await loadBillingData();
+            await loadKeuanganData();
+            await loadDashboardData();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Gagal memproses pembayaran tagihan.', 'error');
+        }
+    } catch (e) {
+        showToast('Koneksi server gagal.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function toggleSelectAllBilling(checked) {
+    document.querySelectorAll('.cb-billing-item').forEach(cb => {
+        cb.checked = checked;
+    });
+    updateBulkSelectedCount();
+}
+
+function updateBulkSelectedCount() {
+    const selected = document.querySelectorAll('.cb-billing-item:checked');
+    const countSpan = document.getElementById('bulk-selected-count');
+    const bulkBtn = document.getElementById('btn-bulk-pay');
+
+    if (countSpan) countSpan.innerText = selected.length;
+    if (bulkBtn) {
+        if (selected.length > 0) {
+            bulkBtn.classList.remove('hidden');
+            bulkBtn.classList.add('flex');
+        } else {
+            bulkBtn.classList.add('hidden');
+            bulkBtn.classList.remove('flex');
+        }
+    }
+}
+
+async function triggerBulkPay() {
+    const selectedCbs = Array.from(document.querySelectorAll('.cb-billing-item:checked'));
+    if (selectedCbs.length === 0) {
+        showToast('Pilih setidaknya satu pelanggan untuk bayar masal.', 'warning');
+        return;
+    }
+
+    if (!confirm(`Konfirmasi pembayaran masal untuk ${selectedCbs.length} pelanggan terpilih?`)) {
+        return;
+    }
+
+    showLoading(true, `Memproses pembayaran masal ${selectedCbs.length} pelanggan...`);
+    const adminName = localStorage.getItem('username') || 'Admin';
+    const monthIdx = (parseInt(document.getElementById('billing-filter-month')?.value) || (new Date().getMonth() + 1)) - 1;
+    const monthName = INDO_MONTHS[monthIdx] || INDO_MONTHS[new Date().getMonth()];
+    const yearVal = document.getElementById('billing-filter-year')?.value || new Date().getFullYear().toString();
+
+    let successCount = 0;
+    for (const cb of selectedCbs) {
+        const customerId = cb.value;
+        const c = customersList.find(cust => cust.id == customerId);
+        if (!c) continue;
+
+        const amount = getCustomerBillAmount(c);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/billing/pay`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customerId: customerId,
+                    adminName: adminName,
+                    months: [`${monthName} ${yearVal}`],
+                    totalAmount: amount,
+                    payment_method: 'Tunai / Cash'
+                })
+            });
+            if (res.ok) successCount++;
+        } catch (e) {
+            console.error(`Bulk pay failed for ${customerId}:`, e);
+        }
+    }
+
+    showLoading(false);
+    showToast(`Berhasil menyelesaikan pembayaran masal untuk ${successCount} dari ${selectedCbs.length} pelanggan!`, 'success');
+    await loadCustomersData();
+    await loadBillingData();
+    await loadKeuanganData();
+    await loadDashboardData();
+}
+
 function getCustomerBillAmount(c) {
     if (!c) return 0;
-    let base = parseFloat(String(c.price || '0').replace(/[^0-9.]/g, '')) || 0;
+    let base = parseMoney(c.price);
     const pkgName = c.packageName || c.package_name;
     if (!base && pkgName && typeof packagesList !== 'undefined' && packagesList.length > 0) {
-        const pkg = packagesList.find(p => p.name === pkgName);
-        if (pkg) base = parseFloat(String(pkg.price || '0').replace(/[^0-9.]/g, '')) || 0;
+        const pkg = packagesList.find(p => p.name === pkgName || (p.name && pkgName && p.name.toLowerCase().trim() === pkgName.toLowerCase().trim()));
+        if (pkg) base = parseMoney(pkg.price);
     }
-    const add1 = parseFloat(String(c.add1 || c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9.]/g, '')) || 0;
-    const add2 = parseFloat(String(c.add2 || c.additionalCost2 || c.additional_cost2 || '0').replace(/[^0-9.]/g, '')) || 0;
-    const disc = parseFloat(String(c.discount || c.diskon || '0').replace(/[^0-9.]/g, '')) || 0;
+    const add1 = parseMoney(c.add1 || c.additionalCost1 || c.additional_cost1);
+    const add2 = parseMoney(c.add2 || c.additionalCost2 || c.additional_cost2);
+    const disc = parseMoney(c.discount || c.diskon);
     
     let subtotal = Math.max(0, base + add1 + add2 - disc);
 
     let ppnRaw = c.ppn || c.PPN || c.taxRate || '0';
     let ppnVal = 0;
     if (String(ppnRaw).includes('%')) {
-        let rate = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+        let rate = parseMoney(ppnRaw);
         ppnVal = Math.round(subtotal * (rate / 100));
     } else {
-        let parsed = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+        let parsed = parseMoney(ppnRaw);
         if (parsed > 0 && parsed <= 100) {
             ppnVal = Math.round(subtotal * (parsed / 100));
         } else if (parsed > 100) {
@@ -1139,17 +1689,17 @@ function openInvoiceModal(customerId) {
     document.getElementById('inv-period').innerText = `${curMonthName} ${curYear}`;
     document.getElementById('inv-due-date').innerText = `Tgl ${c.billingDate || '5'} ${curMonthName} ${curYear}`;
 
-    let base = parseFloat(String(c.price || '0').replace(/[^0-9.]/g, '')) || 0;
+    let base = parseMoney(c.price);
     const pkgName = c.packageName || c.package_name;
     if (!base && pkgName && typeof packagesList !== 'undefined' && packagesList.length > 0) {
-        const pkg = packagesList.find(p => p.name === pkgName);
-        if (pkg) base = parseFloat(String(pkg.price || '0').replace(/[^0-9.]/g, '')) || 0;
+        const pkg = packagesList.find(p => p.name === pkgName || (p.name && pkgName && p.name.toLowerCase().trim() === pkgName.toLowerCase().trim()));
+        if (pkg) base = parseMoney(pkg.price);
     }
 
     document.getElementById('inv-pkg-name').innerText = `Paket Internet: ${pkgName || 'Standar'}`;
     document.getElementById('inv-pkg-price').innerText = formatRupiah(base);
 
-    const add1Val = parseFloat(String(c.add1 || c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9.]/g, '')) || 0;
+    const add1Val = parseMoney(c.add1 || c.additionalCost1 || c.additional_cost1);
     const add1Row = document.getElementById('inv-row-add1');
     if (add1Row) {
         if (add1Val > 0) {
@@ -1163,7 +1713,7 @@ function openInvoiceModal(customerId) {
         }
     }
 
-    const add2Val = parseFloat(String(c.add2 || c.additionalCost2 || c.additional_cost2 || '0').replace(/[^0-9.]/g, '')) || 0;
+    const add2Val = parseMoney(c.add2 || c.additionalCost2 || c.additional_cost2);
     const add2Row = document.getElementById('inv-row-add2');
     if (add2Row) {
         if (add2Val > 0) {
@@ -1177,7 +1727,7 @@ function openInvoiceModal(customerId) {
         }
     }
 
-    const discVal = parseFloat(String(c.discount || c.diskon || '0').replace(/[^0-9.]/g, '')) || 0;
+    const discVal = parseMoney(c.discount || c.diskon);
     const discRow = document.getElementById('inv-row-disc');
     if (discRow) {
         if (discVal > 0) {
@@ -1195,10 +1745,10 @@ function openInvoiceModal(customerId) {
         let ppnRaw = c.ppn || c.PPN || c.taxRate || '0';
         let ppnCalculated = 0;
         if (String(ppnRaw).includes('%')) {
-            let rate = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+            let rate = parseMoney(ppnRaw);
             ppnCalculated = Math.round(subtotal * (rate / 100));
         } else {
-            let parsed = parseFloat(String(ppnRaw).replace(/[^0-9.]/g, '')) || 0;
+            let parsed = parseMoney(ppnRaw);
             if (parsed > 0 && parsed <= 100) {
                 ppnCalculated = Math.round(subtotal * (parsed / 100));
             } else if (parsed > 100) {
@@ -1307,8 +1857,23 @@ function renderCustomersTable() {
                     </div>
                 </td>
                 <td class="px-6 py-4">
-                    <span class="text-xs font-semibold text-emerald-400">${c.packageName || c.package_name || '-'}</span>
-                    <p class="text-slate-300 text-xs mt-0.5">${formatRupiah(getCustomerBillAmount(c))}</p>
+                    ${(() => {
+                        let basePrice = parseMoney(c.price);
+                        const pkgName = c.packageName || c.package_name || '-';
+                        if (!basePrice && pkgName && pkgName !== '-' && typeof packagesList !== 'undefined' && packagesList.length > 0) {
+                            const pkg = packagesList.find(p => p.name === pkgName || (p.name && p.name.toLowerCase().trim() === pkgName.toLowerCase().trim()));
+                            if (pkg) basePrice = parseMoney(pkg.price);
+                        }
+                        const totalBill = getCustomerBillAmount(c);
+                        let priceDisplay = formatRupiah(totalBill);
+                        if (basePrice > 0 && basePrice !== totalBill) {
+                            priceDisplay += `<span class="text-[10px] text-slate-400 block">(Paket: ${formatRupiah(basePrice)})</span>`;
+                        }
+                        return `
+                            <span class="text-xs font-semibold text-emerald-400">${pkgName}</span>
+                            <div class="text-slate-300 text-xs mt-0.5">${priceDisplay}</div>
+                        `;
+                    })()}
                 </td>
                 <td class="px-6 py-4 text-xs">
                     <p class="text-slate-300">${c.area || 'Semua Area'}</p>
@@ -1557,34 +2122,210 @@ async function openCustomerHistoryModal(id) {
     }
 }
 
-function sendWhatsAppInvoice(id) {
-    const c = customersList.find(cust => cust.id == id);
-    if (!c || !c.phone) {
-        showToast('Nomor telepon pelanggan tidak tersedia.', 'warning');
+function getWaTemplates() {
+    try {
+        const saved = localStorage.getItem("wa_custom_templates_list");
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+    } catch (e) {}
+    return [
+        {
+            id: "tpl_tagihan_bulanan",
+            title: "Tagihan Bulanan",
+            content: "Halo *{nama}*,\n\nBerikut adalah rincian tagihan internet Anda periode *{periode}*:\n- Nama: {nama}\n- No HP: {telepon}\n- Area: {area}\n- Paket: {paket}\n- Total Tagihan: {tagihan}\n- Status: BELUM BAYAR\n\nMohon segera melakukan pembayaran. Terima kasih."
+        },
+        {
+            id: "tpl_pengingat_jatuh_tempo",
+            title: "Pengingat Jatuh Tempo",
+            content: "Halo *{nama}*,\n\nMengingatkan kembali bahwa tagihan internet AKBAR MEDIA Anda periode *{periode}* sebesar {tagihan} mendekati/telah jatuh tempo ({jatuh_tempo}). Mohon segera melakukan pembayaran agar koneksi internet tetap lancar. Terima kasih."
+        },
+        {
+            id: "tpl_pemberitahuan_isolir",
+            title: "Pemberitahuan Isolir",
+            content: "Halo *{nama}*,\n\nInformasi: Layanan internet Anda saat ini sedang dinonaktifkan (TERISOLIR) karena tagihan periode *{periode}* sebesar {tagihan} belum dibayar. Segera lakukan pembayaran agar akses internet otomatis diaktifkan kembali. Terima kasih."
+        },
+        {
+            id: "tpl_bukti_lunas",
+            title: "Bukti Pembayaran Lunas",
+            content: "Halo *{nama}*,\n\nTerima kasih, pembayaran tagihan internet AKBAR MEDIA periode *{periode}* sejumlah {tagihan} telah kami terima dan dinyatakan LUNAS.\n\nSalam,\nAKBAR MEDIA"
+        }
+    ];
+}
+
+function saveWaTemplatesToStorage(templatesList) {
+    try {
+        localStorage.setItem("wa_custom_templates_list", JSON.stringify(templatesList));
+    } catch (e) {}
+    loadWaTemplates();
+}
+
+function loadWaTemplates() {
+    const container = document.getElementById('wa-templates-list-container');
+    if (!container) return;
+
+    const list = getWaTemplates();
+    if (list.length === 0) {
+        container.innerHTML = `<p class="text-slate-500 text-xs py-2">Belum ada template custom.</p>`;
         return;
     }
 
-    const template = localStorage.getItem('wa_template') || 
-`Yth. Pelanggan {nama},
-Kami informasikan tagihan internet Anda:
-- Paket: {paket}
-- Total Tagihan: {nominal}
-- Jatuh Tempo: Tgl {tanggal} setiap bulannya.
+    container.innerHTML = list.map((item) => `
+        <div class="bg-slate-950 border border-slate-800 p-2.5 rounded-xl flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-emerald-400 truncate">${item.title}</p>
+                <p class="text-[11px] text-slate-300 font-mono mt-0.5 line-clamp-2">${item.content}</p>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+                <button type="button" onclick="editWaTemplateItem('${item.id}')" class="p-1.5 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition" title="Edit">
+                    <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                </button>
+                <button type="button" onclick="deleteWaTemplateItem('${item.id}')" class="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition" title="Hapus">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
 
-Mohon untuk melakukan pembayaran tepat waktu guna menjaga kelancaran koneksi internet. Terima kasih atas kerjasamanya.`;
+    if (window.lucide) lucide.createIcons();
+}
 
-    const billAmt = formatRupiah(getCustomerBillAmount(c));
-    const msg = template
-        .replace('{nama}', c.name || '')
-        .replace('{paket}', c.packageName || 'Internet')
-        .replace('{nominal}', billAmt)
-        .replace('{tanggal}', c.billingDate || '5')
-        .replace('{bulan}', document.getElementById('billing-filter-month')?.selectedOptions[0]?.text || 'Bulan Ini');
+function openAddWaTemplateModal() {
+    document.getElementById('modal-tpl-title-heading').innerText = "Tambah Template WA Baru";
+    document.getElementById('tpl-edit-id').value = "";
+    document.getElementById('tpl-edit-title').value = "";
+    document.getElementById('tpl-edit-content').value = "";
+    openModal('modal-edit-wa-template');
+}
 
-    const cleanPhone = c.phone.replace(/[^0-9]/g, '');
-    const formattedPhone = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone;
-    const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+function editWaTemplateItem(id) {
+    const list = getWaTemplates();
+    const item = list.find(t => t.id === id);
+    if (!item) return;
+
+    document.getElementById('modal-tpl-title-heading').innerText = "Edit Template WA";
+    document.getElementById('tpl-edit-id').value = item.id;
+    document.getElementById('tpl-edit-title').value = item.title;
+    document.getElementById('tpl-edit-content').value = item.content;
+    openModal('modal-edit-wa-template');
+}
+
+function deleteWaTemplateItem(id) {
+    if (!confirm('Apakah Anda yakin ingin menghapus template pesan WA ini?')) return;
+    const list = getWaTemplates().filter(t => t.id !== id);
+    saveWaTemplatesToStorage(list);
+    showToast('Template berhasil dihapus', 'success');
+}
+
+function saveWaTemplateItem(e) {
+    if (e) e.preventDefault();
+    const id = document.getElementById('tpl-edit-id')?.value;
+    const title = document.getElementById('tpl-edit-title')?.value.trim();
+    const content = document.getElementById('tpl-edit-content')?.value.trim();
+
+    if (!title || !content) {
+        showToast('Judul dan isi template tidak boleh kosong', 'error');
+        return;
+    }
+
+    let list = getWaTemplates();
+    if (id) {
+        list = list.map(t => t.id === id ? { ...t, title, content } : t);
+    } else {
+        list.push({
+            id: 'tpl_' + Date.now(),
+            title,
+            content
+        });
+    }
+
+    saveWaTemplatesToStorage(list);
+    closeModal('modal-edit-wa-template');
+    showToast('Template berhasil disimpan', 'success');
+}
+
+let selectedWaCust = null;
+
+function openWaTemplateModal(customerId) {
+    const cust = customersList.find(c => c.id == customerId);
+    if (!cust) return;
+
+    selectedWaCust = cust;
+    document.getElementById('wa-modal-cust-name').innerText = cust.name;
+    document.getElementById('wa-modal-cust-id').value = cust.id;
+
+    const templates = getWaTemplates();
+    const choicesContainer = document.getElementById('wa-modal-template-choices');
+
+    if (choicesContainer) {
+        choicesContainer.innerHTML = templates.map((tpl, idx) => `
+            <label class="flex items-center justify-between p-3 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-xl cursor-pointer transition">
+                <div class="flex items-center gap-2.5">
+                    <input type="radio" name="wa_template_choice" value="${tpl.id}" ${idx === 0 ? 'checked' : ''} onchange="renderWaModalPreview('${tpl.id}')" class="text-emerald-500 focus:ring-0">
+                    <span class="text-xs font-bold text-slate-200">${tpl.title}</span>
+                </div>
+            </label>
+        `).join('');
+    }
+
+    if (templates.length > 0) {
+        renderWaModalPreview(templates[0].id);
+    }
+
+    openModal('modal-select-wa-template');
+}
+
+function renderWaModalPreview(templateId) {
+    if (!selectedWaCust) return;
+    const templates = getWaTemplates();
+    const tpl = templates.find(t => t.id === templateId) || templates[0];
+    if (!tpl) return;
+
+    const monthNames = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const monthVal = document.getElementById('billing-filter-month')?.value || (new Date().getMonth() + 1).toString();
+    const yearVal = document.getElementById('billing-filter-year')?.value || new Date().getFullYear().toString();
+    const periodStr = `${monthNames[parseInt(monthVal)] || ''} ${yearVal}`.trim();
+
+    const amt = getCustomerBillAmount(selectedWaCust);
+
+    let text = tpl.content || "";
+    text = text.replace(/{nama}/g, selectedWaCust.name || "-")
+               .replace(/{telepon}/g, selectedWaCust.phone || "-")
+               .replace(/{area}/g, selectedWaCust.area || "-")
+               .replace(/{paket}/g, selectedWaCust.package_name || selectedWaCust.packageName || "-")
+               .replace(/{tagihan}/g, formatRupiah(amt))
+               .replace(/{nominal}/g, formatRupiah(amt))
+               .replace(/{bulan}/g, periodStr)
+               .replace(/{periode}/g, periodStr)
+               .replace(/{jatuh_tempo}/g, selectedWaCust.billingDate || `20 ${periodStr}`)
+               .replace(/{link_invoice}/g, "");
+
+    const previewEl = document.getElementById('wa-modal-preview-text');
+    if (previewEl) previewEl.value = text;
+}
+
+function sendWaFromModal() {
+    if (!selectedWaCust) return;
+    const phone = selectedWaCust.phone || "";
+    if (!phone) {
+        showToast('Nomor telepon pelanggan tidak tersedia', 'error');
+        return;
+    }
+
+    let cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.startsWith('0')) {
+        cleanPhone = '62' + cleanPhone.substring(1);
+    }
+
+    const message = document.getElementById('wa-modal-preview-text')?.value || "";
+    const encoded = encodeURIComponent(message);
+    window.open(`https://wa.me/${cleanPhone}?text=${encoded}`, '_blank');
+    closeModal('modal-select-wa-template');
+}
+
+function sendWhatsAppInvoice(id) {
+    openWaTemplateModal(id);
 }
 
 function openAddCustomerModal() {
@@ -1592,6 +2333,15 @@ function openAddCustomerModal() {
     document.getElementById('form-customer').reset();
     document.getElementById('cust-id').value = '';
     document.getElementById('cust-username').readOnly = false;
+
+    document.getElementById('cust-price').value = '';
+    document.getElementById('cust-additionalCost1').value = '0';
+    document.getElementById('cust-additionalCostDesc1').value = '';
+    document.getElementById('cust-additionalCost2').value = '0';
+    document.getElementById('cust-additionalCostDesc2').value = '';
+    document.getElementById('cust-discount').value = '0';
+    document.getElementById('cust-ppn').value = '0';
+
     openModal('modal-customer');
 }
 
@@ -1608,11 +2358,19 @@ async function editCustomer(id) {
     document.getElementById('cust-username').value = c.username || '';
     document.getElementById('cust-username').readOnly = true;
     document.getElementById('cust-password').value = '';
-    document.getElementById('cust-packageName').value = c.packageName || '';
+    document.getElementById('cust-packageName').value = c.packageName || c.package_name || '';
     document.getElementById('cust-odpId').value = c.odpId || '';
     document.getElementById('cust-odpPort').value = c.odpPort || '';
     document.getElementById('cust-billingDate').value = c.billingDate || 5;
     document.getElementById('cust-status').value = c.status || 'LUNAS';
+
+    document.getElementById('cust-price').value = c.price || '';
+    document.getElementById('cust-additionalCost1').value = c.additionalCost1 || c.additional_cost1 || '0';
+    document.getElementById('cust-additionalCostDesc1').value = c.additionalCostDesc1 || c.additional_cost_desc1 || '';
+    document.getElementById('cust-additionalCost2').value = c.additionalCost2 || c.additional_cost2 || '0';
+    document.getElementById('cust-additionalCostDesc2').value = c.additionalCostDesc2 || c.additional_cost_desc2 || '';
+    document.getElementById('cust-discount').value = c.discount || c.diskon || '0';
+    document.getElementById('cust-ppn').value = c.ppn || c.PPN || '0';
 
     openModal('modal-customer');
 }
@@ -1620,6 +2378,14 @@ async function editCustomer(id) {
 async function saveCustomer(e) {
     e.preventDefault();
     const id = document.getElementById('cust-id').value;
+    const add1 = document.getElementById('cust-additionalCost1').value.trim() || '0';
+    const desc1 = document.getElementById('cust-additionalCostDesc1').value.trim();
+    const add2 = document.getElementById('cust-additionalCost2').value.trim() || '0';
+    const desc2 = document.getElementById('cust-additionalCostDesc2').value.trim();
+    const disc = document.getElementById('cust-discount').value.trim() || '0';
+    const ppnVal = document.getElementById('cust-ppn').value.trim() || '0';
+    const customPrice = document.getElementById('cust-price').value.trim();
+
     const payload = {
         name: document.getElementById('cust-name').value.trim(),
         phone: document.getElementById('cust-phone').value.trim(),
@@ -1627,6 +2393,18 @@ async function saveCustomer(e) {
         address: document.getElementById('cust-address').value.trim(),
         username: document.getElementById('cust-username').value.trim(),
         packageName: document.getElementById('cust-packageName').value,
+        price: customPrice || null,
+        additionalCost1: add1,
+        additional_cost1: add1,
+        additionalCostDesc1: desc1,
+        additional_cost_desc1: desc1,
+        additionalCost2: add2,
+        additional_cost2: add2,
+        additionalCostDesc2: desc2,
+        additional_cost_desc2: desc2,
+        discount: disc,
+        diskon: disc,
+        ppn: ppnVal,
         odpId: document.getElementById('cust-odpId').value || null,
         odpPort: document.getElementById('cust-odpPort').value || null,
         billingDate: Number(document.getElementById('cust-billingDate').value) || 5,
@@ -2492,6 +3270,23 @@ function openFinanceDialog(type, editItem = null) {
         if (adminField) adminField.value = localStorage.getItem('username') || 'Admin';
     }
 
+    const createdAtInput = document.getElementById('fin-created-at');
+    if (createdAtInput) {
+        if (editItem && editItem.created_at) {
+            const d = new Date(String(editItem.created_at).replace(' ', 'T'));
+            if (!isNaN(d.getTime())) {
+                const pad = (n) => String(n).padStart(2, '0');
+                createdAtInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            } else {
+                createdAtInput.value = String(editItem.created_at).slice(0, 16).replace(' ', 'T');
+            }
+        } else {
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            createdAtInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+    }
+
     openModal('modal-keuangan-trans');
 }
 
@@ -2560,6 +3355,22 @@ async function saveFinanceTransaction(e) {
             }
         }
 
+        const rawCreatedAt = document.getElementById('fin-created-at')?.value;
+        let formattedCreatedAt = '';
+        if (rawCreatedAt) {
+            const dtParts = rawCreatedAt.split('T');
+            if (dtParts.length === 2) {
+                const timePart = dtParts[1].length === 5 ? `${dtParts[1]}:00` : dtParts[1];
+                formattedCreatedAt = `${dtParts[0]} ${timePart}`;
+            } else {
+                formattedCreatedAt = rawCreatedAt;
+            }
+        } else {
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            formattedCreatedAt = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+
         const payload = {
             type: type,
             description: document.getElementById('fin-desc').value.trim(),
@@ -2568,7 +3379,7 @@ async function saveFinanceTransaction(e) {
             admin: adminName,
             amount: amount,
             image_url: imageUrl || '',
-            created_at: new Date().toISOString()
+            created_at: formattedCreatedAt
         };
 
         const targetUrl = editId ? `${API_BASE_URL}/api/pembukuan/${editId}` : `${API_BASE_URL}/api/pembukuan`;
@@ -4279,10 +5090,20 @@ async function testAcsCredentialsFromWeb() {
 }
 
 function populatePackagesDropdowns() {
-    const options = packagesList.map(p => `<option value="${p.name}">${p.name} - ${formatRupiah(p.price || 0)}</option>`).join('');
+    const options = '<option value="">Pilih Paket Layanan</option>' + packagesList.map(p => `<option value="${p.name}">${p.name} - ${formatRupiah(p.price || 0)}</option>`).join('');
     
     const custPkg = document.getElementById('cust-packageName');
-    if (custPkg) custPkg.innerHTML = options;
+    if (custPkg) {
+        custPkg.innerHTML = options;
+        custPkg.onchange = (e) => {
+            const pkgName = e.target.value;
+            const foundPkg = packagesList.find(p => p.name === pkgName);
+            if (foundPkg) {
+                const priceInput = document.getElementById('cust-price');
+                if (priceInput) priceInput.value = foundPkg.price || '0';
+            }
+        };
+    }
 
     const filterPkg = document.getElementById('cust-filter-paket');
     if (filterPkg) filterPkg.innerHTML = '<option value="">Semua Paket</option>' + packagesList.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
@@ -4324,8 +5145,28 @@ function closeModal(id) {
     }
 }
 
+function parseMoney(raw) {
+    if (!raw) return 0;
+    let s = String(raw).trim();
+    if (!s) return 0;
+    
+    // strip currency prefixes
+    s = s.replace(/Rp\.?/gi, '').replace(/IDR/gi, '').trim();
+    // strip trailing decimal cents like ",00" or ",-"
+    s = s.replace(/,[0-9]{1,2}$/, '').replace(/,-/, '').trim();
+    
+    // if string is purely dollars/cents like "100.00" or "100.50" (2 decimal places)
+    if (/^[0-9]+\.[0-9]{1,2}$/.test(s)) {
+        s = s.split('.')[0];
+    }
+    
+    // remove all non-digits (dots, spaces, hyphens, etc.)
+    const digits = s.replace(/[^0-9]/g, '');
+    return parseInt(digits, 10) || 0;
+}
+
 function formatRupiah(number) {
-    const n = Number(number) || 0;
+    const n = typeof number === 'number' ? number : parseMoney(number);
     return 'Rp ' + n.toLocaleString('id-ID');
 }
 
@@ -5106,10 +5947,10 @@ function exportCustomersToExcel() {
     showLoading(true, 'Menyiapkan berkas backup Excel (.xls)...');
     try {
         const rows = customersList.map(c => {
-            const priceVal = parseFloat(String(c.price || '0').replace(/[^0-9]/g, '')) || 0;
-            const discVal = parseFloat(String(c.discount || '0').replace(/[^0-9]/g, '')) || 0;
-            const add1Val = parseFloat(String(c.additionalCost1 || c.additional_cost1 || '0').replace(/[^0-9]/g, '')) || 0;
-            const add2Val = parseFloat(String(c.additionalCost2 || c.additional_cost2 || '0').replace(/[^0-9]/g, '')) || 0;
+            const priceVal = parseMoney(c.price);
+            const discVal = parseMoney(c.discount || c.diskon);
+            const add1Val = parseMoney(c.additionalCost1 || c.additional_cost1);
+            const add2Val = parseMoney(c.additionalCost2 || c.additional_cost2);
             const totalBayar = Math.max(0, priceVal - discVal + add1Val + add2Val);
 
             return {

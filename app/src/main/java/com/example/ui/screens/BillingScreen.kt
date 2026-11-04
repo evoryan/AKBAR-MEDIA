@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Warning
 
@@ -452,6 +454,12 @@ fun BillingScreen(
     var showBulkConfirmDialog by remember { mutableStateOf(false) }
     var isProcessingBulkPay by remember { mutableStateOf(false) }
     var bulkProgressText by remember { mutableStateOf("") }
+    
+    var selectedPackageFilter by remember { mutableStateOf("Semua") }
+    var showWaTemplateDialog by remember { mutableStateOf(false) }
+    var customerForWaDialog by remember { mutableStateOf<Customer?>(null) }
+    var selectedWaTemplate by remember { mutableStateOf<com.example.ui.data.WaTemplateItem?>(null) }
+
     val coroutineScope = rememberCoroutineScope()
     
     fun fetchCustomers() {
@@ -529,12 +537,22 @@ fun BillingScreen(
     val filteredByArea = if (selectedArea == "Semua") customers else customers.filter { it.area == selectedArea }
     val filteredBySearch = if (searchQuery.isBlank()) filteredByArea else filteredByArea.filter { it.name.contains(searchQuery, ignoreCase = true) || it.username.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery, ignoreCase = true) }
     
-    val unpaidCustomers = filteredBySearch.filter { customer ->
+    val isDedicatedPkg = { c: Customer ->
+        c.packageName?.contains("dedicated", ignoreCase = true) == true || c.packageName?.contains("1:1") == true
+    }
+
+    val filteredByPackage = when (selectedPackageFilter) {
+        "Reguler" -> filteredBySearch.filter { !isDedicatedPkg(it) }
+        "Dedicated" -> filteredBySearch.filter { isDedicatedPkg(it) }
+        else -> filteredBySearch
+    }
+
+    val unpaidCustomers = filteredByPackage.filter { customer ->
         val isPaid = isCustomerPaidForMonth(customer, selectedMonth, selectedYear, localTagihanList, months)
         val hasObligation = isRegisteredBeforeOrInMonth(customer, selectedMonth, selectedYear, months)
         !isPaid && hasObligation
     }
-    val paidCustomers = filteredBySearch.filter { customer ->
+    val paidCustomers = filteredByPackage.filter { customer ->
         isCustomerPaidForMonth(customer, selectedMonth, selectedYear, localTagihanList, months)
     }
     
@@ -822,6 +840,150 @@ fun BillingScreen(
         )
     }
 
+    if (showWaTemplateDialog && customerForWaDialog != null) {
+        val availableTemplates = remember { com.example.ui.data.SettingsManager.getWaTemplates() }
+        var currentSelectedTemplate by remember { mutableStateOf(selectedWaTemplate ?: availableTemplates.firstOrNull()) }
+        val periodStr = "$selectedMonth $selectedYear"
+        val activeCustomer = customerForWaDialog!!
+
+        val renderedMessage = remember(currentSelectedTemplate, activeCustomer, periodStr) {
+            val raw = currentSelectedTemplate?.content ?: ""
+            raw.replace("{nama}", activeCustomer.name)
+                .replace("{telepon}", activeCustomer.phone)
+                .replace("{area}", activeCustomer.area)
+                .replace("{paket}", activeCustomer.packageName ?: "-")
+                .replace("{tagihan}", activeCustomer.getFormattedTotalBill())
+                .replace("{nominal}", activeCustomer.getFormattedTotalBill())
+                .replace("{bulan}", periodStr)
+                .replace("{periode}", periodStr)
+                .replace("{jatuh_tempo}", if (!activeCustomer.billingDate.isNullOrBlank()) activeCustomer.billingDate else "20 $periodStr")
+                .replace("{link_invoice}", "")
+        }
+
+        AlertDialog(
+            onDismissRequest = {
+                showWaTemplateDialog = false
+                customerForWaDialog = null
+            },
+            containerColor = cardBg,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Chat, contentDescription = null, tint = neonCyan)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Pilih Template Pesan WA", color = textMain, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Pilih template pesan untuk ${activeCustomer.name}:",
+                        color = textSecondary,
+                        fontSize = 12.sp
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        availableTemplates.forEach { tpl ->
+                            val isSelected = currentSelectedTemplate?.id == tpl.id
+                            Surface(
+                                onClick = { currentSelectedTemplate = tpl },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) neonCyan.copy(alpha = 0.2f) else cardBg,
+                                border = BorderStroke(1.dp, if (isSelected) neonCyan else cardBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(tpl.title, color = if (isSelected) neonCyan else textMain, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    if (isSelected) {
+                                        Icon(Icons.Default.DoneAll, contentDescription = null, tint = neonCyan, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = cardBorder)
+
+                    Text("Pratinjau Pesan WA:", color = textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Surface(
+                        color = bgMain,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, cardBorder),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)
+                    ) {
+                        LazyColumn(modifier = Modifier.padding(8.dp)) {
+                            item {
+                                Text(renderedMessage, color = textMain, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val formattedPhone = formatPhoneForWhatsapp(activeCustomer.phone)
+                        val isCustomerIsolir = activeCustomer.status.contains("ISOL", ignoreCase = true) ||
+                                               activeCustomer.status.contains("NONAKTIF", ignoreCase = true)
+                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            try {
+                                val isDedicatedPkg = activeCustomer.packageName?.contains("dedicated", ignoreCase = true) == true || activeCustomer.packageName?.contains("1:1") == true
+                                val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
+                                    context = context,
+                                    customerName = activeCustomer.name,
+                                    customerPhone = activeCustomer.phone,
+                                    customerArea = activeCustomer.area,
+                                    packageName = activeCustomer.packageName,
+                                    months = periodStr,
+                                    totalAmount = activeCustomer.getFormattedTotalBill(),
+                                    status = if (isCustomerIsolir) "TERISOLIR" else "BELUM BAYAR",
+                                    isDedicated = isDedicatedPkg,
+                                    serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
+                                    packagePrice = activeCustomer.price,
+                                    additionalCost1 = activeCustomer.additionalCost1,
+                                    additionalCostDesc1 = activeCustomer.getEffectiveCostDesc1() ?: activeCustomer.additionalCostDesc1,
+                                    additionalCost2 = activeCustomer.additionalCost2,
+                                    additionalCostDesc2 = activeCustomer.getEffectiveCostDesc2() ?: activeCustomer.additionalCostDesc2,
+                                    discount = activeCustomer.discount
+                                )
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(
+                                        context = context,
+                                        phone = formattedPhone,
+                                        message = renderedMessage,
+                                        pngFile = pngFile
+                                    )
+                                    showWaTemplateDialog = false
+                                    customerForWaDialog = null
+                                }
+                            } catch (e: Exception) {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    Toast.makeText(context, "Gagal menyiapkan invoice: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan, contentColor = Color.Black)
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Kirim WA Sekarang", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showWaTemplateDialog = false
+                    customerForWaDialog = null
+                }) {
+                    Text("Batal", color = textSecondary)
+                }
+            }
+        )
+    }
+
     Scaffold(
         containerColor = bgMain,
         topBar = {
@@ -1092,6 +1254,38 @@ fun BillingScreen(
                 }
             }
 
+            // Package Filter Chips (Semua, Reguler, Dedicated)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Paket:", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                val pkgTabs = listOf("Semua", "Reguler", "Dedicated")
+                pkgTabs.forEach { pkgFilter ->
+                    val isSelected = selectedPackageFilter == pkgFilter
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedPackageFilter = pkgFilter },
+                        label = { Text(pkgFilter, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = neonCyan,
+                            selectedLabelColor = Color.Black,
+                            containerColor = cardBg,
+                            labelColor = textMain
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = isSelected,
+                            borderColor = cardBorder,
+                            selectedBorderColor = neonCyan
+                        )
+                    )
+                }
+            }
+
             // Filter and Search Row
             var expanded by remember { mutableStateOf(false) }
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1334,64 +1528,10 @@ fun BillingScreen(
                                     }
                                 },
                                 onWaClick = {
-                                    val formattedPhone = formatPhoneForWhatsapp(customer.phone)
-                                    val currencyFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID"))
-                                    val add1 = customer.getAdditionalCost1Amount()
-                                    val add2 = customer.getAdditionalCost2Amount()
-                                    val add1Text = if (add1 > 0) "- Biaya Tambahan 1: Rp ${currencyFmt.format(add1)}" + (if (!customer.additionalCostDesc1.isNullOrBlank()) " (${customer.additionalCostDesc1})" else "") + "\n" else ""
-                                    val add2Text = if (add2 > 0) "- Biaya Tambahan 2: Rp ${currencyFmt.format(add2)}" + (if (!customer.additionalCostDesc2.isNullOrBlank()) " (${customer.additionalCostDesc2})" else "") + "\n" else ""
-                                    val statusWaText = if (isCustomerIsolir) "*TERISOLIR (BELUM BAYAR)*" else "*BELUM BAYAR*"
-                                    val isolirWaAlert = if (isCustomerIsolir) "\n\n*Pemberitahuan: Layanan internet Anda saat ini sedang dinonaktifkan (TERISOLIR). Segera lakukan pembayaran agar akses internet otomatis diaktifkan kembali.*" else ""
-
-                                    val message = """
-                                        Halo *${customer.name}*,
-
-                                        Berikut adalah rincian tagihan internet Anda periode *$selectedMonth $selectedYear*:
-                                        - Nama: ${customer.name}
-                                        - No HP: ${customer.phone}
-                                        - Area: ${customer.area}
-                                        - Paket: ${customer.packageName ?: "-"} (${customer.price})
-                                        $add1Text$add2Text- Total Tagihan: ${customer.getFormattedTotalBill()}
-                                        - Status: $statusWaText$isolirWaAlert
-
-                                        Mohon segera melakukan pembayaran. Terima kasih.
-                                    """.trimIndent()
-
-                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                        try {
-                                            val isDedicatedPkg = customer.packageName?.contains("dedicated", ignoreCase = true) == true || customer.packageName?.contains("1:1") == true
-                                            val pngFile = com.example.ui.util.InvoiceGenerator.generateInvoicePngFile(
-                                                context = context,
-                                                customerName = customer.name,
-                                                customerPhone = customer.phone,
-                                                customerArea = customer.area,
-                                                packageName = customer.packageName,
-                                                months = "$selectedMonth $selectedYear",
-                                                totalAmount = customer.getFormattedTotalBill(),
-                                                status = "BELUM BAYAR",
-                                                isDedicated = isDedicatedPkg,
-                                                serviceType = if (isDedicatedPkg) "Dedicated" else "Reguler",
-                                                packagePrice = customer.price,
-                                                additionalCost1 = customer.additionalCost1,
-                                                additionalCostDesc1 = customer.getEffectiveCostDesc1() ?: customer.additionalCostDesc1,
-                                                additionalCost2 = customer.additionalCost2,
-                                                additionalCostDesc2 = customer.getEffectiveCostDesc2() ?: customer.additionalCostDesc2,
-                                                discount = customer.discount
-                                            )
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                com.example.ui.util.InvoiceGenerator.sendWhatsappInvoiceWithPng(
-                                                    context = context,
-                                                    phone = formattedPhone,
-                                                    message = message,
-                                                    pngFile = pngFile
-                                                )
-                                            }
-                                        } catch (e: Exception) {
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                android.widget.Toast.makeText(context, "Gagal menyiapkan invoice: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
+                                    customerForWaDialog = customer
+                                    val templates = com.example.ui.data.SettingsManager.getWaTemplates()
+                                    selectedWaTemplate = templates.firstOrNull()
+                                    showWaTemplateDialog = true
                                 }
                             )
                         }

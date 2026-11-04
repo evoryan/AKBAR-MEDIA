@@ -131,11 +131,146 @@ object UserSession {
             apply()
         }
         
+        saveAccountToMultiList(context, user)
+
         // Isolasi notifikasi pembayaran secara ketat per database tenant
         updateTenantNotificationSubscription(context, user.db_name)
         // Sinkronkan isolasi info tenant per database
         SettingsManager.reloadTenantInfosForActiveDatabase(user.db_name)
         SettingsManager.syncSettingsFromRemote(context)
+    }
+
+    fun getSavedAccounts(context: Context): List<AdminUser> {
+        val prefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+        val json = prefs.getString("saved_multi_accounts_json", null) ?: return emptyList()
+        return try {
+            val array = org.json.JSONArray(json)
+            val list = mutableListOf<AdminUser>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val roleStr = obj.optString("role", "ADMIN")
+                val role = try { UserRole.valueOf(roleStr) } catch (_: Exception) { UserRole.ADMIN }
+                list.add(
+                    AdminUser(
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        username = obj.optString("username"),
+                        role = role,
+                        token = obj.optString("token"),
+                        db_name = obj.optString("db_name"),
+                        area_id = obj.optString("area_id"),
+                        avatar_url = obj.optString("avatar_url")
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveAccountToMultiList(context: Context, user: AdminUser) {
+        val currentList = getSavedAccounts(context).toMutableList()
+        currentList.removeAll { it.username.equals(user.username, ignoreCase = true) && (it.db_name == user.db_name || it.id == user.id) }
+        currentList.add(0, user)
+        val array = org.json.JSONArray()
+        for (u in currentList) {
+            val obj = org.json.JSONObject().apply {
+                put("id", u.id)
+                put("name", u.name)
+                put("username", u.username)
+                put("role", u.role.name)
+                put("token", u.token ?: "")
+                put("db_name", u.db_name ?: "")
+                put("area_id", u.area_id ?: "")
+                put("avatar_url", u.avatar_url ?: "")
+            }
+            array.put(obj)
+        }
+        context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+            .edit().putString("saved_multi_accounts_json", array.toString()).apply()
+    }
+
+    fun removeSavedAccount(context: Context, username: String, dbName: String?) {
+        val currentList = getSavedAccounts(context).filterNot {
+            it.username.equals(username, ignoreCase = true) && (it.db_name == dbName || dbName.isNullOrBlank())
+        }
+        val array = org.json.JSONArray()
+        for (u in currentList) {
+            val obj = org.json.JSONObject().apply {
+                put("id", u.id)
+                put("name", u.name)
+                put("username", u.username)
+                put("role", u.role.name)
+                put("token", u.token ?: "")
+                put("db_name", u.db_name ?: "")
+                put("area_id", u.area_id ?: "")
+                put("avatar_url", u.avatar_url ?: "")
+            }
+            array.put(obj)
+        }
+        context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+            .edit().putString("saved_multi_accounts_json", array.toString()).apply()
+    }
+
+    suspend fun switchAccount(context: Context, targetUser: AdminUser) {
+        try {
+            val db = com.example.ui.data.local.AppDatabase.getDatabase(context)
+            db.pelangganDao().deleteAll()
+            db.tagihanDao().deleteAll()
+            db.gangguanDao().deleteAll()
+        } catch (_: Exception) {}
+
+        cachedAreas = emptyList()
+        saveSession(context, targetUser)
+
+        try {
+            val syncRes = com.example.ui.data.remote.ApiClient.apiService.syncData()
+            val db = com.example.ui.data.local.AppDatabase.getDatabase(context)
+            val mappedPelanggan = syncRes.customers.map { item ->
+                val resolvedAddress = item.address?.takeIf { it.isNotBlank() } ?: item.alamat
+                com.example.ui.data.local.PelangganEntity(
+                    id = item.id.toIntOrNull() ?: 0,
+                    name = item.name ?: "",
+                    phone = item.phone ?: "",
+                    area = item.area ?: "",
+                    address = resolvedAddress,
+                    alamat = resolvedAddress,
+                    username = item.username ?: "",
+                    billingDate = item.billingDate ?: "",
+                    status = item.status ?: "",
+                    price = item.price ?: "",
+                    discount = item.discount ?: "",
+                    register_date = item.register_date,
+                    isolate_date = item.isolate_date,
+                    package_name = item.package_name,
+                    pppoe_secret = item.pppoe_secret,
+                    odp_id = item.odp_id?.toIntOrNull(),
+                    odp_port = item.odp_port,
+                    additionalCost1 = item.getEffectiveCost1(),
+                    additionalCost2 = item.getEffectiveCost2(),
+                    additionalCostDesc1 = item.getEffectiveDesc1(),
+                    additionalCostDesc2 = item.getEffectiveDesc2()
+                )
+            }
+            val mappedTagihan = syncRes.tagihan.map { item ->
+                com.example.ui.data.local.TagihanEntity(
+                    id = item.id.toIntOrNull() ?: 0,
+                    customer_id = item.customer_id?.toIntOrNull() ?: 0,
+                    bulan = item.bulan ?: "",
+                    tahun = item.tahun ?: 0,
+                    amount = item.amount?.toDoubleOrNull() ?: 0.0,
+                    status = item.status ?: "BELUM BAYAR",
+                    admin_name = item.admin_name,
+                    created_at = item.created_at
+                )
+            }
+            db.pelangganDao().insertAll(mappedPelanggan)
+            db.tagihanDao().insertAll(mappedTagihan)
+            if (!syncRes.gangguan.isNullOrEmpty()) {
+                db.gangguanDao().insertAll(syncRes.gangguan)
+            }
+        } catch (_: Exception) {}
     }
     
     fun loadSession(context: Context): Boolean {
