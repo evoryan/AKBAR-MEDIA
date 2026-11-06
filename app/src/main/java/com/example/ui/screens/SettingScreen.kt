@@ -590,18 +590,6 @@ fun SettingScreen(
                     .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
             ) {
                 Column {
-                    SettingItem(
-                        icon = Icons.Default.Dns,
-                        title = "Pengaturan Server API",
-                        subtitle = currentApiUrl,
-                        iconTint = textMain,
-                        onClick = {
-                            customUrlInput = com.example.ui.data.SettingsManager.apiBaseUrl
-                            showServerDialog = true
-                        }
-                    )
-                    HorizontalDivider(color = cardBorder)
-
                     val isNewerAvailable = latestReleaseTag?.let { isVersionNewer(it, currentVersion) } == true
                     val displaySubtitle = when {
                         isCheckingUpdate -> "Memeriksa..."
