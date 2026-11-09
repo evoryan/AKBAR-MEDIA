@@ -1395,13 +1395,17 @@ fun AcsDeviceDetailModal(
                         }
                     }
                 } else {
+                    val isDarkModal = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                    val telemetryBg = if (isDarkModal) Color(0xFF0D0D16) else Color(0xFFF8FAFC)
+                    val telemetryBorder = if (isDarkModal) cardBorder else Color(0xFFE2E8F0)
+
                     // Telemetry Grid (Label changed to "SN ONT")
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF0D0D16))
-                            .border(1.dp, cardBorder, RoundedCornerShape(12.dp))
+                            .background(telemetryBg)
+                            .border(1.dp, telemetryBorder, RoundedCornerShape(12.dp))
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {

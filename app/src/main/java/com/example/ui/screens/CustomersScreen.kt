@@ -588,11 +588,17 @@ data class Customer(
     @Json(name = "pppoe_secret") val pppoeSecret: String? = null,
     @Json(name = "odp_id") val odpId: String? = null,
     @Json(name = "odp_port") val odpPort: String? = null,
-    @Json(name = "header_bg_url") val headerBgUrl: String? = null
+    @Json(name = "header_bg_url") val headerBgUrl: String? = null,
+    @Json(name = "sn_modem") val snModem: String? = null,
+    @Json(name = "serial_number") val serialNumber: String? = null
 ) {
     val register_date: String? get() = registerDate
     val isolate_date: String? get() = isolateDate
     val header_bg_url: String? get() = headerBgUrl
+
+    fun getEffectiveSnModem(): String? {
+        return snModem?.takeIf { it.isNotBlank() } ?: serialNumber?.takeIf { it.isNotBlank() }
+    }
 
     fun getEffectiveRegisterDate(): String? {
         return registerDate?.takeIf { it.isNotBlank() }

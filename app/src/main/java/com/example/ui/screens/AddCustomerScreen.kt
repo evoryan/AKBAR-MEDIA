@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -54,6 +55,7 @@ fun AddCustomerScreen(
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
+    var snModem by remember { mutableStateOf("") }
     
     var registerDate by remember { mutableStateOf("") }
     var billingDate by remember { mutableStateOf("") }
@@ -796,6 +798,18 @@ fun AddCustomerScreen(
                             singleLine = true
                         )
                         Spacer(modifier = Modifier.height(16.dp))
+
+                        OutlinedTextField(
+                            value = snModem,
+                            onValueChange = { snModem = it },
+                            label = { Text("SN Modem (Opsional)", color = textSecondary) },
+                            placeholder = { Text("Contoh: ZTEGC882194D", color = textSecondary.copy(alpha = 0.5f)) },
+                            leadingIcon = { Icon(Icons.Default.Router, contentDescription = null, tint = neonCyan) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
                         
                         // Tanggal Register
                         OutlinedTextField(
@@ -1011,7 +1025,7 @@ fun AddCustomerScreen(
                                         val pLong = selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } ?: 0L
                                         val basePriceString = if (pLong > 0L) "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(pLong) else "Rp. 0"
                                         val newCust = Customer(
-                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput
+                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput, snModem = snModem.trim(), serialNumber = snModem.trim()
                                         )
                                         ApiClient.apiService.addCustomer(newCust)
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
@@ -1099,7 +1113,7 @@ fun AddCustomerScreen(
                                         val pLong = selectedPackage?.let { if (it.taxRate > 0) it.finalPrice.toLong() else it.price.toLong() } ?: 0L
                                         val basePriceString = if (pLong > 0L) "Rp. " + java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(pLong) else "Rp. 0"
                                         val newCust = Customer(
-                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput, odpId = selectedOdp?.id ?: "", odpPort = selectedPort
+                                            id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput, odpId = selectedOdp?.id ?: "", odpPort = selectedPort, snModem = snModem.trim(), serialNumber = snModem.trim()
                                         )
                                         ApiClient.apiService.addCustomer(newCust)
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()

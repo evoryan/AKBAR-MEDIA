@@ -789,6 +789,15 @@ fun CustomerDetailScreen(
                             }
 
                             HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 12.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column {
+                                    Text("SN Modem", color = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text(customer?.getEffectiveSnModem() ?: "-", color = neonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 12.dp))
                             
                             Button(
                                 onClick = {
@@ -815,6 +824,8 @@ fun CustomerDetailScreen(
                             DetailRow("Area", customer?.area ?: "-")
                             HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))
                             DetailRow("Alamat", customer?.getEffectiveAddress()?.takeIf { it.isNotBlank() } ?: customer?.address?.takeIf { it.isNotBlank() } ?: "-")
+                            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))
+                            DetailRow("SN Modem", customer?.getEffectiveSnModem() ?: "-")
                             HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))
                             DetailRow("Tgl Registrasi", customer?.registerDate?.takeIf { it.isNotBlank() } ?: "-")
                             HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 8.dp))

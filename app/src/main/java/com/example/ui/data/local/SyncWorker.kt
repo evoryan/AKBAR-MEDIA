@@ -55,7 +55,8 @@ class SyncWorker(
                     additionalCost1 = item.additionalCost1,
                     additionalCost2 = item.additionalCost2,
                     additionalCostDesc1 = item.additionalCostDesc1 ?: item.additional_cost_desc1,
-                    additionalCostDesc2 = item.additionalCostDesc2 ?: item.additional_cost_desc2
+                    additionalCostDesc2 = item.additionalCostDesc2 ?: item.additional_cost_desc2,
+                    sn_modem = item.getEffectiveSnModem()
                 )
             }
 

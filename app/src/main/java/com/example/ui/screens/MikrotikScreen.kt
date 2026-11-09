@@ -180,11 +180,12 @@ fun MikrotikCard(
     preloadedErrorMsg: String? = null,
     onNavigateToManageSecrets: () -> Unit
 ) {
-    val cardBg = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
-    val neonCyan = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0066FF)
-    val cardBorder = neonCyan.copy(alpha = 0.3f)
-    val textMain = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF1A1A1A)
-    val textSecondary = if (androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF666666)
+    val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val cardBg = if (isDark) androidx.compose.ui.graphics.Color(0xFF11111A) else androidx.compose.ui.graphics.Color(0xFFFFFFFF)
+    val neonCyan = if (isDark) androidx.compose.ui.graphics.Color(0xFF00FFFF) else androidx.compose.ui.graphics.Color(0xFF0265DC)
+    val cardBorder = if (isDark) neonCyan.copy(alpha = 0.3f) else androidx.compose.ui.graphics.Color(0xFFCBD5E1)
+    val textMain = if (isDark) androidx.compose.ui.graphics.Color(0xFFFFFFFF) else androidx.compose.ui.graphics.Color(0xFF0F172A)
+    val textSecondary = if (isDark) androidx.compose.ui.graphics.Color(0xFFAAAAAA) else androidx.compose.ui.graphics.Color(0xFF475569)
     
     var mikrotikStatus by remember { mutableStateOf<com.example.ui.data.remote.MikrotikStatus?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -435,17 +436,23 @@ fun MikrotikCard(
                 Text(errorMsg!!, color = Color(0xFFFF003C), fontSize = 14.sp)
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    MikrotikStatCard("Active PPPoE", if (isLoading) "..." else (mikrotikStatus?.activePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f))
-                    MikrotikStatCard("PPPoE Offline", if (isLoading) "..." else (mikrotikStatus?.offlinePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f))
+                    MikrotikStatCard("Active PPPoE", if (isLoading) "..." else (mikrotikStatus?.activePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f), isDark = isDark)
+                    MikrotikStatCard("PPPoE Offline", if (isLoading) "..." else (mikrotikStatus?.offlinePppoe ?: "-"), neonCyan, textMain, textSecondary, Modifier.weight(1f), isDark = isDark)
                 }
                 
                 // Realtime Traffic Monitoring Graph Section
+                val trafficContainerBg = if (isDark) Color(0xFF05050A) else Color(0xFFF8FAFC)
+                val trafficContainerBorder = if (isDark) neonCyan.copy(alpha = 0.2f) else Color(0xFFE2E8F0)
+                val liveDotColor = if (isDark) Color(0xFF00FF66) else Color(0xFF16A34A)
+                val rxColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF0284C7)
+                val txColor = if (isDark) Color(0xFFFF3366) else Color(0xFFE11D48)
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF05050A))
-                        .border(1.dp, neonCyan.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                        .background(trafficContainerBg)
+                        .border(1.dp, trafficContainerBorder, RoundedCornerShape(8.dp))
                         .padding(12.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -459,7 +466,7 @@ fun MikrotikCard(
                                     modifier = Modifier
                                         .size(8.dp)
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFF00FF66))
+                                        .background(liveDotColor)
                                 )
                                 Text("Port: $selectedPort", color = neonCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                             }
@@ -473,14 +480,14 @@ fun MikrotikCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(8.dp, 8.dp).background(Color(0xFF00E5FF), RoundedCornerShape(2.dp)))
+                                Box(modifier = Modifier.size(8.dp, 8.dp).background(rxColor, RoundedCornerShape(2.dp)))
                                 Text("RX: ", color = textSecondary, fontSize = 12.sp)
-                                Text(formatBitrate(currentRxRateBps), color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(formatBitrate(currentRxRateBps), color = rxColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(8.dp, 8.dp).background(Color(0xFFFF3366), RoundedCornerShape(2.dp)))
+                                Box(modifier = Modifier.size(8.dp, 8.dp).background(txColor, RoundedCornerShape(2.dp)))
                                 Text("TX: ", color = textSecondary, fontSize = 12.sp)
-                                Text(formatBitrate(currentTxRateBps), color = Color(0xFFFF3366), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(formatBitrate(currentTxRateBps), color = txColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                         }
 
@@ -490,7 +497,8 @@ fun MikrotikCard(
                             txData = txHistory.toList(),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(95.dp)
+                                .height(95.dp),
+                            isDark = isDark
                         )
 
                         // Total Accumulated Counter Summary
@@ -643,18 +651,21 @@ fun formatBitrate(bps: Long): String {
 fun RealtimeTrafficChart(
     rxData: List<Float>,
     txData: List<Float>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDark: Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f
 ) {
-    val rxColor = Color(0xFF00E5FF)
-    val txColor = Color(0xFFFF3366)
-    val gridColor = Color(0xFF222233)
-    val peakLabelColor = Color(0xFF888899)
+    val rxColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF0284C7)
+    val txColor = if (isDark) Color(0xFFFF3366) else Color(0xFFE11D48)
+    val chartBg = if (isDark) Color(0xFF0A0A14) else Color(0xFFFFFFFF)
+    val chartBorder = if (isDark) Color(0xFF1E1E2E) else Color(0xFFE2E8F0)
+    val gridColor = if (isDark) Color(0xFF222233) else Color(0xFFE2E8F0)
+    val peakLabelColor = if (isDark) Color(0xFF888899) else Color(0xFF64748B)
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(Color(0xFF0A0A14))
-            .border(0.5.dp, Color(0xFF1E1E2E), RoundedCornerShape(6.dp))
+            .background(chartBg)
+            .border(0.5.dp, chartBorder, RoundedCornerShape(6.dp))
             .padding(horizontal = 6.dp, vertical = 6.dp)
     ) {
         val maxRx = rxData.maxOrNull() ?: 0f
@@ -752,12 +763,22 @@ fun RealtimeTrafficChart(
 }
 
 @Composable
-fun MikrotikStatCard(title: String, value: String, neonCyan: Color, textMain: Color, textSecondary: Color, modifier: Modifier = Modifier) {
+fun MikrotikStatCard(
+    title: String,
+    value: String,
+    neonCyan: Color,
+    textMain: Color,
+    textSecondary: Color,
+    modifier: Modifier = Modifier,
+    isDark: Boolean = MaterialTheme.colorScheme.background.luminance() < 0.5f
+) {
+    val statCardBg = if (isDark) Color(0xFF05050A) else Color(0xFFF8FAFC)
+    val statCardBorder = if (isDark) neonCyan.copy(alpha = 0.2f) else Color(0xFFCBD5E1)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF05050A))
-            .border(1.dp, neonCyan.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+            .background(statCardBg)
+            .border(1.dp, statCardBorder, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
         Column {

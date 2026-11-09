@@ -451,10 +451,9 @@ fun QueueItemCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    // Parse Upload & Download Max Limit
-    val maxLimitParts = queue.maxLimit.split("/").map { it.trim() }
-    val uploadMaxLimit = if (maxLimitParts.isNotEmpty() && maxLimitParts[0].isNotBlank()) formatRateValue(maxLimitParts[0]) else "Unlimited"
-    val downloadMaxLimit = if (maxLimitParts.size > 1 && maxLimitParts[1].isNotBlank()) formatRateValue(maxLimitParts[1]) else "Unlimited"
+    // Parse Target Upload & Download Max Limit from Mikrotik
+    val uploadMaxLimit = formatMikrotikMaxLimit(queue.effectiveUploadMaxLimit)
+    val downloadMaxLimit = formatMikrotikMaxLimit(queue.effectiveDownloadMaxLimit)
 
     Box(
         modifier = Modifier
@@ -566,6 +565,10 @@ fun QueueItemCard(
 
             HorizontalDivider(color = cardBorder.copy(alpha = 0.2f), thickness = 0.5.dp)
 
+            val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+            val uploadColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF0265DC)
+            val downloadColor = if (isDark) Color(0xFFFF3366) else Color(0xFFE11D48)
+
             // Upload Max Limit and Download Max Limit Cards
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -576,20 +579,20 @@ fun QueueItemCard(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF00E5FF).copy(alpha = 0.08f))
-                        .border(0.5.dp, Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .background(uploadColor.copy(alpha = if (isDark) 0.08f else 0.06f))
+                        .border(0.5.dp, uploadColor.copy(alpha = if (isDark) 0.3f else 0.25f), RoundedCornerShape(8.dp))
                         .padding(8.dp)
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("↑", color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("↑", color = uploadColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Upload Max", color = textSecondary, fontSize = 10.sp)
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = uploadMaxLimit,
-                            color = Color(0xFF00E5FF),
+                            color = uploadColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -601,20 +604,20 @@ fun QueueItemCard(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFFF3366).copy(alpha = 0.08f))
-                        .border(0.5.dp, Color(0xFFFF3366).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .background(downloadColor.copy(alpha = if (isDark) 0.08f else 0.06f))
+                        .border(0.5.dp, downloadColor.copy(alpha = if (isDark) 0.3f else 0.25f), RoundedCornerShape(8.dp))
                         .padding(8.dp)
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("↓", color = Color(0xFFFF3366), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("↓", color = downloadColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Download Max", color = textSecondary, fontSize = 10.sp)
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = downloadMaxLimit,
-                            color = Color(0xFFFF3366),
+                            color = downloadColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -686,12 +689,18 @@ fun QueueItemCard(
                 }
             }
 
+            val trafficBoxBg = if (isDark) Color(0xFF070711) else Color(0xFFF8FAFC)
+            val trafficBoxBorder = if (isDark) neonCyan.copy(alpha = 0.2f) else Color(0xFFCBD5E1)
+            val liveDotColor = if (queue.disabled) Color.Gray else if (isDark) Color(0xFF00FF66) else Color(0xFF16A34A)
+            val txColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF0265DC)
+            val rxColor = if (isDark) Color(0xFFFF3366) else Color(0xFFE11D48)
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF070711))
-                    .border(1.dp, neonCyan.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                    .background(trafficBoxBg)
+                    .border(1.dp, trafficBoxBorder, RoundedCornerShape(8.dp))
                     .padding(10.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -705,7 +714,7 @@ fun QueueItemCard(
                                 modifier = Modifier
                                     .size(7.dp)
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(if (queue.disabled) Color.Gray else Color(0xFF00FF66))
+                                    .background(liveDotColor)
                             )
                             Text("Realtime Traffic Monitor", color = neonCyan, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
                         }
@@ -718,14 +727,14 @@ fun QueueItemCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(modifier = Modifier.size(7.dp, 7.dp).background(Color(0xFF00E5FF), RoundedCornerShape(2.dp)))
+                            Box(modifier = Modifier.size(7.dp, 7.dp).background(txColor, RoundedCornerShape(2.dp)))
                             Text("Upload (TX): ", color = textSecondary, fontSize = 11.sp)
-                            Text(formatRateValue(txRateBps.toString()), color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            Text(formatRateValue(txRateBps.toString()), color = txColor, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(modifier = Modifier.size(7.dp, 7.dp).background(Color(0xFFFF3366), RoundedCornerShape(2.dp)))
+                            Box(modifier = Modifier.size(7.dp, 7.dp).background(rxColor, RoundedCornerShape(2.dp)))
                             Text("Download (RX): ", color = textSecondary, fontSize = 11.sp)
-                            Text(formatRateValue(rxRateBps.toString()), color = Color(0xFFFF3366), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            Text(formatRateValue(rxRateBps.toString()), color = rxColor, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     }
 
@@ -734,7 +743,8 @@ fun QueueItemCard(
                         txData = txHistory.toList(),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(80.dp)
+                            .height(80.dp),
+                        isDark = isDark
                     )
                 }
             }
@@ -754,6 +764,23 @@ fun QueueItemCard(
                             Text(
                                 formatBandwidthPair(queue.rate),
                                 color = neonGreen,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    // Limit At Row (if configured)
+                    val limitAtVal = queue.effectiveLimitAt
+                    if (limitAtVal.isNotBlank() && limitAtVal != "0/0" && limitAtVal != "-") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Limit At (Min):", color = textSecondary, fontSize = 11.sp)
+                            Text(
+                                formatBandwidthPair(limitAtVal),
+                                color = textMain,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -796,23 +823,86 @@ fun QueueItemCard(
     }
 }
 
+private fun formatMikrotikMaxLimit(v: String?): String {
+    if (v == null || v.isBlank() || v == "-" || v == "0" || v == "0/0" || v.equals("unlimited", ignoreCase = true)) {
+        return "Unlimited"
+    }
+    val clean = v.trim()
+    if (clean.contains("/")) {
+        val parts = clean.split("/").map { it.trim() }
+        val up = formatMikrotikMaxLimit(parts.getOrNull(0))
+        val down = formatMikrotikMaxLimit(parts.getOrNull(1))
+        return "$up / $down"
+    }
+
+    val noSpace = clean.replace(" ", "")
+    if (noSpace.endsWith("Mbps", ignoreCase = true)) {
+        return noSpace.substring(0, noSpace.length - 4) + "M"
+    }
+    if (noSpace.endsWith("kbps", ignoreCase = true)) {
+        return noSpace.substring(0, noSpace.length - 4) + "k"
+    }
+    if (noSpace.endsWith("Gbps", ignoreCase = true)) {
+        return noSpace.substring(0, noSpace.length - 4) + "G"
+    }
+
+    // If already formatted with Mikrotik rate suffix (e.g. 10M, 512k, 1G, 2.5M)
+    if (clean.matches(Regex("^[0-9]+(\\.[0-9]+)?[kKmMgG]$"))) {
+        val numPart = clean.dropLast(1)
+        val unit = clean.takeLast(1).uppercase()
+        return "$numPart$unit"
+    }
+
+    val num = clean.toLongOrNull() ?: return clean
+    if (num <= 0L) return "Unlimited"
+
+    val gb = 1_000_000_000.0
+    val mb = 1_000_000.0
+    val kb = 1_000.0
+
+    return when {
+        num >= 1_000_000_000L -> {
+            val g = num / gb
+            if (g == g.toLong().toDouble()) "${g.toLong()}G" else String.format(java.util.Locale.US, "%.1fG", g)
+        }
+        num >= 1_000_000L -> {
+            val m = num / mb
+            if (m == m.toLong().toDouble()) "${m.toLong()}M" else String.format(java.util.Locale.US, "%.1fM", m)
+        }
+        num >= 1_000L -> {
+            val k = num / kb
+            if (k == k.toLong().toDouble()) "${k.toLong()}k" else String.format(java.util.Locale.US, "%.1fk", k)
+        }
+        else -> "$num bps"
+    }
+}
+
 private fun formatBandwidthPair(pair: String): String {
-    if (pair.isBlank() || pair == "-") return "Unlimited"
+    if (pair.isBlank() || pair == "-" || pair == "0/0") return "Unlimited"
     val parts = pair.split("/")
     if (parts.size == 2) {
-        val up = formatRateValue(parts[0].trim())
-        val down = formatRateValue(parts[1].trim())
+        val up = formatMikrotikMaxLimit(parts[0].trim())
+        val down = formatMikrotikMaxLimit(parts[1].trim())
         return "↑ $up / ↓ $down"
     }
-    return pair
+    return formatMikrotikMaxLimit(pair)
 }
 
 private fun formatRateValue(v: String): String {
     val num = v.toLongOrNull() ?: return v
-    if (num <= 0) return "0"
-    if (num >= 1_000_000_000) return "${num / 1_000_000_000} Gbps"
-    if (num >= 1_000_000) return "${num / 1_000_000} Mbps"
-    if (num >= 1_000) return "${num / 1_000} kbps"
+    if (num <= 0) return "0 bps"
+    if (num >= 1_000_000_000) {
+        val g = num / 1_000_000_000.0
+        return if (g == g.toLong().toDouble()) "${g.toLong()} Gbps" else String.format(java.util.Locale.US, "%.1f Gbps", g)
+    }
+    if (num >= 1_000_000) {
+        val m = num / 1_000_000.0
+        return if (m == m.toLong().toDouble()) "${m.toLong()} Mbps" else String.format(java.util.Locale.US, "%.1f Mbps", m)
+    }
+    if (num >= 1_000) {
+        val k = num / 1_000.0
+        return if (k == k.toLong().toDouble()) "${k.toLong()} kbps" else String.format(java.util.Locale.US, "%.1f kbps", k)
+    }
     return "$num bps"
 }
 

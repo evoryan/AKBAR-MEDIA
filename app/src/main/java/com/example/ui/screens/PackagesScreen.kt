@@ -94,7 +94,7 @@ fun PackagesScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = Color(0xFF00FFFF),
+        containerColor = bgMain,
         topBar = {
             TopAppBar(
                 title = { Text("Kelola Paket Internet", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },

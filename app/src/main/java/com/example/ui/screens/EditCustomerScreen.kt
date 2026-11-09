@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -57,6 +58,7 @@ fun EditCustomerScreen(customerId: String,
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
+    var snModem by remember { mutableStateOf("") }
     
     var registerDate by remember { mutableStateOf("") }
     var billingDate by remember { mutableStateOf("") }
@@ -179,6 +181,7 @@ fun EditCustomerScreen(customerId: String,
                 name = cust.name
                 phone = cust.phone
                 address = cust.getEffectiveAddress().ifEmpty { cust.address ?: "" }
+                snModem = cust.getEffectiveSnModem() ?: ""
                 registerDate = cust.registerDate ?: ""
                 billingDate = cust.billingDate
                 isolateDate = cust.isolateDate ?: ""
@@ -316,7 +319,9 @@ fun EditCustomerScreen(customerId: String,
                     additional_cost_desc2 = desc2Trimmed,
                     pppoeSecret = secretInput,
                     odpId = selectedOdp?.id?.toString() ?: originalCustomer?.odpId,
-                    odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" }
+                    odpPort = selectedPort.ifEmpty { originalCustomer?.odpPort ?: "" },
+                    snModem = snModem.trim(),
+                    serialNumber = snModem.trim()
                 )
 
                 ApiClient.apiService.updateCustomer(customerId, updatedCust)
@@ -346,7 +351,8 @@ fun EditCustomerScreen(customerId: String,
                             additionalCost1 = updatedCust.additionalCost1,
                             additionalCost2 = updatedCust.additionalCost2,
                             additionalCostDesc1 = desc1Trimmed,
-                            additionalCostDesc2 = desc2Trimmed
+                            additionalCostDesc2 = desc2Trimmed,
+                            sn_modem = updatedCust.snModem
                         )
                     )
                 } catch (eDb: Exception) {
@@ -898,6 +904,18 @@ fun EditCustomerScreen(customerId: String,
                             value = address,
                             onValueChange = { address = it },
                             label = { Text("Alamat (Opsional)", color = textSecondary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        OutlinedTextField(
+                            value = snModem,
+                            onValueChange = { snModem = it },
+                            label = { Text("SN Modem (Opsional)", color = textSecondary) },
+                            placeholder = { Text("Contoh: ZTEGC882194D", color = textSecondary.copy(alpha = 0.5f)) },
+                            leadingIcon = { Icon(Icons.Default.Router, contentDescription = null, tint = neonCyan) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = neonCyan, unfocusedBorderColor = textSecondary, focusedTextColor = textMain, unfocusedTextColor = textMain),
                             singleLine = true

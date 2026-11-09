@@ -5228,12 +5228,30 @@ app.get('/api/mikrotik/queues/:id', async (req, res) => {
             const simpleQueues = await queueSimpleMenu.get();
             
             return simpleQueues.map(q => {
+                const rawMaxLimit = q['max-limit'] || q.maxLimit || q['max_limit'];
+                const upMax = q['upload-max-limit'] || q['upload_max_limit'] || q.uploadMaxLimit || (rawMaxLimit ? rawMaxLimit.split('/')[0] : '');
+                const downMax = q['download-max-limit'] || q['download_max_limit'] || q.downloadMaxLimit || (rawMaxLimit && rawMaxLimit.includes('/') ? rawMaxLimit.split('/')[1] : upMax);
+                const finalMaxLimit = rawMaxLimit || (upMax && downMax ? `${upMax}/${downMax}` : (upMax || '-'));
+
+                const rawLimitAt = q['limit-at'] || q.limitAt || q['limit_at'];
+                const upLimitAt = q['upload-limit-at'] || q['upload_limit_at'] || q.uploadLimitAt || (rawLimitAt ? rawLimitAt.split('/')[0] : '');
+                const downLimitAt = q['download-limit-at'] || q['download_limit_at'] || q.downloadLimitAt || (rawLimitAt && rawLimitAt.includes('/') ? rawLimitAt.split('/')[1] : upLimitAt);
+                const finalLimitAt = rawLimitAt || (upLimitAt && downLimitAt ? `${upLimitAt}/${downLimitAt}` : (upLimitAt || '-'));
+
                 return {
                     id: q['.id'] || q.name || Math.random().toString(36).substring(7),
                     name: q.name || '-',
                     target: q.target || q['target-addresses'] || '-',
-                    maxLimit: q['max-limit'] || '-',
-                    limitAt: q['limit-at'] || '-',
+                    maxLimit: finalMaxLimit,
+                    'max-limit': finalMaxLimit,
+                    max_limit: finalMaxLimit,
+                    uploadMaxLimit: upMax || '',
+                    'upload-max-limit': upMax || '',
+                    downloadMaxLimit: downMax || '',
+                    'download-max-limit': downMax || '',
+                    limitAt: finalLimitAt,
+                    'limit-at': finalLimitAt,
+                    limit_at: finalLimitAt,
                     bytes: q.bytes || '-',
                     totalBytes: q['total-bytes'] || '-',
                     packets: q.packets || '-',

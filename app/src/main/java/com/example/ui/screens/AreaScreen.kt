@@ -295,7 +295,7 @@ fun AreaItem(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            containerColor = Color(0xFF00FFFF),
+            containerColor = cardBg,
             title = { Text("Hapus Area", color = textMain, fontWeight = FontWeight.Bold) },
             text = { Text("Apakah Anda yakin ingin menghapus area '${area.name}'?", color = textSecondary) },
             confirmButton = {
@@ -304,7 +304,7 @@ fun AreaItem(
                         showDeleteConfirm = false 
                         onDelete() 
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00FFFF), contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(containerColor = errorRed, contentColor = Color.White)
                 ) {
                     Text("Hapus", fontWeight = FontWeight.Bold)
                 }

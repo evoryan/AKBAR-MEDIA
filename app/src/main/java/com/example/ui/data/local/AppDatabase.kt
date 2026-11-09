@@ -26,7 +26,8 @@ data class PelangganEntity(
     val additionalCost1: String? = null,
     val additionalCost2: String? = null,
     val additionalCostDesc1: String? = null,
-    val additionalCostDesc2: String? = null
+    val additionalCostDesc2: String? = null,
+    val sn_modem: String? = null
 ) {
     fun getTotalBillAmount(): Long {
         val base = com.example.ui.util.InvoiceGenerator.parseInvoiceAmount(price)
@@ -68,7 +69,8 @@ data class PelangganEntity(
             additional_cost_desc2 = additionalCostDesc2,
             pppoeSecret = pppoe_secret,
             odpId = odp_id?.toString(),
-            odpPort = odp_port
+            odpPort = odp_port,
+            snModem = sn_modem
         )
     }
 }

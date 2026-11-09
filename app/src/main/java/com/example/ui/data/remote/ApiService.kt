@@ -12,6 +12,7 @@ import com.example.ui.data.CategoryItem
 import com.example.ui.data.InventoryItem
 import com.example.ui.data.StockHistory
 import retrofit2.http.*
+import com.squareup.moshi.Json
 import com.example.data.DashboardSummaryResponse
 
 
@@ -117,8 +118,18 @@ data class MikrotikQueue(
     val id: String = "",
     val name: String = "",
     val target: String = "",
-    val maxLimit: String = "",
-    val limitAt: String = "",
+    @Json(name = "maxLimit") val maxLimit: String = "",
+    @Json(name = "max-limit") val maxLimitDash: String? = null,
+    @Json(name = "max_limit") val maxLimitSnake: String? = null,
+    @Json(name = "uploadMaxLimit") val uploadMaxLimit: String? = null,
+    @Json(name = "upload-max-limit") val uploadMaxLimitDash: String? = null,
+    @Json(name = "upload_max_limit") val uploadMaxLimitSnake: String? = null,
+    @Json(name = "downloadMaxLimit") val downloadMaxLimit: String? = null,
+    @Json(name = "download-max-limit") val downloadMaxLimitDash: String? = null,
+    @Json(name = "download_max_limit") val downloadMaxLimitSnake: String? = null,
+    @Json(name = "limitAt") val limitAt: String = "",
+    @Json(name = "limit-at") val limitAtDash: String? = null,
+    @Json(name = "limit_at") val limitAtSnake: String? = null,
     val bytes: String = "",
     val totalBytes: String = "",
     val packets: String = "",
@@ -129,7 +140,52 @@ data class MikrotikQueue(
     val parent: String = "",
     val priority: String = "8/8",
     val queueType: String = "simple"
-)
+) {
+    val effectiveUploadMaxLimit: String
+        get() {
+            val direct = uploadMaxLimit?.takeIf { it.isNotBlank() && it != "-" }
+                ?: uploadMaxLimitDash?.takeIf { it.isNotBlank() && it != "-" }
+                ?: uploadMaxLimitSnake?.takeIf { it.isNotBlank() && it != "-" }
+            if (direct != null) return direct
+
+            val combined = maxLimit.takeIf { it.isNotBlank() && it != "-" }
+                ?: maxLimitDash?.takeIf { it.isNotBlank() && it != "-" }
+                ?: maxLimitSnake?.takeIf { it.isNotBlank() && it != "-" }
+
+            if (!combined.isNullOrBlank()) {
+                val parts = combined.split("/").map { it.trim() }
+                if (parts.isNotEmpty() && parts[0].isNotBlank()) return parts[0]
+            }
+            return ""
+        }
+
+    val effectiveDownloadMaxLimit: String
+        get() {
+            val direct = downloadMaxLimit?.takeIf { it.isNotBlank() && it != "-" }
+                ?: downloadMaxLimitDash?.takeIf { it.isNotBlank() && it != "-" }
+                ?: downloadMaxLimitSnake?.takeIf { it.isNotBlank() && it != "-" }
+            if (direct != null) return direct
+
+            val combined = maxLimit.takeIf { it.isNotBlank() && it != "-" }
+                ?: maxLimitDash?.takeIf { it.isNotBlank() && it != "-" }
+                ?: maxLimitSnake?.takeIf { it.isNotBlank() && it != "-" }
+
+            if (!combined.isNullOrBlank()) {
+                val parts = combined.split("/").map { it.trim() }
+                if (parts.size > 1 && parts[1].isNotBlank()) return parts[1]
+                if (parts.isNotEmpty() && parts[0].isNotBlank()) return parts[0]
+            }
+            return ""
+        }
+
+    val effectiveLimitAt: String
+        get() {
+            return limitAt.takeIf { it.isNotBlank() && it != "-" }
+                ?: limitAtDash?.takeIf { it.isNotBlank() && it != "-" }
+                ?: limitAtSnake?.takeIf { it.isNotBlank() && it != "-" }
+                ?: ""
+        }
+}
 
 data class MikrotikProfile(
     val id: String? = null,
@@ -638,12 +694,15 @@ data class CustomerSyncItem(
     val additionalCostDesc1: String? = null,
     val additionalCostDesc2: String? = null,
     @com.squareup.moshi.Json(name = "additional_cost_desc1") val additional_cost_desc1: String? = null,
-    @com.squareup.moshi.Json(name = "additional_cost_desc2") val additional_cost_desc2: String? = null
+    @com.squareup.moshi.Json(name = "additional_cost_desc2") val additional_cost_desc2: String? = null,
+    @com.squareup.moshi.Json(name = "sn_modem") val sn_modem: String? = null,
+    @com.squareup.moshi.Json(name = "serial_number") val serial_number: String? = null
 ) {
     fun getEffectiveCost1(): String? = additionalCost1?.takeIf { it.isNotBlank() } ?: additional_cost1?.takeIf { it.isNotBlank() }
     fun getEffectiveCost2(): String? = additionalCost2?.takeIf { it.isNotBlank() } ?: additional_cost2?.takeIf { it.isNotBlank() }
     fun getEffectiveDesc1(): String? = additionalCostDesc1?.takeIf { it.isNotBlank() } ?: additional_cost_desc1?.takeIf { it.isNotBlank() }
     fun getEffectiveDesc2(): String? = additionalCostDesc2?.takeIf { it.isNotBlank() } ?: additional_cost_desc2?.takeIf { it.isNotBlank() }
+    fun getEffectiveSnModem(): String? = sn_modem?.takeIf { it.isNotBlank() } ?: serial_number?.takeIf { it.isNotBlank() }
 }
 
 data class TagihanSyncItem(
