@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -90,6 +91,13 @@ fun CustomerDetailScreen(
     var mikrotikStatus by remember { mutableStateOf<String>("-") }
     var mikrotikUptime by remember { mutableStateOf<String>("") }
     var acsDevice by remember { mutableStateOf<com.example.ui.screens.AcsDevice?>(null) }
+    var isAcsLoading by remember { mutableStateOf(false) }
+    var isAcsExpanded by remember { mutableStateOf(false) }
+    var showAcsSsidDialog by remember { mutableStateOf(false) }
+    var showAcsPasswordDialog by remember { mutableStateOf(false) }
+    var showAcsRebootDialog by remember { mutableStateOf(false) }
+    var isAcsActionLoading by remember { mutableStateOf(false) }
+    var acsActionResult by remember { mutableStateOf<String?>(null) }
     var isMikrotikLoading by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var isBackgroundLoading by remember { mutableStateOf(true) }
@@ -209,18 +217,50 @@ fun CustomerDetailScreen(
                 
                 // Get ACS Device in background
                 launch {
-                    try {
-                        if (!activeCust.pppoeSecret.isNullOrEmpty()) {
+                    val hasPppoeOrSn = !activeCust.pppoeSecret.isNullOrBlank() ||
+                        activeCust.username.isNotBlank() ||
+                        !activeCust.getEffectiveSnModem().isNullOrBlank()
+                    if (hasPppoeOrSn) {
+                        isAcsLoading = true
+                        try {
                             val acsList = ApiClient.apiService.getAcsDevices()
-                            acsDevice = acsList.find { (it.username ?: "").trim().equals(activeCust.pppoeSecret?.trim(), ignoreCase = true) }
+                            acsDevice = findMatchingAcsDeviceForCustomer(acsList, activeCust)
+                        } catch (_: Exception) {
+                        } finally {
+                            isAcsLoading = false
                         }
-                    } catch(e: Exception) {}
+                    } else {
+                        acsDevice = null
+                    }
                 }
             }
         } catch (e: Exception) {
             isBackgroundLoading = false
             if (customer == null) {
                 Toast.makeText(context, "Gagal memuat data", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun refreshCustomerAcs(summonFirst: Boolean = false) {
+        val currentCust = customer ?: return
+        val currentAcs = acsDevice
+        coroutineScope.launch {
+            isAcsLoading = true
+            try {
+                if (summonFirst && currentAcs?.id != null && !currentAcs.id.startsWith("error_")) {
+                    ApiClient.apiService.acsAction(
+                        currentAcs.id,
+                        mapOf("action" to "summon", "areaName" to (currentAcs.areaName ?: currentCust.area))
+                    )
+                    Toast.makeText(context, "Perintah summon berhasil dikirim ke ONT", Toast.LENGTH_SHORT).show()
+                }
+                val acsList = ApiClient.apiService.getAcsDevices()
+                acsDevice = findMatchingAcsDeviceForCustomer(acsList, currentCust)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Gagal memperbarui data GenieACS: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isAcsLoading = false
             }
         }
     }
@@ -801,17 +841,314 @@ fun CustomerDetailScreen(
                             
                             Button(
                                 onClick = {
-                                    if (!customer?.pppoeSecret.isNullOrBlank()) {
-                                        onNavigateToAcs(customer!!.pppoeSecret!!)
+                                    val searchTarget = customer?.pppoeSecret?.takeIf { it.isNotBlank() }
+                                        ?: acsDevice?.username?.takeIf { it.isNotBlank() && it != "Unknown" }
+                                        ?: customer?.getEffectiveSnModem()?.takeIf { it.isNotBlank() }
+                                        ?: customer?.username?.takeIf { it.isNotBlank() }
+                                    if (!searchTarget.isNullOrBlank()) {
+                                        onNavigateToAcs(searchTarget)
                                     } else {
-                                        Toast.makeText(context, "Data ACS tidak ditemukan untuk username ini", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Data ACS tidak ditemukan untuk akun PPPoE ini", Toast.LENGTH_SHORT).show()
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("btn_cek_modem_acs"),
                                 colors = ButtonDefaults.buttonColors(containerColor = primaryBlue, contentColor = neonCyan),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text("Cek Modem (ACS)")
+                            }
+                        }
+
+                        // Data Lanjutan GenieACS (TR-069 ONT)
+                        val showAcsCard = isAcsLoading ||
+                            acsDevice != null ||
+                            !customer?.pppoeSecret.isNullOrBlank() ||
+                            !customer?.getEffectiveSnModem().isNullOrBlank()
+                        if (showAcsCard) {
+                            val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                            val telemetryBg = if (isDarkTheme) Color(0xFF0A0E17) else Color(0xFFF8FAFC)
+                            val telemetryBorder = if (isDarkTheme) cardBorder.copy(alpha = 0.7f) else Color(0xFFE2E8F0)
+                            val successGreen = if (isDarkTheme) Color(0xFF10B981) else Color(0xFF059669)
+                            val warningYellow = if (isDarkTheme) Color(0xFFF59E0B) else Color(0xFFD97706)
+                            val errorRed = if (isDarkTheme) Color(0xFFEF4444) else Color(0xFFDC2626)
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(cardBg)
+                                    .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+                                    .padding(16.dp)
+                                    .testTag("card_genieacs_detail")
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { isAcsExpanded = !isAcsExpanded }
+                                            .padding(vertical = 2.dp)
+                                            .testTag("btn_toggle_genieacs_detail"),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Router,
+                                                contentDescription = "GenieACS",
+                                                tint = neonCyan,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Data Lanjutan GenieACS",
+                                                    color = textMain,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 16.sp
+                                                )
+                                                val collapsedSubtitle = when {
+                                                    isAcsExpanded -> "Telemetri TR-069 ONT"
+                                                    isAcsLoading && acsDevice == null -> "Memuat telemetri ONT..."
+                                                    acsDevice != null -> {
+                                                        val rx = acsDevice?.rxPower?.takeIf { it.isNotBlank() && it != "-" }
+                                                        if (rx != null) "Rx $rx dBm • Ketuk untuk lihat" else "Ketuk untuk lihat detail"
+                                                    }
+                                                    else -> "Telemetri TR-069 ONT • Ketuk untuk lihat"
+                                                }
+                                                Text(
+                                                    text = collapsedSubtitle,
+                                                    color = textSecondary,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            val activeAcs = acsDevice
+                                            if (activeAcs != null) {
+                                                val isOnline = activeAcs.isOnline == true
+                                                Surface(
+                                                    shape = RoundedCornerShape(20.dp),
+                                                    color = if (isOnline) successGreen.copy(alpha = 0.15f) else errorRed.copy(alpha = 0.15f),
+                                                    border = androidx.compose.foundation.BorderStroke(
+                                                        1.dp,
+                                                        if (isOnline) successGreen.copy(alpha = 0.4f) else errorRed.copy(alpha = 0.4f)
+                                                    )
+                                                ) {
+                                                    Text(
+                                                        text = if (isOnline) "ONLINE" else "OFFLINE",
+                                                        color = if (isOnline) successGreen else errorRed,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    )
+                                                }
+                                            }
+                                            IconButton(
+                                                onClick = { refreshCustomerAcs(summonFirst = acsDevice != null) },
+                                                enabled = !isAcsLoading,
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .testTag("btn_refresh_genieacs_detail")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Refresh,
+                                                    contentDescription = "Muat Ulang Data GenieACS",
+                                                    tint = neonCyan,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = if (isAcsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = if (isAcsExpanded) "Tutup Data GenieACS" else "Buka Data GenieACS",
+                                                tint = textSecondary,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+
+                                    AnimatedVisibility(visible = isAcsExpanded) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                                    if (isAcsLoading && acsDevice == null) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                color = neonCyan,
+                                                strokeWidth = 2.dp
+                                            )
+                                            Text(
+                                                text = "Mengambil data ONT dari GenieACS...",
+                                                color = textSecondary,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    } else if (acsDevice == null) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = telemetryBg,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, telemetryBorder),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "Perangkat ONT untuk akun PPPoE ini belum terdaftar atau tidak ditemukan di GenieACS.",
+                                                    color = textSecondary,
+                                                    fontSize = 12.sp,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                TextButton(onClick = { refreshCustomerAcs(summonFirst = false) }) {
+                                                    Text("Cek Lagi", color = neonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        val acs = acsDevice!!
+                                        val ontSn = getOntSerialNumber(acs)
+                                        val vendorModel = listOfNotNull(
+                                            acs.vendor?.takeIf { it.isNotBlank() && it != "-" },
+                                            acs.model?.takeIf { it.isNotBlank() && it != "-" }
+                                        ).joinToString(" ").ifBlank { "-" }
+                                        val hwSw = listOfNotNull(
+                                            acs.hardwareVersion?.takeIf { it.isNotBlank() && it != "-" },
+                                            acs.softwareVersion?.takeIf { it.isNotBlank() && it != "-" }
+                                        ).joinToString(" / ").ifBlank { "-" }
+                                        val tagArea = acs.tag?.takeIf { it.isNotBlank() && it != "-" }
+                                            ?: acs.areaName?.takeIf { it.isNotBlank() }
+                                            ?: "-"
+                                        val rxVal = acs.rxPower ?: "-"
+                                        val rxBgColor = getRxPowerColor(rxVal)
+
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(telemetryBg)
+                                                .border(1.dp, telemetryBorder, RoundedCornerShape(12.dp))
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            DetailRow("Akun PPPoE (ACS)", acs.username?.takeIf { it.isNotBlank() && it != "Unknown" } ?: "-")
+                                            DetailRow("SN ONT", ontSn)
+                                            DetailRow("Tag / Area ACS", tagArea)
+
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 2.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Redaman (Rx Power)", color = textSecondary, fontSize = 12.sp)
+                                                if (rxVal != "-" && rxVal.isNotBlank()) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = rxBgColor
+                                                    ) {
+                                                        Text(
+                                                            text = "$rxVal dBm",
+                                                            color = Color.White,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                } else {
+                                                    Text("-", color = textMain, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                                }
+                                            }
+
+                                            HorizontalDivider(color = telemetryBorder)
+
+                                            DetailRow("SSID Wi-Fi", acs.ssid?.takeIf { it.isNotBlank() && it != "Unknown" } ?: "-")
+                                            DetailRow("Password Wi-Fi", acs.wifiPassword?.takeIf { it.isNotBlank() } ?: "-")
+                                            DetailRow("Perangkat Terhubung", "${acs.connectedUsers ?: 0} Perangkat")
+
+                                            HorizontalDivider(color = telemetryBorder)
+
+                                            DetailRow("Vendor / Model", vendorModel)
+                                            DetailRow("Hardware / Software", hwSw)
+                                            DetailRow("IP Address (WAN/CPE)", acs.ipAddress?.takeIf { it.isNotBlank() && it != "-" } ?: "-")
+                                            DetailRow("Uptime Perangkat", formatCustomerAcsUptime(acs.uptime))
+                                            DetailRow("Last Inform", formatCustomerAcsLastInform(acs.lastInform))
+                                        }
+
+                                        // Quick Remote Actions
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = { showAcsSsidDialog = true },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("btn_cust_acs_ssid"),
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = warningYellow),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, warningYellow.copy(alpha = 0.6f)),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Ganti SSID", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                            }
+                                            OutlinedButton(
+                                                onClick = { showAcsPasswordDialog = true },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("btn_cust_acs_password"),
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = neonCyan),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, neonCyan.copy(alpha = 0.6f)),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Ganti Sandi", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                            }
+                                            OutlinedButton(
+                                                onClick = { showAcsRebootDialog = true },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .heightIn(min = 48.dp)
+                                                    .testTag("btn_cust_acs_reboot"),
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = errorRed),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, errorRed.copy(alpha = 0.6f)),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Reboot", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                            }
+                                        }
+                                    }
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -966,6 +1303,194 @@ fun CustomerDetailScreen(
                 }
             }
         )
+    }
+    // DIALOG: Remote ACS Actions from Customer Detail
+    val activeAcsForDialog = acsDevice
+    if (showAcsSsidDialog && activeAcsForDialog != null) {
+        AcsActionDialog(
+            title = "Ganti Nama WiFi (SSID)",
+            description = "Masukkan SSID WiFi baru untuk ONT ${activeAcsForDialog.username ?: getOntSerialNumber(activeAcsForDialog)}",
+            initialValue = activeAcsForDialog.ssid?.takeIf { it != "Unknown" } ?: "",
+            label = "SSID WiFi Baru",
+            isUpdating = isAcsActionLoading,
+            updateResult = acsActionResult,
+            bgMain = cardBg,
+            textMain = textMain,
+            textSecondary = textSecondary,
+            cardBg = cardBg,
+            primaryCyan = neonCyan,
+            onDismiss = {
+                showAcsSsidDialog = false
+                acsActionResult = null
+            },
+            onConfirm = { newSsid ->
+                if (newSsid.isBlank()) {
+                    acsActionResult = "SSID tidak boleh kosong"
+                } else {
+                    isAcsActionLoading = true
+                    acsActionResult = null
+                    coroutineScope.launch {
+                        try {
+                            ApiClient.apiService.acsAction(
+                                activeAcsForDialog.id ?: "",
+                                mapOf("action" to "set_ssid", "value" to newSsid.trim(), "areaName" to (activeAcsForDialog.areaName ?: ""))
+                            )
+                            Toast.makeText(context, "SSID berhasil diubah ke $newSsid", Toast.LENGTH_LONG).show()
+                            acsDevice = activeAcsForDialog.copy(ssid = newSsid.trim())
+                            showAcsSsidDialog = false
+                            acsActionResult = null
+                        } catch (e: Exception) {
+                            acsActionResult = "Gagal: ${e.message}"
+                        } finally {
+                            isAcsActionLoading = false
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showAcsPasswordDialog && activeAcsForDialog != null) {
+        AcsActionDialog(
+            title = "Ganti Password WiFi",
+            description = "Masukkan password WiFi baru (minimal 8 karakter) untuk ${activeAcsForDialog.username ?: getOntSerialNumber(activeAcsForDialog)}",
+            initialValue = "",
+            label = "Password WiFi Baru",
+            isUpdating = isAcsActionLoading,
+            updateResult = acsActionResult,
+            bgMain = cardBg,
+            textMain = textMain,
+            textSecondary = textSecondary,
+            cardBg = cardBg,
+            primaryCyan = neonCyan,
+            onDismiss = {
+                showAcsPasswordDialog = false
+                acsActionResult = null
+            },
+            onConfirm = { newPass ->
+                if (newPass.length < 8) {
+                    acsActionResult = "Password minimal harus 8 karakter"
+                } else {
+                    isAcsActionLoading = true
+                    acsActionResult = null
+                    coroutineScope.launch {
+                        try {
+                            ApiClient.apiService.acsAction(
+                                activeAcsForDialog.id ?: "",
+                                mapOf("action" to "set_password", "value" to newPass, "areaName" to (activeAcsForDialog.areaName ?: ""))
+                            )
+                            Toast.makeText(context, "Password WiFi berhasil diubah!", Toast.LENGTH_LONG).show()
+                            acsDevice = activeAcsForDialog.copy(wifiPassword = newPass)
+                            showAcsPasswordDialog = false
+                            acsActionResult = null
+                        } catch (e: Exception) {
+                            acsActionResult = "Gagal: ${e.message}"
+                        } finally {
+                            isAcsActionLoading = false
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showAcsRebootDialog && activeAcsForDialog != null) {
+        AcsActionDialog(
+            title = "Reboot Perangkat ONT",
+            description = "Kirim perintah reboot ke ONT ${activeAcsForDialog.username ?: getOntSerialNumber(activeAcsForDialog)}?",
+            showInput = false,
+            isUpdating = isAcsActionLoading,
+            updateResult = acsActionResult,
+            bgMain = cardBg,
+            textMain = textMain,
+            textSecondary = textSecondary,
+            cardBg = cardBg,
+            primaryCyan = neonCyan,
+            onDismiss = {
+                showAcsRebootDialog = false
+                acsActionResult = null
+            },
+            onConfirm = {
+                isAcsActionLoading = true
+                acsActionResult = null
+                coroutineScope.launch {
+                    try {
+                        ApiClient.apiService.acsAction(
+                            activeAcsForDialog.id ?: "",
+                            mapOf("action" to "reboot", "areaName" to (activeAcsForDialog.areaName ?: ""))
+                        )
+                        Toast.makeText(context, "Perintah reboot berhasil dikirim!", Toast.LENGTH_LONG).show()
+                        showAcsRebootDialog = false
+                        acsActionResult = null
+                    } catch (e: Exception) {
+                        acsActionResult = "Gagal: ${e.message}"
+                    } finally {
+                        isAcsActionLoading = false
+                    }
+                }
+            }
+        )
+    }
+}
+
+private fun findMatchingAcsDeviceForCustomer(
+    acsList: List<com.example.ui.screens.AcsDevice>,
+    customer: Customer
+): com.example.ui.screens.AcsDevice? {
+    val validDevices = acsList.filter { it.id?.startsWith("error_") != true }
+    val secret = customer.pppoeSecret?.trim()?.takeIf { it.isNotBlank() }
+    val username = customer.username.trim().takeIf { it.isNotBlank() }
+    val snModem = customer.getEffectiveSnModem()?.trim()?.takeIf { it.isNotBlank() }
+
+    if (secret != null) {
+        validDevices.find { (it.username ?: "").trim().equals(secret, ignoreCase = true) }?.let { return it }
+    }
+    if (username != null) {
+        validDevices.find { (it.username ?: "").trim().equals(username, ignoreCase = true) }?.let { return it }
+    }
+    if (snModem != null) {
+        validDevices.find {
+            getOntSerialNumber(it).trim().equals(snModem, ignoreCase = true) ||
+                (it.serialNumber ?: "").trim().equals(snModem, ignoreCase = true)
+        }?.let { return it }
+    }
+    if (secret != null) {
+        validDevices.find {
+            val u = (it.username ?: "").trim()
+            val id = (it.id ?: "").trim()
+            (u.isNotBlank() && u != "Unknown" && u.contains(secret, ignoreCase = true)) ||
+                (id.isNotBlank() && id.contains(secret, ignoreCase = true))
+        }?.let { return it }
+    }
+    return null
+}
+
+private fun formatCustomerAcsUptime(rawUptime: String?): String {
+    if (rawUptime.isNullOrBlank() || rawUptime == "-") return "-"
+    val totalSeconds = rawUptime.trim().toLongOrNull() ?: return rawUptime
+    if (totalSeconds <= 0L) return "0 detik"
+    val days = totalSeconds / 86400
+    val hours = (totalSeconds % 86400) / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    val parts = mutableListOf<String>()
+    if (days > 0) parts.add("${days}h")
+    if (hours > 0) parts.add("${hours}j")
+    if (minutes > 0) parts.add("${minutes}m")
+    if (parts.isEmpty()) parts.add("${seconds}d")
+    return parts.joinToString(" ")
+}
+
+private fun formatCustomerAcsLastInform(isoString: String?): String {
+    if (isoString.isNullOrBlank() || isoString == "-") return "-"
+    return try {
+        val instant = java.time.Instant.parse(isoString.trim())
+        val formatter = java.time.format.DateTimeFormatter
+            .ofPattern("dd MMM yyyy, HH:mm", java.util.Locale.forLanguageTag("id-ID"))
+            .withZone(java.time.ZoneId.systemDefault())
+        formatter.format(instant)
+    } catch (_: Exception) {
+        isoString.replace("T", " ").substringBefore(".").take(16)
     }
 }
 

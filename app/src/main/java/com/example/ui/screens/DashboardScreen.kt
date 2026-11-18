@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import com.example.ui.data.UserSession
 import com.example.ui.data.UserRole
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -46,6 +47,7 @@ fun DashboardScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToGangguan: () -> Unit,
     onNavigateToInfoTenant: () -> Unit = {},
+    onNavigateToMap: () -> Unit = {},
     viewModel: DashboardViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -521,13 +523,14 @@ fun DashboardScreen(
                 menuItems.add { MenuItem(icon = Icons.Default.Group, title = "Pelanggan", tint = primaryBg, onClick = onNavigateToCustomers) }
                 menuItems.add { MenuItem(icon = Icons.Default.Receipt, title = "Tagihan", tint = textErrorPrimary, onClick = onNavigateToBilling) }
                 menuItems.add { MenuItem(icon = Icons.Default.Inventory, title = "Paket", tint = primaryBg, onClick = onNavigateToPackages) }
-                menuItems.add { MenuItem(icon = Icons.Default.Map, title = "Area", tint = primaryBg, onClick = onNavigateToArea) }
+                menuItems.add { MenuItem(icon = Icons.Default.LocationOn, title = "Area", tint = primaryBg, onClick = onNavigateToArea) }
                 menuItems.add { MenuItem(icon = Icons.Default.Router, title = "Mikrotik", tint = primaryBg, onClick = onNavigateToMikrotik) }
                 menuItems.add { MenuItem(icon = Icons.Default.Dns, title = "ACS", tint = primaryBg, onClick = onNavigateToAcs) }
                 menuItems.add { MenuItem(icon = Icons.Default.Speed, title = "Queue", tint = primaryBg, onClick = onNavigateToQueue) }
                 menuItems.add { MenuItem(icon = Icons.Default.AccountTree, title = "Jaringan", tint = primaryBg, onClick = onNavigateToJaringan) }
                 menuItems.add { MenuItem(icon = Icons.Default.Book, title = "Pembukuan", tint = primaryBg, onClick = onNavigateToPembukuan) }
                 menuItems.add { MenuItem(icon = Icons.Default.Storage, title = "Stock Barang", tint = primaryBg, onClick = onNavigateToStockBarang) }
+                menuItems.add { MenuItem(icon = Icons.Default.Map, title = "Map", tint = primaryBg, testTag = "menu_map", onClick = onNavigateToMap) }
                 menuItems.add { MenuItem(icon = Icons.Default.Settings, title = "Setting", tint = primaryBg, onClick = onNavigateToSetting) }
 
                 menuItems.chunked(4).forEach { rowItems ->
@@ -646,14 +649,21 @@ fun DashboardScreen(
 }
 
 @Composable
-fun RowScope.MenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, tint: Color, onClick: () -> Unit) {
+fun RowScope.MenuItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    tint: Color,
+    testTag: String = "",
+    onClick: () -> Unit
+) {
     val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() < 0.5f
     val iconBgColor = if (isDark) Color(0xFF1E1E1E) else Color(0xFFF0F0F0)
     val iconBorderColor = if (isDark) Color(0xFF333333) else Color(0xFFE0E0E0)
-    
+    val tagModifier = if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.weight(1f).clickable(onClick = onClick)
+        modifier = Modifier.weight(1f).then(tagModifier).clickable(onClick = onClick)
     ) {
         Box(
             modifier = Modifier

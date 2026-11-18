@@ -55,9 +55,9 @@ fun BackupRestoreScreen(onBack: () -> Unit) {
                     val customers = ApiClient.apiService.getCustomers()
                     context.contentResolver.openOutputStream(it)?.use { os ->
                         val writer = CSVWriter(OutputStreamWriter(os))
-                        writer.writeNext(arrayOf("id", "name", "phone", "area", "address", "username", "billingDate", "status", "price", "discount", "registerDate", "isolateDate", "packageName", "additionalCost1", "additionalCost2", "pppoeSecret", "odpId", "odpPort"))
+                        writer.writeNext(arrayOf("id", "name", "phone", "area", "address", "username", "billingDate", "status", "price", "discount", "registerDate", "isolateDate", "packageName", "additionalCost1", "additionalCost2", "pppoeSecret", "odpId", "odpPort", "snModem"))
                         for (c in customers) {
-                            writer.writeNext(arrayOf(c.id, c.name, c.phone, c.area, c.address ?: "", c.username, c.billingDate, c.status, c.price, c.discount, c.registerDate ?: "", c.isolateDate ?: "", c.packageName ?: "", c.additionalCost1 ?: "", c.additionalCost2 ?: "", c.pppoeSecret ?: "", c.odpId ?: "", c.odpPort ?: ""))
+                            writer.writeNext(arrayOf(c.id, c.name, c.phone, c.area, c.address ?: "", c.username, c.billingDate, c.status, c.price, c.discount, c.registerDate ?: "", c.isolateDate ?: "", c.packageName ?: "", c.additionalCost1 ?: "", c.additionalCost2 ?: "", c.pppoeSecret ?: "", c.odpId ?: "", c.odpPort ?: "", c.getEffectiveSnModem() ?: ""))
                         }
                         writer.close()
                     }
@@ -84,6 +84,7 @@ fun BackupRestoreScreen(onBack: () -> Unit) {
                             for (i in 1 until rows.size) {
                                 val row = rows[i]
                                 if (row.size >= 18) {
+                                    val snModemVal = if (row.size >= 19) row[18].trim() else ""
                                     val req = com.example.ui.screens.Customer(
                                         name = row[1],
                                         phone = row[2],
@@ -101,7 +102,9 @@ fun BackupRestoreScreen(onBack: () -> Unit) {
                                         additionalCost2 = row[14],
                                         pppoeSecret = row[15],
                                         odpId = row[16],
-                                        odpPort = row[17]
+                                        odpPort = row[17],
+                                        snModem = snModemVal,
+                                        serialNumber = snModemVal
                                     )
                                     ApiClient.apiService.addCustomer(req)
                                 } else if (row.size >= 17) {

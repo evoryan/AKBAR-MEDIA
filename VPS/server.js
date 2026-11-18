@@ -424,7 +424,9 @@ async function ensureTenantTables(pool) {
             portInput VARCHAR(100) DEFAULT '',
             redaman_in VARCHAR(50) DEFAULT '',
             redaman_out VARCHAR(50) DEFAULT '',
-            area VARCHAR(100) DEFAULT ''
+            area VARCHAR(100) DEFAULT '',
+            latitude VARCHAR(40) DEFAULT '',
+            longitude VARCHAR(40) DEFAULT ''
         )`);
         await pool.query(`CREATE TABLE IF NOT EXISTS odp_list (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -434,7 +436,9 @@ async function ensureTenantTables(pool) {
             portInput VARCHAR(100) DEFAULT '',
             redaman_in VARCHAR(50) DEFAULT '',
             redaman_out VARCHAR(50) DEFAULT '',
-            area VARCHAR(100) DEFAULT ''
+            area VARCHAR(100) DEFAULT '',
+            latitude VARCHAR(40) DEFAULT '',
+            longitude VARCHAR(40) DEFAULT ''
         )`);
         await pool.query(`CREATE TABLE IF NOT EXISTS rasio (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -445,7 +449,9 @@ async function ensureTenantTables(pool) {
             redaman_out_a VARCHAR(50),
             redaman_out_b VARCHAR(50),
             area VARCHAR(100) DEFAULT '',
-            port_input VARCHAR(100) DEFAULT ''
+            port_input VARCHAR(100) DEFAULT '',
+            latitude VARCHAR(40) DEFAULT '',
+            longitude VARCHAR(40) DEFAULT ''
         )`);
         await pool.query(`CREATE TABLE IF NOT EXISTS customers (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -467,8 +473,19 @@ async function ensureTenantTables(pool) {
             additionalCost1 VARCHAR(50) DEFAULT "",
             additionalCost2 VARCHAR(50) DEFAULT "",
             additionalCostDesc1 VARCHAR(255) DEFAULT "",
-            additionalCostDesc2 VARCHAR(255) DEFAULT ""
+            additionalCostDesc2 VARCHAR(255) DEFAULT "",
+            sn_modem VARCHAR(100) DEFAULT "",
+            latitude VARCHAR(40) DEFAULT "",
+            longitude VARCHAR(40) DEFAULT ""
         )`);
+        await pool.query(`ALTER TABLE odc_list ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE odc_list ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE odp_list ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE odp_list ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE rasio ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE rasio ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
         await pool.query(`CREATE TABLE IF NOT EXISTS tagihan_bulanan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             customer_id INT,
@@ -599,6 +616,7 @@ async function ensureTenantTables(pool) {
         await pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(()=>{});
         await pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(()=>{});
         await pool.query(`ALTER TABLE customers ADD COLUMN header_bg_url TEXT`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN sn_modem VARCHAR(100) DEFAULT ''`).catch(()=>{});
         await pool.query(`ALTER TABLE users ADD COLUMN avatar_url TEXT`).catch(()=>{});
         await pool.query(`ALTER TABLE tagihan_bulanan ADD COLUMN admin_name VARCHAR(100)`).catch(()=>{});
         await pool.query(`ALTER TABLE pembukuan ADD COLUMN image_url TEXT`).catch(()=>{});
@@ -608,6 +626,23 @@ async function ensureTenantTables(pool) {
             setting_value TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )`).catch(()=>{});
+        await pool.query(`CREATE TABLE IF NOT EXISTS map_kmz_layers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            file_name VARCHAR(255) DEFAULT '',
+            features_json LONGTEXT,
+            feature_count INT DEFAULT 0,
+            is_visible TINYINT(1) DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE customers ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE odc_list ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE odc_list ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE odp_list ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE odp_list ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE rasio ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await pool.query(`ALTER TABLE rasio ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
     } catch (err) {
         console.error("ensureTenantTables error:", err.message);
     }
@@ -775,6 +810,7 @@ app.get('/api/fix-db', async (req, res) => {
             try { await pool.query(`ALTER TABLE customers ADD COLUMN odp_port VARCHAR(10) DEFAULT ''`); } catch(e) {}
             try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost1 VARCHAR(50) DEFAULT ''`); } catch(e) {}
             try { await pool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`); } catch(e) {}
+            try { await pool.query(`ALTER TABLE customers ADD COLUMN sn_modem VARCHAR(100) DEFAULT ''`); } catch(e) {}
             try { await pool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`); } catch(e) {}
             
             try {
@@ -819,6 +855,7 @@ async function initAllDatabases() {
         await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(e=>{});
+        await masterPool.query(`ALTER TABLE customers ADD COLUMN sn_modem VARCHAR(100) DEFAULT ''`).catch(e=>{});
         await masterPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
         
         // 2. Find all tenant databases (baik yang berawalan akbar_ maupun nama kustom seperti ion_network)
@@ -878,6 +915,7 @@ async function initAllDatabases() {
             await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCost2 VARCHAR(50) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc1 VARCHAR(255) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(e=>{});
+            await tPool.query(`ALTER TABLE customers ADD COLUMN sn_modem VARCHAR(100) DEFAULT ''`).catch(e=>{});
             await tPool.query(`ALTER TABLE pembukuan ADD COLUMN category VARCHAR(100) DEFAULT 'Lain-lain'`).catch(e=>{});
 
             await tPool.query(`ALTER TABLE areas ADD COLUMN description VARCHAR(255) DEFAULT ''`).catch(e=>{});
@@ -1503,6 +1541,7 @@ app.get('/api/customers', async (req, res) => {
             const desc2 = r.additionalCostDesc2 || r.additional_cost_desc2 || r.additionalcostdesc2 || r.additionalCostdesc2 || '';
             const add1 = r.additionalCost1 || r.additionalcost1 || r.additional_cost1 || '';
             const add2 = r.additionalCost2 || r.additionalcost2 || r.additional_cost2 || '';
+            const snModem = r.sn_modem || r.snModem || r.serial_number || r.serialNumber || '';
             return {
                 ...r,
                 id: (r.id != null ? r.id.toString() : ''),
@@ -1541,7 +1580,10 @@ app.get('/api/customers', async (req, res) => {
                 add1Desc: desc1,
                 add2Desc: desc2,
                 header_bg_url: (r.header_bg_url || r.header_bg || ''),
-                headerBgUrl: (r.header_bg_url || r.header_bg || '')
+                headerBgUrl: (r.header_bg_url || r.header_bg || ''),
+                sn_modem: snModem,
+                snModem: snModem,
+                serial_number: snModem
             };
         });
         res.json(customers);
@@ -1635,6 +1677,7 @@ app.get('/api/sync', async (req, res) => {
                 const desc2 = c.additionalCostDesc2 || c.additional_cost_desc2 || c.additionalcostdesc2 || c.additionalCostdesc2 || '';
                 const add1 = c.additionalCost1 || c.additionalcost1 || c.additional_cost1 || '';
                 const add2 = c.additionalCost2 || c.additionalcost2 || c.additional_cost2 || '';
+                const snModem = c.sn_modem || c.snModem || c.serial_number || c.serialNumber || '';
                 return {
                     ...c,
                     id: (c.id != null ? c.id.toString() : ''),
@@ -1661,7 +1704,10 @@ app.get('/api/sync', async (req, res) => {
                     additionalCostDesc1: desc1,
                     additionalCostDesc2: desc2,
                     additional_cost_desc1: desc1,
-                    additional_cost_desc2: desc2
+                    additional_cost_desc2: desc2,
+                    sn_modem: snModem,
+                    snModem: snModem,
+                    serial_number: snModem
                 };
             }),
             tagihan: (tagihan || []).map(t => ({
@@ -2523,6 +2569,140 @@ app.get('/api/odp', async (req, res) => {
     }
 });
 
+app.post('/api/map/coordinates', async (req, res) => {
+    try {
+        const { entityType, id, latitude, longitude } = req.body || {};
+        const typeKey = String(entityType || '').trim().toUpperCase();
+        const tableMap = {
+            ODC: 'odc_list',
+            ODP: 'odp_list',
+            RASIO: 'rasio',
+            CUSTOMER: 'customers'
+        };
+        const tableName = tableMap[typeKey];
+        if (!tableName || !id) {
+            return res.status(400).json({ error: "Parameter entityType dan id wajib diisi" });
+        }
+        const latStr = String(latitude ?? '').trim();
+        const lngStr = String(longitude ?? '').trim();
+        await req.pool.query(`ALTER TABLE ${tableName} ADD COLUMN latitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await req.pool.query(`ALTER TABLE ${tableName} ADD COLUMN longitude VARCHAR(40) DEFAULT ''`).catch(()=>{});
+        await req.pool.query(`UPDATE ${tableName} SET latitude = ?, longitude = ? WHERE id = ?`, [latStr, lngStr, id]);
+        res.json({ message: "Koordinat berhasil disimpan", id: String(id), entityType: typeKey, latitude: latStr, longitude: lngStr });
+    } catch (error) {
+        console.error("Map coordinate save error:", error);
+        res.status(500).json({ error: error.message || "Gagal menyimpan koordinat peta" });
+    }
+});
+
+async function ensureKmzTable(pool) {
+    await pool.query(`CREATE TABLE IF NOT EXISTS map_kmz_layers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        file_name VARCHAR(255) DEFAULT '',
+        features_json LONGTEXT,
+        feature_count INT DEFAULT 0,
+        is_visible TINYINT(1) DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+}
+
+app.get('/api/map/kmz', async (req, res) => {
+    try {
+        await ensureKmzTable(req.pool);
+        const [rows] = await req.pool.query('SELECT id, name, file_name, features_json, feature_count, is_visible, created_at FROM map_kmz_layers ORDER BY id DESC');
+        const result = rows.map(r => ({
+            id: String(r.id),
+            name: r.name || r.file_name || `Layer #${r.id}`,
+            fileName: r.file_name || '',
+            featuresJson: r.features_json || '[]',
+            featureCount: Number(r.feature_count || 0),
+            isVisible: r.is_visible === undefined || r.is_visible === null ? true : Boolean(Number(r.is_visible)),
+            createdAt: r.created_at ? String(r.created_at) : ''
+        }));
+        res.json(result);
+    } catch (error) {
+        console.error("Error fetching KMZ layers:", error);
+        res.status(500).json({ error: error.message || "Gagal mengambil layer KMZ" });
+    }
+});
+
+app.post('/api/map/kmz', async (req, res) => {
+    try {
+        await ensureKmzTable(req.pool);
+        const body = req.body || {};
+        const name = String(body.name || body.fileName || 'Layer KMZ').trim().slice(0, 250);
+        const fileName = String(body.fileName || body.file_name || '').trim().slice(0, 250);
+        let featuresJson = '[]';
+        let featureCount = Number(body.featureCount || 0);
+        if (typeof body.featuresJson === 'string') {
+            featuresJson = body.featuresJson;
+            try {
+                const parsed = JSON.parse(featuresJson);
+                if (Array.isArray(parsed)) featureCount = parsed.length;
+            } catch (_) {}
+        } else if (Array.isArray(body.features)) {
+            featuresJson = JSON.stringify(body.features);
+            featureCount = body.features.length;
+        }
+        const isVisible = body.isVisible === false ? 0 : 1;
+        const [insertRes] = await req.pool.query(
+            'INSERT INTO map_kmz_layers (name, file_name, features_json, feature_count, is_visible) VALUES (?, ?, ?, ?, ?)',
+            [name, fileName, featuresJson, featureCount, isVisible]
+        );
+        res.json({
+            message: "Layer KMZ berhasil disimpan",
+            id: String(insertRes.insertId),
+            name,
+            fileName,
+            featureCount,
+            isVisible: Boolean(isVisible)
+        });
+    } catch (error) {
+        console.error("Error saving KMZ layer:", error);
+        res.status(500).json({ error: error.message || "Gagal menyimpan layer KMZ" });
+    }
+});
+
+app.put('/api/map/kmz/:id', async (req, res) => {
+    try {
+        await ensureKmzTable(req.pool);
+        const { id } = req.params;
+        const body = req.body || {};
+        const updates = [];
+        const params = [];
+        if (body.name !== undefined) {
+            updates.push('name = ?');
+            params.push(String(body.name).trim().slice(0, 250));
+        }
+        if (body.isVisible !== undefined) {
+            updates.push('is_visible = ?');
+            params.push(body.isVisible ? 1 : 0);
+        }
+        if (updates.length === 0) {
+            return res.status(400).json({ error: "Tidak ada perubahan yang dikirim" });
+        }
+        params.push(id);
+        await req.pool.query(`UPDATE map_kmz_layers SET ${updates.join(', ')} WHERE id = ?`, params);
+        res.json({ message: "Layer KMZ diperbarui", id: String(id) });
+    } catch (error) {
+        console.error("Error updating KMZ layer:", error);
+        res.status(500).json({ error: error.message || "Gagal memperbarui layer KMZ" });
+    }
+});
+
+app.delete('/api/map/kmz/:id', async (req, res) => {
+    try {
+        await ensureKmzTable(req.pool);
+        await req.pool.query('DELETE FROM map_kmz_layers WHERE id = ?', [req.params.id]);
+        res.json({ message: "Layer KMZ berhasil dihapus" });
+    } catch (error) {
+        console.error("Error deleting KMZ layer:", error);
+        res.status(500).json({ error: error.message || "Gagal menghapus layer KMZ" });
+    }
+});
+
+
 
 app.delete('/api/areas/:id', async (req, res) => {
     try {
@@ -2799,13 +2979,15 @@ app.put('/api/customers/:id', async (req, res) => {
         const pppoeSecret = req.body.pppoeSecret || req.body.pppoe_secret;
         const odpId = req.body.odpId || req.body.odp_id;
         const odpPort = req.body.odpPort || req.body.odp_port;
+        const rawSnModem = req.body.sn_modem ?? req.body.snModem ?? req.body.serial_number ?? req.body.serialNumber ?? '';
+        const snModem = typeof rawSnModem === 'string' ? rawSnModem.trim() : String(rawSnModem || '').trim();
 
         const parsedOdpId = (odpId !== undefined && odpId !== null && odpId !== '') ? parseInt(odpId) : null;
 
         try {
             await req.pool.query(
-                'UPDATE customers SET name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, additionalCostDesc1 = ?, additionalCostDesc2 = ? WHERE id = ?',
-                [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', req.params.id]
+                'UPDATE customers SET name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, additionalCostDesc1 = ?, additionalCostDesc2 = ?, sn_modem = ? WHERE id = ?',
+                [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', snModem, req.params.id]
             );
         } catch (updateErr) {
             if (updateErr.message && updateErr.message.includes("Unknown column")) {
@@ -2815,9 +2997,10 @@ app.put('/api/customers/:id', async (req, res) => {
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN sn_modem VARCHAR(100) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(
-                    'UPDATE customers SET name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, additionalCostDesc1 = ?, additionalCostDesc2 = ? WHERE id = ?',
-                    [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', req.params.id]
+                    'UPDATE customers SET name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, status = ?, price = ?, discount = ?, register_date = ?, isolate_date = ?, package_name = ?, pppoe_secret = ?, odp_id = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, additionalCostDesc1 = ?, additionalCostDesc2 = ?, sn_modem = ? WHERE id = ?',
+                    [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', snModem, req.params.id]
                 );
             } else {
                 throw updateErr;
@@ -2870,13 +3053,15 @@ app.post('/api/customers', async (req, res) => {
         const pppoeSecret = req.body.pppoeSecret || req.body.pppoe_secret;
         const odpId = req.body.odpId || req.body.odp_id;
         const odpPort = req.body.odpPort || req.body.odp_port;
+        const rawSnModem = req.body.sn_modem ?? req.body.snModem ?? req.body.serial_number ?? req.body.serialNumber ?? '';
+        const snModem = typeof rawSnModem === 'string' ? rawSnModem.trim() : String(rawSnModem || '').trim();
         
         const parsedOdpId = (odpId !== undefined && odpId !== null && odpId !== '') ? parseInt(odpId) : null;
         let result;
         try {
             [result] = await req.pool.query(
-                'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '']
+                'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2, sn_modem) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', snModem]
             );
         } catch (e) {
             if (e.message && e.message.includes("Unknown column")) {
@@ -2894,10 +3079,11 @@ app.post('/api/customers', async (req, res) => {
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                 await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                await req.pool.query(`ALTER TABLE customers ADD COLUMN sn_modem VARCHAR(100) DEFAULT ''`).catch(err=>{});
                 
                 [result] = await req.pool.query(
-                    'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '']
+                    'INSERT INTO customers (name, phone, area, address, username, billingDate, status, price, discount, register_date, isolate_date, package_name, pppoe_secret, odp_id, odp_port, additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2, sn_modem) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, phone, area, address, username, billingDate, status, price, discount, registerDate || '', isolateDate || '', packageName || '', pppoeSecret || '', parsedOdpId, odpPort || '', additionalCost1 || '', additionalCost2 || '', additionalCostDesc1 || '', additionalCostDesc2 || '', snModem]
                 );
             } else {
                 throw e;
@@ -3019,6 +3205,7 @@ app.post('/api/customers/import', async (req, res) => {
             const additionalCostDesc2 = cust.tambahan_2 || cust.additionalCostDesc2 || cust.additional_cost_desc2 || '';
             const additionalCost2 = String(cust.biaya_2 || cust.additionalCost2 || cust.additional_cost2 || '');
             const odpPort = cust.odp || cust.odp_port || '';
+            const snModem = String(cust.sn_modem || cust.snModem || cust.serial_number || cust.serialNumber || cust.modem || cust.modem_sn || '').trim();
 
             let existingId = null;
             if (mode === 'merge') {
@@ -3042,13 +3229,13 @@ app.post('/api/customers/import', async (req, res) => {
                         name = ?, phone = ?, area = ?, address = ?, username = ?, billingDate = ?, 
                         status = ?, price = ?, discount = ?, register_date = ?, package_name = ?, 
                         pppoe_secret = ?, odp_port = ?, additionalCost1 = ?, additionalCost2 = ?, 
-                        additionalCostDesc1 = ?, additionalCostDesc2 = ?, additional_cost_desc1 = ?, additional_cost_desc2 = ?
+                        additionalCostDesc1 = ?, additionalCostDesc2 = ?, additional_cost_desc1 = ?, additional_cost_desc2 = ?, sn_modem = ?
                      WHERE id = ?`,
                     [
                         name, phone, area, address, pppoeSecret, billingDate,
                         status, price, discount, registerDate, packageName,
                         pppoeSecret, odpPort, additionalCost1, additionalCost2,
-                        additionalCostDesc1, additionalCostDesc2, additionalCostDesc1, additionalCostDesc2,
+                        additionalCostDesc1, additionalCostDesc2, additionalCostDesc1, additionalCostDesc2, snModem,
                         existingId
                     ]
                 );
@@ -3061,13 +3248,13 @@ app.post('/api/customers/import', async (req, res) => {
                             name, phone, area, address, username, billingDate, status, price, 
                             discount, register_date, package_name, pppoe_secret, odp_port, 
                             additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2, 
-                            additional_cost_desc1, additional_cost_desc2
-                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            additional_cost_desc1, additional_cost_desc2, sn_modem
+                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             name, phone, area, address, pppoeSecret, billingDate, status, price,
                             discount, registerDate, packageName, pppoeSecret, odpPort,
                             additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2,
-                            additionalCostDesc1, additionalCostDesc2
+                            additionalCostDesc1, additionalCostDesc2, snModem
                         ]
                     );
                 } catch (e) {
@@ -3082,19 +3269,20 @@ app.post('/api/customers/import', async (req, res) => {
                     await req.pool.query(`ALTER TABLE customers ADD COLUMN additionalCostDesc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                     await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc1 VARCHAR(255) DEFAULT ''`).catch(err=>{});
                     await req.pool.query(`ALTER TABLE customers ADD COLUMN additional_cost_desc2 VARCHAR(255) DEFAULT ''`).catch(err=>{});
+                    await req.pool.query(`ALTER TABLE customers ADD COLUMN sn_modem VARCHAR(100) DEFAULT ''`).catch(err=>{});
 
                     [insRes] = await req.pool.query(
                         `INSERT INTO customers (
                             name, phone, area, address, username, billingDate, status, price, 
                             discount, register_date, package_name, pppoe_secret, odp_port, 
                             additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2, 
-                            additional_cost_desc1, additional_cost_desc2
-                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            additional_cost_desc1, additional_cost_desc2, sn_modem
+                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             name, phone, area, address, pppoeSecret, billingDate, status, price,
                             discount, registerDate, packageName, pppoeSecret, odpPort,
                             additionalCost1, additionalCost2, additionalCostDesc1, additionalCostDesc2,
-                            additionalCostDesc1, additionalCostDesc2
+                            additionalCostDesc1, additionalCostDesc2, snModem
                         ]
                     );
                 }

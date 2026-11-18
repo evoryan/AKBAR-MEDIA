@@ -14,6 +14,10 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Map Engine & JSZip for Google Maps + KMZ/KML Support -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -146,6 +150,11 @@
                     <button onclick="switchTab('mikrotik-acs')" id="nav-mikrotik-acs" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-slate-800/80 hover:text-white">
                         <i data-lucide="server" class="w-4.5 h-4.5"></i>
                         <span>Mikrotik & ACS</span>
+                    </button>
+
+                    <button onclick="switchTab('map')" id="nav-map" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-slate-800/80 hover:text-white">
+                        <i data-lucide="map" class="w-4.5 h-4.5"></i>
+                        <span>Map Jaringan</span>
                     </button>
 
                     <p class="text-[11px] font-bold text-slate-500 uppercase tracking-wider px-3 mt-4 mb-1">Pengaturan</p>
@@ -309,6 +318,13 @@
                                         <i data-lucide="server" class="w-5 h-5"></i>
                                     </div>
                                     <span class="text-xs font-semibold text-slate-200">Mikrotik/ACS</span>
+                                </button>
+                                <!-- Map Jaringan -->
+                                <button onclick="switchTab('map')" class="flex flex-col items-center gap-2.5 p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-800/80 transition group">
+                                    <div class="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition">
+                                        <i data-lucide="map" class="w-5 h-5"></i>
+                                    </div>
+                                    <span class="text-xs font-semibold text-slate-200">Map</span>
                                 </button>
                                 <!-- Setting -->
                                 <button onclick="switchTab('setting')" class="flex flex-col items-center gap-2.5 p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-500/50 hover:bg-slate-800/80 transition group">
@@ -499,12 +515,21 @@
                         </div>
 
                         <!-- Search and Filter Panel -->
-                        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row gap-3">
+                        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center gap-3">
                             <div class="flex-1 relative">
                                 <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5"></i>
-                                <input type="text" id="cust-search" oninput="filterCustomers()" placeholder="Cari pelanggan berdasarkan nama, telepon, atau PPPoE secret..." class="w-full bg-[#111827] border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                                <input type="text" id="cust-search" oninput="filterCustomers()" placeholder="Cari pelanggan berdasarkan nama, telepon, PPPoE secret, atau SN modem..." class="w-full bg-[#111827] border border-slate-800 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
                             </div>
-                            <div class="flex flex-wrap gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <!-- Tab Filter Paket: Reguler & Dedicated saja -->
+                                <div class="flex items-center gap-1 bg-[#111827] border border-slate-800 p-1 rounded-xl">
+                                    <button type="button" onclick="switchCustomerPackageFilter('reguler')" id="btn-cust-pkg-reguler" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition">
+                                        Reguler (<span id="cust-count-reguler">0</span>)
+                                    </button>
+                                    <button type="button" onclick="switchCustomerPackageFilter('dedicated')" id="btn-cust-pkg-dedicated" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition">
+                                        Dedicated (<span id="cust-count-dedicated">0</span>)
+                                    </button>
+                                </div>
                                 <select id="cust-filter-status" onchange="filterCustomers()" class="bg-[#111827] border border-slate-800 rounded-xl py-2 px-3 text-sm text-slate-300">
                                     <option value="">Semua Status</option>
                                     <option value="LUNAS">LUNAS</option>
@@ -513,9 +538,6 @@
                                 </select>
                                 <select id="cust-filter-area" onchange="filterCustomers()" class="bg-[#111827] border border-slate-800 rounded-xl py-2 px-3 text-sm text-slate-300">
                                     <option value="">Semua Area</option>
-                                </select>
-                                <select id="cust-filter-paket" onchange="filterCustomers()" class="bg-[#111827] border border-slate-800 rounded-xl py-2 px-3 text-sm text-slate-300">
-                                    <option value="">Semua Paket</option>
                                 </select>
                             </div>
                         </div>
@@ -528,8 +550,8 @@
                                         <tr>
                                             <th class="px-6 py-4">ID / Pelanggan</th>
                                             <th class="px-6 py-4">Paket / Tarif</th>
-                                            <th class="px-6 py-4">Area & Koordinasi</th>
-                                            <th class="px-6 py-4 text-center">Tgl Tagihan</th>
+                                            <th class="px-6 py-4">Area, Alamat & ODP</th>
+                                            <th class="px-6 py-4 text-center">Tgl Tagihan / Reg</th>
                                             <th class="px-6 py-4 text-center">Status</th>
                                             <th class="px-6 py-4 text-right">Aksi</th>
                                         </tr>
@@ -1772,6 +1794,137 @@
                     </div>
                 </section>
 
+                <!-- ================= TAB: MAP JARINGAN & PELANGGAN ================= -->
+                <section id="tab-map" class="tab-content hidden">
+                    <div class="flex flex-col gap-5">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                                <h2 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                                    <i data-lucide="map" class="w-6 h-6 text-emerald-400"></i> Google Maps & Overlay KMZ
+                                </h2>
+                                <p class="text-slate-400 text-sm">Visualisasi Google Maps untuk titik ODC, Rasio, ODP, jalur FO, pelanggan, dan file .KMZ / .KML.</p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input type="file" id="map-kmz-input" accept=".kmz,.kml" class="hidden" onchange="handleKmzFileImport(event)">
+                                <button type="button" onclick="document.getElementById('map-kmz-input').click()" class="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition shadow-md">
+                                    <i data-lucide="upload" class="w-4 h-4"></i> Import .KMZ / .KML
+                                </button>
+                                <button type="button" onclick="focusMyLocationOnMap()" id="btn-map-my-location" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition shadow-md">
+                                    <i data-lucide="locate-fixed" class="w-4 h-4"></i> Lokasi Saya
+                                </button>
+                                <button type="button" onclick="refreshNetworkMapData()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition shadow-md">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Segarkan Peta
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filter & Layer Controls -->
+                        <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+                            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                                <div class="flex flex-wrap items-center gap-1.5 bg-[#111827] border border-slate-800 p-1 rounded-xl">
+                                    <button type="button" onclick="setMapLayerFilter('ALL')" id="btn-map-layer-ALL" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition">Semua</button>
+                                    <button type="button" onclick="setMapLayerFilter('CUSTOMER')" id="btn-map-layer-CUSTOMER" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition">Pelanggan</button>
+                                    <button type="button" onclick="setMapLayerFilter('ODP')" id="btn-map-layer-ODP" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition">ODP</button>
+                                    <button type="button" onclick="setMapLayerFilter('ODC')" id="btn-map-layer-ODC" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition">ODC</button>
+                                    <button type="button" onclick="setMapLayerFilter('RASIO')" id="btn-map-layer-RASIO" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition">Rasio</button>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2 flex-1 lg:justify-end">
+                                    <div class="relative w-full sm:w-56">
+                                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+                                        <input type="text" id="map-search" oninput="renderNetworkMapMarkers()" placeholder="Cari titik / nama..." class="w-full bg-[#111827] border border-slate-800 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                                    </div>
+                                    <select id="map-filter-area" onchange="renderNetworkMapMarkers()" class="bg-[#111827] border border-slate-800 rounded-xl py-2 px-3 text-xs text-slate-300">
+                                        <option value="">Semua Area</option>
+                                    </select>
+                                    <label class="flex items-center gap-2 text-xs text-slate-300 bg-[#111827] border border-slate-800 px-3 py-2 rounded-xl cursor-pointer">
+                                        <input type="checkbox" id="map-show-lines" onchange="renderNetworkMapMarkers()" checked class="accent-emerald-500 rounded">
+                                        <span>Jalur FO</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Google Maps Mode Switcher & Realtime Live Status -->
+                            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="text-[11px] font-semibold text-slate-400 mr-1">Mode Google Maps:</span>
+                                    <button type="button" onclick="setGoogleMapType('y')" id="btn-gmap-type-y" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 transition">Hybrid</button>
+                                    <button type="button" onclick="setGoogleMapType('s')" id="btn-gmap-type-s" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#111827] text-slate-400 border border-slate-800 hover:text-slate-200 transition">Satelit</button>
+                                    <button type="button" onclick="setGoogleMapType('m')" id="btn-gmap-type-m" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#111827] text-slate-400 border border-slate-800 hover:text-slate-200 transition">Jalan</button>
+                                    <button type="button" onclick="setGoogleMapType('p')" id="btn-gmap-type-p" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#111827] text-slate-400 border border-slate-800 hover:text-slate-200 transition">Medan</button>
+                                    <select id="map-live-status-filter" onchange="renderNetworkMapMarkers()" class="ml-2 bg-[#111827] border border-slate-800 rounded-lg py-1 px-2 text-[11px] text-slate-300">
+                                        <option value="ALL">Status: Semua</option>
+                                        <option value="ONLINE">PPPoE Online</option>
+                                        <option value="OFFLINE">PPPoE Offline</option>
+                                        <option value="ISOLIR">Isolir</option>
+                                    </select>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <div class="flex items-center gap-2 bg-[#111827] border border-slate-800 px-2.5 py-1 rounded-lg">
+                                        <span id="map-live-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                        <span id="map-live-summary" class="text-[11px] text-slate-200 font-semibold">LIVE • Online: 0 • Offline: 0 • Isolir: 0</span>
+                                        <button type="button" onclick="toggleMapLiveAuto()" id="btn-map-live-toggle" class="text-[10px] font-bold text-emerald-400 border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 rounded">Auto 15d</button>
+                                    </div>
+                                    <span id="map-kmz-summary" class="text-[11px] text-amber-400 font-medium">Layer KMZ: 0 file</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Map & Point List Grid -->
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                            <div class="lg:col-span-2 bg-[#151c2c] border border-slate-800 rounded-2xl p-3 flex flex-col gap-3">
+                                <div id="map-pick-banner" class="hidden bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 px-3.5 py-2.5 rounded-xl flex items-center justify-between text-xs">
+                                    <span>Mode Pilih Titik Aktif: Klik lokasi pada peta untuk <b id="map-pick-target-name">-</b></span>
+                                    <button type="button" onclick="cancelMapPickMode()" class="text-rose-400 font-bold hover:underline">Batal</button>
+                                </div>
+                                <div id="network-map-canvas" style="height: 540px; min-height: 540px;" class="w-full rounded-xl border border-slate-800 z-10 bg-slate-950 relative"></div>
+                                <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 px-1">
+                                    <div class="flex flex-wrap items-center gap-3">
+                                        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-600 ring-2 ring-blue-300/60"></span> Lokasi Saya</span>
+                                        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> ODC</span>
+                                        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> ODP</span>
+                                        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Rasio / KMZ</span>
+                                        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Online</span>
+                                        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span> Offline</span>
+                                        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Isolir</span>
+                                    </div>
+                                    <span id="map-pinned-summary">Terpetakan: 0 • Belum Pin: 0</span>
+                                </div>
+                            </div>
+
+                            <!-- Right panel: KMZ Layers + Daftar Titik & Pin Koordinat -->
+                            <div class="flex flex-col gap-4 max-h-[630px]">
+                                <!-- Layer File KMZ -->
+                                <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-4 flex flex-col gap-2.5">
+                                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                                        <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+                                            <i data-lucide="layers" class="w-4 h-4 text-amber-400"></i> Layer .KMZ / .KML
+                                        </h3>
+                                        <button type="button" onclick="document.getElementById('map-kmz-input').click()" class="text-[11px] font-bold text-amber-400 hover:text-amber-300">+ Import</button>
+                                    </div>
+                                    <div id="map-kmz-layers-list" class="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
+                                        <p class="text-[11px] text-slate-500 text-center py-2">Belum ada file .kmz / .kml diunggah.</p>
+                                    </div>
+                                </div>
+
+                                <!-- Daftar Titik Lokasi -->
+                                <div class="bg-[#151c2c] border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 flex-1 min-h-0">
+                                    <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                                        <h3 class="text-sm font-bold text-white">Daftar Titik Lokasi</h3>
+                                        <select id="map-pin-status-filter" onchange="renderNetworkMapMarkers()" class="bg-[#111827] border border-slate-800 rounded-lg py-1 px-2 text-[11px] text-slate-300">
+                                            <option value="ALL">Semua</option>
+                                            <option value="PINNED">Terpetakan</option>
+                                            <option value="UNPINNED">Belum Pin</option>
+                                        </select>
+                                    </div>
+                                    <div id="map-points-list" class="flex flex-col gap-2 overflow-y-auto pr-1 flex-1">
+                                        <p class="text-xs text-slate-500 text-center py-10">Memuat titik peta...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
             </main>
         </div>
 
@@ -2008,8 +2161,12 @@
 
                 <div class="grid grid-cols-2 gap-3">
                     <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-                        <span class="text-slate-500">PPPoE Username:</span>
+                        <span class="text-slate-500">PPPoE Secret / Username:</span>
                         <p class="font-bold text-white mt-0.5" id="det-cust-username">-</p>
+                    </div>
+                    <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                        <span class="text-slate-500">SN Modem:</span>
+                        <p class="font-mono font-bold text-cyan-400 mt-0.5" id="det-cust-sn">-</p>
                     </div>
                     <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
                         <span class="text-slate-500">Paket Layanan:</span>
@@ -2022,6 +2179,43 @@
                     <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
                         <span class="text-slate-500">Terkoneksi ke ODP:</span>
                         <p class="font-bold text-blue-400 mt-0.5" id="det-cust-odp">-</p>
+                    </div>
+                    <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                        <span class="text-slate-500">Tgl Tagihan / Isolir:</span>
+                        <p class="font-bold text-slate-200 mt-0.5" id="det-cust-dates">-</p>
+                    </div>
+                    <div class="col-span-2 bg-slate-900/50 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <span class="text-slate-500">Tanggal Registrasi:</span>
+                        <span class="font-bold text-slate-200" id="det-cust-register">-</span>
+                    </div>
+                </div>
+
+                <!-- Rincian Biaya (Mirrored from Android) -->
+                <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-1.5">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-1">
+                        <span class="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
+                            <i data-lucide="receipt" class="w-4 h-4"></i> Rincian Biaya Bulanan
+                        </span>
+                    </div>
+                    <div class="flex justify-between text-[11px]">
+                        <span class="text-slate-400">Harga Paket</span>
+                        <span class="font-semibold text-slate-200" id="det-cost-package">Rp 0</span>
+                    </div>
+                    <div id="det-cost-discount-row" class="hidden flex justify-between text-[11px]">
+                        <span class="text-slate-400">Diskon</span>
+                        <span class="font-semibold text-emerald-400" id="det-cost-discount">- Rp 0</span>
+                    </div>
+                    <div id="det-cost-add1-row" class="hidden flex justify-between text-[11px]">
+                        <span class="text-slate-400" id="det-cost-add1-label">Biaya Tambahan 1</span>
+                        <span class="font-semibold text-cyan-400" id="det-cost-add1">+ Rp 0</span>
+                    </div>
+                    <div id="det-cost-add2-row" class="hidden flex justify-between text-[11px]">
+                        <span class="text-slate-400" id="det-cost-add2-label">Biaya Tambahan 2</span>
+                        <span class="font-semibold text-cyan-400" id="det-cost-add2">+ Rp 0</span>
+                    </div>
+                    <div class="flex justify-between items-center border-t border-slate-800 pt-2 mt-1">
+                        <span class="font-bold text-white text-xs">Total Biaya Perbulan</span>
+                        <span class="font-bold text-emerald-400 text-sm" id="det-cost-total">Rp 0</span>
                     </div>
                 </div>
 
@@ -2053,40 +2247,95 @@
                     </div>
                 </div>
 
-                <!-- Status Perangkat Remote ACS TR-069 -->
+                <!-- Status & Data Lanjutan GenieACS TR-069 (Collapse Default) -->
                 <div class="bg-slate-900/70 p-3.5 rounded-xl border border-emerald-500/20 flex flex-col gap-2">
-                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <span class="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
-                            <i data-lucide="radio" class="w-4 h-4"></i> Remote TR-069 ACS (Modem ONT)
-                        </span>
-                        <span id="det-acs-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">Memuat...</span>
+                    <div onclick="toggleCustomerAcsCard()" class="flex items-center justify-between gap-2 cursor-pointer select-none">
+                        <div class="flex flex-col">
+                            <span class="text-xs font-bold text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider">
+                                <i data-lucide="radio" class="w-4 h-4"></i> Data Lanjutan GenieACS (TR-069 ONT)
+                            </span>
+                            <span id="det-acs-collapse-hint" class="text-[10px] text-slate-500 mt-0.5">Klik untuk lihat detail telemetri ONT</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span id="det-acs-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">Memuat...</span>
+                            <button type="button" id="btn-det-acs-refresh" onclick="event.stopPropagation()" title="Muat Ulang / Summon GenieACS" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 transition">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <i id="det-acs-chevron" data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200"></i>
+                        </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-2 text-[11px]">
-                        <div>
-                            <span class="text-slate-500">Serial Number (SN):</span>
-                            <p class="font-mono font-bold text-white" id="det-acs-sn">-</p>
+                    <div id="det-acs-collapse-body" class="hidden flex flex-col gap-2.5 pt-2.5 border-t border-slate-800">
+                        <div id="det-acs-empty" class="hidden text-[11px] text-slate-400 bg-slate-950/50 border border-slate-800 rounded-lg p-2.5">
+                            Perangkat ONT untuk akun PPPoE / SN modem ini tidak ditemukan di server GenieACS.
                         </div>
-                        <div>
-                            <span class="text-slate-500">Redaman (Rx Power):</span>
-                            <p class="font-bold text-emerald-400" id="det-acs-rx-power">-</p>
+                        <div id="det-acs-body" class="grid grid-cols-2 gap-2.5 text-[11px]">
+                            <div>
+                                <span class="text-slate-500">Akun PPPoE (ACS):</span>
+                                <p class="font-mono font-bold text-cyan-300" id="det-acs-pppoe">-</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Tag / Area ACS:</span>
+                                <p class="font-bold text-slate-200" id="det-acs-tag">-</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Serial Number (SN ONT):</span>
+                                <p class="font-mono font-bold text-white" id="det-acs-sn">-</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Redaman (Rx Power):</span>
+                                <div class="mt-0.5" id="det-acs-rx-power">-</div>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">SSID Wi-Fi:</span>
+                                <p class="font-bold text-cyan-400" id="det-acs-ssid">-</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Password Wi-Fi:</span>
+                                <p class="font-mono font-bold text-amber-300" id="det-acs-wifi-pass">-</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Perangkat Terhubung:</span>
+                                <p class="font-bold text-emerald-400" id="det-acs-users">0 Perangkat</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Vendor / Model:</span>
+                                <p class="font-medium text-slate-200" id="det-acs-model">-</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Hardware / Software:</span>
+                                <p class="font-mono text-slate-300 break-all" id="det-acs-hw-sw">-</p>
+                            </div>
+                            <div>
+                                <span class="text-slate-500">Uptime Perangkat:</span>
+                                <p class="font-bold text-amber-400" id="det-acs-uptime">-</p>
+                            </div>
+                            <div class="col-span-2 flex justify-between items-center gap-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                                <span class="text-slate-500 shrink-0">IP WAN / Last Inform:</span>
+                                <span class="font-mono text-slate-300 text-right truncate" id="det-acs-ip-inform">-</span>
+                            </div>
                         </div>
-                        <div>
-                            <span class="text-slate-500">SSID Wi-Fi:</span>
-                            <p class="font-bold text-cyan-400" id="det-acs-ssid">-</p>
-                        </div>
-                        <div>
-                            <span class="text-slate-500">Model / Hardware:</span>
-                            <p class="font-medium text-slate-300" id="det-acs-model">-</p>
-                        </div>
-                        <div class="col-span-2 flex justify-between items-center bg-slate-950/60 p-2 rounded-lg border border-slate-800">
-                            <span class="text-slate-500">IP CPE & Last Inform:</span>
-                            <span class="font-mono text-slate-300" id="det-acs-ip-inform">-</span>
+                        <div id="det-acs-actions" class="hidden flex flex-wrap gap-1.5 pt-1 border-t border-slate-800/80">
+                            <button type="button" id="btn-det-acs-ssid" class="flex-1 min-w-[95px] bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-500/30 py-1.5 px-2.5 rounded-lg font-semibold text-[11px] transition flex items-center justify-center gap-1">
+                                <i data-lucide="wifi" class="w-3.5 h-3.5"></i> Ganti SSID
+                            </button>
+                            <button type="button" id="btn-det-acs-pwd" class="flex-1 min-w-[95px] bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 py-1.5 px-2.5 rounded-lg font-semibold text-[11px] transition flex items-center justify-center gap-1">
+                                <i data-lucide="key" class="w-3.5 h-3.5"></i> Ganti Sandi
+                            </button>
+                            <button type="button" id="btn-det-acs-summon" class="flex-1 min-w-[95px] bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 py-1.5 px-2.5 rounded-lg font-semibold text-[11px] transition flex items-center justify-center gap-1">
+                                <i data-lucide="zap" class="w-3.5 h-3.5"></i> Summon
+                            </button>
+                            <button type="button" id="btn-det-acs-reboot" class="flex-1 min-w-[95px] bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 py-1.5 px-2.5 rounded-lg font-semibold text-[11px] transition flex items-center justify-center gap-1">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reboot
+                            </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Action shortcuts in customer detail -->
                 <div class="flex flex-wrap gap-2 pt-2">
+                    <button id="btn-det-edit" class="flex-1 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-500/30 py-2 px-3 rounded-xl font-semibold transition flex items-center justify-center gap-1.5">
+                        <i data-lucide="edit" class="w-4 h-4"></i> Edit Data
+                    </button>
                     <button id="btn-det-isolate" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 px-3 rounded-xl font-semibold transition flex items-center justify-center gap-1.5">
                         <i data-lucide="shield-alert" class="w-4 h-4"></i> Isolir / Buka Isolir
                     </button>
@@ -2157,7 +2406,7 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <!-- Area -->
                     <div class="flex flex-col gap-1.5">
                         <label class="text-xs font-semibold text-slate-400">WILAYAH / AREA</label>
@@ -2165,20 +2414,25 @@
                     </div>
                     <!-- Alamat -->
                     <div class="flex flex-col gap-1.5">
-                        <label class="text-xs font-semibold text-slate-400">ALAMAT LENGKAP</label>
-                        <input type="text" id="cust-address" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200">
+                        <label class="text-xs font-semibold text-slate-400">ALAMAT (OPSIONAL)</label>
+                        <input type="text" id="cust-address" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Alamat lengkap">
+                    </div>
+                    <!-- SN Modem -->
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-xs font-semibold text-slate-400">SN MODEM (OPSIONAL)</label>
+                        <input type="text" id="cust-snModem" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200 font-mono" placeholder="Contoh: ZTEGC882194D">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <!-- PPPoE Secret -->
                     <div class="flex flex-col gap-1.5">
-                        <label class="text-xs font-semibold text-slate-400">PPPOE SECRET USERNAME</label>
-                        <input type="text" id="cust-username" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200">
+                        <label class="text-xs font-semibold text-slate-400">PPPOE SECRET / USERNAME</label>
+                        <input type="text" id="cust-username" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Contoh: akbar@wifi">
                     </div>
                     <!-- PPPoE Password -->
                     <div class="flex flex-col gap-1.5">
-                        <label class="text-xs font-semibold text-slate-400">PPPOE PASSWORD</label>
+                        <label class="text-xs font-semibold text-slate-400">PPPOE PASSWORD (OPSIONAL)</label>
                         <input type="text" id="cust-password" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Biarkan kosong jika tetap">
                     </div>
                     <!-- Paket Layanan -->
@@ -2199,22 +2453,33 @@
                     <!-- Port ODP -->
                     <div class="flex flex-col gap-1.5">
                         <label class="text-xs font-semibold text-slate-400">PORT ODP</label>
-                        <input type="number" id="cust-odpPort" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" min="1" max="16" placeholder="1-16">
+                        <input type="text" id="cust-odpPort" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Nomor Port (contoh: 1)">
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <!-- Register Date -->
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-xs font-semibold text-slate-400">TGL REGISTER</label>
+                        <input type="text" id="cust-registerDate" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="dd/MM/yyyy">
+                    </div>
                     <!-- Billing Date -->
                     <div class="flex flex-col gap-1.5">
-                        <label class="text-xs font-semibold text-slate-400">TANGGAL JATUH TEMPO</label>
-                        <input type="number" id="cust-billingDate" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" min="1" max="31">
+                        <label class="text-xs font-semibold text-slate-400">TGL TAGIHAN</label>
+                        <input type="text" id="cust-billingDate" required class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="1-31 / dd/MM/yyyy">
+                    </div>
+                    <!-- Isolate Date -->
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-xs font-semibold text-slate-400">TGL ISOLIR (OPSIONAL)</label>
+                        <input type="text" id="cust-isolateDate" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200" placeholder="Opsional">
                     </div>
                     <!-- Status Tagihan -->
                     <div class="flex flex-col gap-1.5">
-                        <label class="text-xs font-semibold text-slate-400">STATUS BILLING SEKARANG</label>
+                        <label class="text-xs font-semibold text-slate-400">STATUS BILLING</label>
                         <select id="cust-status" class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-300">
-                            <option value="LUNAS">LUNAS (Aktif)</option>
                             <option value="BELUM BAYAR">BELUM BAYAR</option>
+                            <option value="LUNAS">LUNAS (Aktif)</option>
+                            <option value="LUNAS CASH">LUNAS CASH</option>
                             <option value="ISOLIR">ISOLIR (Suspend)</option>
                         </select>
                     </div>

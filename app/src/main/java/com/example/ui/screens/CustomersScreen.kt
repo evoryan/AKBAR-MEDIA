@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 
@@ -46,10 +47,13 @@ import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.ui.platform.testTag
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -88,6 +92,7 @@ fun CustomersScreen(
 
     var isRefreshing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var packagesFromApi by remember { mutableStateOf<List<InternetPackage>>(emptyList()) }
 
     fun loadCustomersFromRemote() {
         coroutineScope.launch {
@@ -124,7 +129,8 @@ fun CustomersScreen(
                             additionalCost1 = item.getEffectiveCost1(),
                             additionalCost2 = item.getEffectiveCost2(),
                             additionalCostDesc1 = item.getEffectiveDesc1(),
-                            additionalCostDesc2 = item.getEffectiveDesc2()
+                            additionalCostDesc2 = item.getEffectiveDesc2(),
+                            sn_modem = item.getEffectiveSnModem()
                         )
                     }
                     if (mapped.isNotEmpty()) {
@@ -179,7 +185,8 @@ fun CustomersScreen(
                                 additionalCost1 = item.getEffectiveCost1(),
                                 additionalCost2 = item.getEffectiveCost2(),
                                 additionalCostDesc1 = item.getEffectiveCostDesc1(),
-                                additionalCostDesc2 = item.getEffectiveCostDesc2()
+                                additionalCostDesc2 = item.getEffectiveCostDesc2(),
+                                sn_modem = item.getEffectiveSnModem()
                             )
                         }
                         if (mapped.isNotEmpty()) {
@@ -203,18 +210,46 @@ fun CustomersScreen(
     }
 
     LaunchedEffect(Unit) {
+        launch {
+            try {
+                packagesFromApi = ApiClient.apiService.getPackages()
+            } catch (_: Exception) {}
+        }
         loadCustomersFromRemote()
     }
     
     val areas = listOf("Semua") + customers.map { it.area }.distinct().sorted()
     var selectedArea by remember { mutableStateOf("Semua") }
+    var selectedPackageTab by remember { mutableIntStateOf(0) } // 0 = Reguler, 1 = Dedicated
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 
+    val isDedicatedCustomer: (Customer) -> Boolean = { c ->
+        val pkgName = c.packageName?.trim().orEmpty()
+        val matchedApiPkg = packagesFromApi.find { it.name.trim().equals(pkgName, ignoreCase = true) }
+        pkgName.contains("dedicated", ignoreCase = true) ||
+            pkgName.contains("1:1") ||
+            (matchedApiPkg?.isDedicated == true)
+    }
+
     val filteredByArea = if (selectedArea == "Semua") customers else customers.filter { it.area == selectedArea }
-    val filteredCustomers = if (searchQuery.isBlank()) filteredByArea else filteredByArea.filter { 
-        it.name.contains(searchQuery, ignoreCase = true) || 
-        it.username.contains(searchQuery, ignoreCase = true) || 
+    val regulerCount = remember(filteredByArea, packagesFromApi) {
+        filteredByArea.count { !isDedicatedCustomer(it) }
+    }
+    val dedicatedCount = remember(filteredByArea, packagesFromApi) {
+        filteredByArea.count { isDedicatedCustomer(it) }
+    }
+    val filteredByPackage = if (selectedPackageTab == 0) {
+        filteredByArea.filter { !isDedicatedCustomer(it) }
+    } else {
+        filteredByArea.filter { isDedicatedCustomer(it) }
+    }
+    val filteredCustomers = if (searchQuery.isBlank()) filteredByPackage else filteredByPackage.filter {
+        it.name.contains(searchQuery, ignoreCase = true) ||
+        it.username.contains(searchQuery, ignoreCase = true) ||
+        (it.pppoeSecret?.contains(searchQuery, ignoreCase = true) == true) ||
+        (it.getEffectiveSnModem()?.contains(searchQuery, ignoreCase = true) == true) ||
+        (it.packageName?.contains(searchQuery, ignoreCase = true) == true) ||
         it.phone.contains(searchQuery, ignoreCase = true)
     }
     
@@ -297,8 +332,8 @@ fun CustomersScreen(
                 }
         ) {
             var showDeleteConfirm by remember { mutableStateOf(false) }
-    var customerToDeleteState by remember { mutableStateOf<Customer?>(null) }
-    var expanded by remember { mutableStateOf(false) }
+            var customerToDeleteState by remember { mutableStateOf<Customer?>(null) }
+            var expanded by remember { mutableStateOf(false) }
 
             Row(
                 modifier = Modifier
@@ -335,7 +370,15 @@ fun CustomersScreen(
                         modifier = Modifier.padding(12.dp).fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Total $selectedArea", color = textMain.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1)
+                        val activePkgLabel = if (selectedPackageTab == 0) "Reguler" else "Dedicated"
+                        val filterSummaryLabel = "Total $selectedArea • $activePkgLabel"
+                        Text(
+                            filterSummaryLabel,
+                            color = textMain.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             "Rp. ${java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("id-ID")).format(totalPendapatanArea)}",
@@ -347,7 +390,56 @@ fun CustomersScreen(
                 }
             }
 
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            TabRow(
+                selectedTabIndex = selectedPackageTab,
+                containerColor = cardBg,
+                contentColor = neonCyan,
+                indicator = { tabPositions ->
+                    if (selectedPackageTab < tabPositions.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedPackageTab]),
+                            color = neonCyan
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+            ) {
+                Tab(
+                    selected = selectedPackageTab == 0,
+                    onClick = { selectedPackageTab = 0 },
+                    modifier = Modifier.testTag("tab_customers_reguler"),
+                    text = {
+                        Text(
+                            text = "Reguler ($regulerCount)",
+                            fontSize = 13.sp,
+                            fontWeight = if (selectedPackageTab == 0) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selectedPackageTab == 0) neonCyan else textSecondary
+                        )
+                    }
+                )
+                Tab(
+                    selected = selectedPackageTab == 1,
+                    onClick = { selectedPackageTab = 1 },
+                    modifier = Modifier.testTag("tab_customers_dedicated"),
+                    text = {
+                        Text(
+                            text = "Dedicated ($dedicatedCount)",
+                            fontSize = 13.sp,
+                            fontWeight = if (selectedPackageTab == 1) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selectedPackageTab == 1) neonCyan else textSecondary
+                        )
+                    }
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = !expanded }
@@ -356,13 +448,15 @@ fun CustomersScreen(
                         value = selectedArea,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Filter Area", color = textMain.copy(alpha = 0.7f)) },
+                        singleLine = true,
+                        label = { Text("Filter Area", color = textMain.copy(alpha = 0.7f), maxLines = 1) },
                         trailingIcon = {
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                         },
                         modifier = Modifier
                             .menuAnchor()
                             .fillMaxWidth(),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan,
                             unfocusedBorderColor = textMain.copy(alpha = 0.5f),
@@ -381,7 +475,7 @@ fun CustomersScreen(
                     ) {
                         areas.forEach { area ->
                             DropdownMenuItem(
-                                text = { Text(area, color = if (selectedArea == area) neonCyan else textMain) },
+                                text = { Text(area, color = if (selectedArea == area) neonCyan else textMain, fontSize = 13.sp) },
                                 onClick = {
                                     selectedArea = area
                                     expanded = false
@@ -478,12 +572,13 @@ fun CustomersScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Person, contentDescription = null, tint = textSecondary, modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(12.dp))
+                    val emptyPkgLabel = if (selectedPackageTab == 0) "Reguler" else "Dedicated"
                     Text(
                         when {
-                            searchQuery.isNotBlank() -> "Tidak ada pelanggan yang cocok dengan pencarian" 
-                            selectedArea != "Semua" -> "Tidak ada pelanggan di area $selectedArea"
+                            searchQuery.isNotBlank() -> "Tidak ada pelanggan $emptyPkgLabel yang cocok dengan pencarian"
+                            selectedArea != "Semua" -> "Tidak ada pelanggan $emptyPkgLabel di area $selectedArea"
                             localPelangganList.isNotEmpty() && customers.isEmpty() -> "Tidak ada pelanggan di area akses akun Anda"
-                            else -> "Belum ada data pelanggan"
+                            else -> "Belum ada pelanggan paket $emptyPkgLabel"
                         },
                         color = textSecondary,
                         fontSize = 14.sp,
@@ -590,7 +685,9 @@ data class Customer(
     @Json(name = "odp_port") val odpPort: String? = null,
     @Json(name = "header_bg_url") val headerBgUrl: String? = null,
     @Json(name = "sn_modem") val snModem: String? = null,
-    @Json(name = "serial_number") val serialNumber: String? = null
+    @Json(name = "serial_number") val serialNumber: String? = null,
+    val latitude: String? = null,
+    val longitude: String? = null
 ) {
     val register_date: String? get() = registerDate
     val isolate_date: String? get() = isolateDate

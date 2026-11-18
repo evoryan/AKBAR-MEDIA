@@ -157,7 +157,8 @@ fun CollectorDashboardScreen(
                         additionalCost1 = item.getEffectiveCost1(),
                         additionalCost2 = item.getEffectiveCost2(),
                         additionalCostDesc1 = item.getEffectiveDesc1(),
-                        additionalCostDesc2 = item.getEffectiveDesc2()
+                        additionalCostDesc2 = item.getEffectiveDesc2(),
+                        sn_modem = item.getEffectiveSnModem()
                     )
                 }
                 val tagihanMapped = syncResponse.tagihan.map { item ->

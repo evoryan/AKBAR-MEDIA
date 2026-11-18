@@ -176,7 +176,8 @@ fun AkbarMediaNavGraph() {
                     onNavigateToJaringan = { navController.navigate(JaringanRoute) },
                     onNavigateToProfile = { navController.navigate(ProfileRoute) },
                     onNavigateToGangguan = { navController.navigate(GangguanRoute) },
-                    onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) }
+                    onNavigateToInfoTenant = { navController.navigate(InfoTenantRoute) },
+                    onNavigateToMap = { navController.navigate(MapRoute) }
                 )
             }
 
@@ -184,6 +185,15 @@ fun AkbarMediaNavGraph() {
             composable<JaringanRoute> {
                 com.example.ui.screens.JaringanScreen(
                     onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable<MapRoute> {
+                com.example.ui.screens.MapScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToCustomerDetail = { customerId ->
+                        navController.navigate(CustomerDetailRoute(customerId))
+                    }
                 )
             }
 

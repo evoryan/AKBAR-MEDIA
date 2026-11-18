@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<link id="leaflet-css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body, #map {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #0f172a; font-family: sans-serif; overflow: hidden;
+  }
+  .leaflet-container { width: 100%; height: 100%; background: #0f172a; }
+  .leaflet-pane, .leaflet-tile, .leaflet-marker-icon, .leaflet-marker-shadow,
+  .leaflet-tile-container, .leaflet-pane > svg, .leaflet-pane > canvas,
+  .leaflet-zoom-box, .leaflet-image-layer, .leaflet-layer {
+    position: absolute; left: 0; top: 0;
+  }
+  #status-pill {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 900; background: rgba(15, 23, 42, 0.86); color: #e2e8f0;
+    padding: 6px 12px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    border: 1px solid rgba(148, 163, 184, 0.35); pointer-events: none;
+    white-space: nowrap; max-width: 90%; overflow: hidden; text-overflow: ellipsis;
+    display: none;
+  }
+  .my-location-pulse {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: rgba(37, 99, 235, 0.25);
+    display: flex; align-items: center; justify-content: center;
+    animation: myLocPulse 2s ease-out infinite;
+  }
+  .my-location-dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #2563eb;
+    border: 2.5px solid #ffffff;
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.85);
+  }
+  @keyframes myLocPulse {
+    0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.55); }
+    70% { transform: scale(1.1); box-shadow: 0 0 0 12px rgba(37, 99, 235, 0); }
+    100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="status-pill">Memuat Google Maps...</div>
+<script>
+  window.__pendingPayload = null;
+  var map = null;
+  var googleTileLayer = null;
+  var kmzLayerGroup = null;
+  var linesLayer = null;
+  var markersLayer = null;
+  var myLocationLayer = null;
+  var myAccCircle = null;
+  var myDotMarker = null;
+  var markerLookup = {};
+  var nodeDataLookup = {};
+  var kmzBoundsLookup = {};
+  var lastKmzSignature = '';
+  var pickModeActive = false;
+  var currentMapType = null;
+  var hasAutoFittedOnce = false;
+  var hasCenteredMyLocOnOpen = false;
+  var hasUserMovedMap = false;
+  var lastCenterNonceHandled = 0;
+
+  function setStatusPill(msg) {
+    var el = document.getElementById('status-pill');
+    if (!el) return;
+    if (!msg) {
+      el.style.display = 'none';
+    } else {
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+  }
+
+  function ensureGoogleTiles(mapType, isDark) {
+    if (!map || typeof L === 'undefined') return;
+    var lyrs = mapType || 'y';
+    if (currentMapType === lyrs && googleTileLayer) return;
+    currentMapType = lyrs;
+    if (googleTileLayer) map.removeLayer(googleTileLayer);
+    googleTileLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=' + lyrs + '&hl=id&x={x}&y={y}&z={z}', {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 21,
+      attribution: 'Google Maps'
+    }).addTo(map);
+    document.body.style.background = isDark ? '#0f172a' : '#f1f5f9';
+  }
+
+  function initLeafletMap() {
+    if (map || typeof L === 'undefined') return;
+    map = L.map('map', { zoomControl: true }).setView([-7.55, 110.82], 13);
+    kmzLayerGroup = L.layerGroup().addTo(map);
+    linesLayer = L.layerGroup().addTo(map);
+    markersLayer = L.layerGroup().addTo(map);
+    myLocationLayer = L.layerGroup().addTo(map);
+
+    ensureGoogleTiles('y', true);
+
+    map.on('dragstart zoomstart', function() {
+      hasUserMovedMap = true;
+    });
+
+    map.on('click', function(e) {
+      if (pickModeActive && window.AndroidMapBridge) {
+        window.AndroidMapBridge.onMapPicked(e.latlng.lat, e.latlng.lng);
+      }
+    });
+
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(function() {
+        if (map) map.invalidateSize(true);
+      }).observe(document.getElementById('map'));
+    }
+    setTimeout(function() { if (map) map.invalidateSize(true); }, 100);
+    setTimeout(function() { if (map) map.invalidateSize(true); }, 450);
+    setTimeout(function() { if (map) map.invalidateSize(true); }, 1000);
+
+    setStatusPill('');
+    if (window.__pendingPayload) {
+      var p = window.__pendingPayload;
+      window.__pendingPayload = null;
+      window.renderNetworkMap(p);
+    }
+  }
+
+  function buildKmzSignature(kmzLayers) {
+    return (kmzLayers || []).map(function(kl) {
+      return String(kl.id) + ':' + ((kl.features || []).length);
+    }).join('|');
+  }
+
+  function resolveMarkerStyle(n) {
+    var color = '#10b981';
+    var radius = 7;
+    if (n.type === 'ODC') { color = '#a855f7'; radius = 10; }
+    else if (n.type === 'RASIO') { color = '#f59e0b'; radius = 9; }
+    else if (n.type === 'ODP') { color = '#3b82f6'; radius = 8; }
+    else if (n.liveState === 'ISOLIR' || n.alert) { color = '#ef4444'; radius = 7; }
+    else if (n.liveState === 'OFFLINE') { color = '#f97316'; radius = 8; }
+    return { color: color, radius: radius };
+  }
+
+  function renderMyBlueDot(myLoc) {
+    if (!map || !myLocationLayer) return;
+    if (!myLoc || typeof myLoc.lat !== 'number' || typeof myLoc.lng !== 'number') {
+      myLocationLayer.clearLayers();
+      myAccCircle = null;
+      myDotMarker = null;
+      return;
+    }
+    var latLng = [myLoc.lat, myLoc.lng];
+    var accRadius = Math.max(Number(myLoc.accuracy || 18), 10);
+    if (myAccCircle && myDotMarker) {
+      myAccCircle.setLatLng(latLng);
+      myAccCircle.setRadius(accRadius);
+      myDotMarker.setLatLng(latLng);
+    } else {
+      myLocationLayer.clearLayers();
+      myAccCircle = L.circle(latLng, {
+        radius: accRadius,
+        color: '#3b82f6',
+        weight: 1,
+        opacity: 0.45,
+        fillColor: '#3b82f6',
+        fillOpacity: 0.14,
+        interactive: false
+      }).addTo(myLocationLayer);
+
+      var blueIcon = L.divIcon({
+        className: '',
+        html: '<div class="my-location-pulse"><div class="my-location-dot"></div></div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+      myDotMarker = L.marker(latLng, { icon: blueIcon, zIndexOffset: 1000 }).addTo(myLocationLayer);
+      myDotMarker.bindTooltip('Lokasi Saya (Titik Biru)', { direction: 'top', offset: [0, -8] });
+      myDotMarker.on('click', function() {
+        if (pickModeActive && window.AndroidMapBridge) {
+          var ll = myDotMarker.getLatLng();
+          window.AndroidMapBridge.onMapPicked(ll.lat, ll.lng);
+        }
+      });
+    }
+  }
+
+  window.renderNetworkMap = function(payload) {
+    if (!payload) return;
+    if (!map || typeof L === 'undefined') {
+      window.__pendingPayload = payload;
+      return;
+    }
+
+    ensureGoogleTiles(payload.mapType || 'y', Boolean(payload.dark));
+    pickModeActive = Boolean(payload.pickMode);
+
+    var nodes = payload.nodes || [];
+    var kmzLayers = payload.kmzLayers || [];
+    var myLoc = payload.myLocation || null;
+    var centerNonce = Number(payload.centerMyLocationNonce || 0);
+    var nodeMap = {};
+    nodes.forEach(function(n) { nodeMap[n.key] = n; });
+    nodeDataLookup = nodeMap;
+
+    renderMyBlueDot(myLoc);
+
+    var totalKmzFeatures = 0;
+    kmzLayers.forEach(function(kl) { totalKmzFeatures += (kl.features || []).length; });
+
+    if (nodes.length === 0 && totalKmzFeatures === 0 && !myLoc) {
+      setStatusPill('Belum ada pin GPS • Atur di tab Daftar Titik atau Import KMZ');
+    } else {
+      setStatusPill('');
+    }
+
+    var allBounds = [];
+
+    var kmzSig = buildKmzSignature(kmzLayers);
+    if (kmzSig !== lastKmzSignature) {
+      lastKmzSignature = kmzSig;
+      kmzLayerGroup.clearLayers();
+      kmzBoundsLookup = {};
+      kmzLayers.forEach(function(kl) {
+        var lName = kl.name || 'Layer KMZ';
+        var lBounds = [];
+        (kl.features || []).forEach(function(f) {
+          var fName = f.name || 'Titik KMZ';
+          var fFolder = f.folder || '';
+          var fDesc = f.description || '';
+          if (f.kind === 'point' && Array.isArray(f.coords) && f.coords.length >= 2) {
+            var lat = f.coords[0], lng = f.coords[1];
+            var kmMarker = L.circleMarker([lat, lng], {
+              radius: 6,
+              fillColor: f.color || '#f59e0b',
+              color: '#ffffff',
+              weight: 1.8,
+              opacity: 1,
+              fillOpacity: 0.95
+            }).addTo(kmzLayerGroup);
+            kmMarker.bindTooltip(fName, { direction: 'top' });
+            kmMarker.on('click', function() {
+              if (pickModeActive && window.AndroidMapBridge) {
+                window.AndroidMapBridge.onMapPicked(lat, lng);
+              } else if (window.AndroidMapBridge) {
+                window.AndroidMapBridge.onKmzFeatureClick(lName, fName, fFolder, fDesc, lat, lng);
+              }
+            });
+            lBounds.push([lat, lng]);
+          } else if (f.kind === 'line' && Array.isArray(f.coords) && f.coords.length >= 2) {
+            var poly = L.polyline(f.coords, {
+              color: f.color || '#38bdf8',
+              weight: f.weight || 3,
+              opacity: f.opacity || 0.9
+            }).addTo(kmzLayerGroup);
+            poly.bindTooltip(fName, { sticky: true });
+            poly.on('click', function() {
+              var mid = f.coords[Math.floor(f.coords.length / 2)] || f.coords[0];
+              if (pickModeActive && window.AndroidMapBridge && mid) {
+                window.AndroidMapBridge.onMapPicked(mid[0], mid[1]);
+              } else if (window.AndroidMapBridge) {
+                window.AndroidMapBridge.onKmzFeatureClick(lName, fName, fFolder, fDesc, mid ? mid[0] : 0, mid ? mid[1] : 0);
+              }
+            });
+            f.coords.forEach(function(pt) { lBounds.push(pt); });
+          } else if (f.kind === 'polygon' && Array.isArray(f.coords) && f.coords.length >= 3) {
+            var pg = L.polygon(f.coords, {
+              color: f.color || '#38bdf8',
+              fillColor: f.fillColor || f.color || '#38bdf8',
+              fillOpacity: f.fillOpacity || 0.25,
+              weight: f.weight || 2
+            }).addTo(kmzLayerGroup);
+            pg.bindTooltip(fName, { sticky: true });
+            pg.on('click', function() {
+              var center = pg.getBounds().getCenter();
+              if (pickModeActive && window.AndroidMapBridge) {
+                window.AndroidMapBridge.onMapPicked(center.lat, center.lng);
+              } else if (window.AndroidMapBridge) {
+                window.AndroidMapBridge.onKmzFeatureClick(lName, fName, fFolder, fDesc, center.lat, center.lng);
+              }
+            });
+            f.coords.forEach(function(pt) { lBounds.push(pt); });
+          }
+        });
+        if (lBounds.length > 0) kmzBoundsLookup[kl.id] = lBounds;
+      });
+    }
+
+    Object.keys(kmzBoundsLookup).forEach(function(k) {
+      (kmzBoundsLookup[k] || []).forEach(function(pt) { allBounds.push(pt); });
+    });
+
+    linesLayer.clearLayers();
+    if (payload.showLines) {
+      nodes.forEach(function(n) {
+        if (n.parentKey && nodeMap[n.parentKey]) {
+          var p = nodeMap[n.parentKey];
+          var lineColor = n.type === 'CUSTOMER'
+            ? (n.liveState === 'OFFLINE' ? '#f97316' : (n.liveState === 'ISOLIR' || n.alert) ? '#ef4444' : '#10b981')
+            : '#38bdf8';
+          L.polyline([[p.lat, p.lng], [n.lat, n.lng]], {
+            color: lineColor,
+            weight: 2,
+            opacity: 0.78,
+            dashArray: n.type === 'CUSTOMER' ? '4, 5' : null
+          }).addTo(linesLayer);
+        }
+      });
+    }
+
+    Object.keys(markerLookup).forEach(function(existingKey) {
+      if (!nodeMap[existingKey]) {
+        markersLayer.removeLayer(markerLookup[existingKey]);
+        delete markerLookup[existingKey];
+      }
+    });
+
+    nodes.forEach(function(n) {
+      var st = resolveMarkerStyle(n);
+      var tipExtra = n.liveState ? (' [' + n.liveState + ']') : '';
+      var tipText = n.type + ': ' + n.name + tipExtra;
+      var existing = markerLookup[n.key];
+
+      if (existing) {
+        existing.setLatLng([n.lat, n.lng]);
+        existing.setStyle({
+          radius: st.radius,
+          fillColor: st.color,
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.94
+        });
+        if (typeof existing.setTooltipContent === 'function') {
+          existing.setTooltipContent(tipText);
+        }
+      } else {
+        var markerKey = n.key;
+        var marker = L.circleMarker([n.lat, n.lng], {
+          radius: st.radius,
+          fillColor: st.color,
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.94
+        }).addTo(markersLayer);
+        marker.bindTooltip(tipText, { direction: 'top' });
+        marker.on('click', function() {
+          var latestNode = nodeDataLookup[markerKey] || n;
+          if (pickModeActive && window.AndroidMapBridge) {
+            window.AndroidMapBridge.onMapPicked(latestNode.lat, latestNode.lng);
+          } else if (window.AndroidMapBridge) {
+            window.AndroidMapBridge.onMarkerClick(latestNode.type, latestNode.id);
+          }
+        });
+        markerLookup[n.key] = marker;
+      }
+      allBounds.push([n.lat, n.lng]);
+    });
+
+    if (centerNonce > lastCenterNonceHandled && myLoc && typeof myLoc.lat === 'number' && typeof myLoc.lng === 'number') {
+      lastCenterNonceHandled = centerNonce;
+      hasCenteredMyLocOnOpen = true;
+      hasAutoFittedOnce = true;
+      map.setView([myLoc.lat, myLoc.lng], 16);
+    } else if (payload.focusKmzId && kmzBoundsLookup[payload.focusKmzId]) {
+      var kb = kmzBoundsLookup[payload.focusKmzId];
+      if (kb.length === 1) map.setView(kb[0], 17);
+      else map.fitBounds(kb, { padding: [36, 36], maxZoom: 18 });
+      hasAutoFittedOnce = true;
+    } else if (!hasCenteredMyLocOnOpen && myLoc && typeof myLoc.lat === 'number' && typeof myLoc.lng === 'number' && !hasUserMovedMap && !pickModeActive) {
+      hasCenteredMyLocOnOpen = true;
+      hasAutoFittedOnce = true;
+      map.setView([myLoc.lat, myLoc.lng], 16);
+    } else if (!hasAutoFittedOnce && !myLoc && allBounds.length > 0 && !pickModeActive) {
+      if (allBounds.length === 1) map.setView(allBounds[0], 16);
+      else map.fitBounds(allBounds, { padding: [36, 36], maxZoom: 17 });
+      hasAutoFittedOnce = true;
+    }
+    map.invalidateSize(true);
+  };
+
+  window.focusNetworkNode = function(key) {
+    var m = markerLookup[key];
+    if (m && map) {
+      map.setView(m.getLatLng(), 18);
+      m.openTooltip();
+    }
+  };
+
+  (function loadLeafletWithFallback() {
+    var urls = [
+      'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+      'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js'
+    ];
+    var idx = 0;
+    function tryNext() {
+      if (typeof L !== 'undefined') {
+        initLeafletMap();
+        return;
+      }
+      if (idx >= urls.length) {
+        setStatusPill('Gagal memuat peta. Periksa koneksi internet.');
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = urls[idx++];
+      s.onload = function() { initLeafletMap(); };
+      s.onerror = function() { tryNext(); };
+      document.head.appendChild(s);
+    }
+    tryNext();
+  })();
+</script>
+</body>
+</html>

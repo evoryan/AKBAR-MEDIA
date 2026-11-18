@@ -853,7 +853,7 @@ function switchTab(tabId) {
     const allTabs = [
         'dashboard', 'tagihan', 'pelanggan', 'jaringan', 
         'inventaris', 'keuangan', 'gangguan', 'konfigurasi', 
-        'mikrotik-acs', 'setting'
+        'mikrotik-acs', 'map', 'setting'
     ];
 
     allTabs.forEach(t => {
@@ -911,6 +911,12 @@ function switchTab(tabId) {
 
     if (tabId === 'setting') {
         loadCompanySettings();
+    }
+
+    if (tabId === 'map') {
+        initAndRenderNetworkMap();
+    } else {
+        stopMapLivePolling();
     }
 
     if (window.lucide) lucide.createIcons();
@@ -1350,10 +1356,14 @@ function filterBilling() {
     };
 
     const filtered = sourceList.filter(c => {
+        const custSn = (c.sn_modem || c.snModem || c.serial_number || '').toLowerCase();
+        const custSecret = (c.pppoeSecret || c.pppoe_secret || '').toLowerCase();
         const matchSearch = !searchVal || 
             (c.name && c.name.toLowerCase().includes(searchVal)) ||
             (c.phone && c.phone.toLowerCase().includes(searchVal)) ||
-            (c.username && c.username.toLowerCase().includes(searchVal));
+            (c.username && c.username.toLowerCase().includes(searchVal)) ||
+            (custSecret && custSecret.includes(searchVal)) ||
+            (custSn && custSn.includes(searchVal));
 
         const matchArea = !areaVal || c.area === areaVal;
 
@@ -1415,6 +1425,10 @@ function renderBillingTable(list) {
             breakdownStr += `)</span>`;
         }
 
+        const custSecret = c.pppoeSecret || c.pppoe_secret || c.username || '-';
+        const rawBillDate = String(c.billingDate || c.billing_date || '5').trim();
+        const billDateLabel = /^\d{1,2}$/.test(rawBillDate) ? `Tgl ${rawBillDate}` : rawBillDate;
+
         return `
             <tr class="hover:bg-slate-800/40 transition duration-150">
                 <td class="px-4 py-3.5 text-center">
@@ -1423,7 +1437,7 @@ function renderBillingTable(list) {
                 <td class="px-4 py-3.5">
                     <div class="flex flex-col">
                         <span class="font-bold text-white text-sm cursor-pointer hover:text-emerald-400 transition" onclick="openCustomerDetailModal(${c.id})">${c.name}</span>
-                        <span class="text-xs text-slate-400">${c.phone ? 'WA: ' + c.phone : 'Secret: ' + (c.pppoeSecret || c.username || '-')}</span>
+                        <span class="text-xs text-slate-400">${c.phone ? 'WA: ' + c.phone : 'Secret: ' + custSecret}</span>
                     </div>
                 </td>
                 <td class="px-4 py-3.5">
@@ -1435,7 +1449,7 @@ function renderBillingTable(list) {
                 <td class="px-4 py-3.5">
                     <div class="flex flex-col text-xs">
                         <span class="font-semibold text-indigo-400">${c.area || '-'}</span>
-                        <span class="text-slate-400">Jatuh Tempo: Tgl ${c.billingDate || c.billing_date || '5'}</span>
+                        <span class="text-slate-400">Jatuh Tempo: ${billDateLabel}</span>
                     </div>
                 </td>
                 <td class="px-4 py-3.5 text-center">
@@ -1687,7 +1701,8 @@ function openInvoiceModal(customerId) {
     document.getElementById('inv-customer-name').innerText = c.name;
     document.getElementById('inv-customer-phone').innerText = c.phone || '-';
     document.getElementById('inv-period').innerText = `${curMonthName} ${curYear}`;
-    document.getElementById('inv-due-date').innerText = `Tgl ${c.billingDate || '5'} ${curMonthName} ${curYear}`;
+    const rawInvDue = String(c.billingDate || c.billing_date || '5').trim();
+    document.getElementById('inv-due-date').innerText = /^\d{1,2}$/.test(rawInvDue) ? `Tgl ${rawInvDue} ${curMonthName} ${curYear}` : rawInvDue;
 
     let base = parseMoney(c.price);
     const pkgName = c.packageName || c.package_name;
@@ -1787,6 +1802,7 @@ async function loadCustomersData() {
         const res = await fetch(`${API_BASE_URL}/api/customers`);
         if (res.ok) {
             customersList = await res.json();
+            populatePackagesDropdowns();
             filterCustomers();
             filterBilling();
         }
@@ -1795,23 +1811,67 @@ async function loadCustomersData() {
     }
 }
 
+let currentCustomerPackageFilter = 'reguler';
+
+function switchCustomerPackageFilter(pkg) {
+    currentCustomerPackageFilter = pkg === 'dedicated' ? 'dedicated' : 'reguler';
+    const btnReg = document.getElementById('btn-cust-pkg-reguler');
+    const btnDed = document.getElementById('btn-cust-pkg-dedicated');
+    if (btnReg) {
+        btnReg.className = currentCustomerPackageFilter === 'reguler'
+            ? "px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition"
+            : "px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition";
+    }
+    if (btnDed) {
+        btnDed.className = currentCustomerPackageFilter === 'dedicated'
+            ? "px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition"
+            : "px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition";
+    }
+    filterCustomers();
+}
+
+function isCustomerDedicatedPackage(c) {
+    const custPkg = (c.packageName || c.package_name || '').trim();
+    const low = custPkg.toLowerCase();
+    if (low.includes('dedicated') || low.includes('1:1')) return true;
+    const matchedPkg = (packagesList || []).find(p => (p.name || '').trim().toLowerCase() === low);
+    return matchedPkg ? ((matchedPkg.description || '').toLowerCase().includes('dedicated')) : false;
+}
+
 function filterCustomers() {
     const searchVal = (document.getElementById('cust-search')?.value || '').toLowerCase().trim();
     const statusVal = document.getElementById('cust-filter-status')?.value || '';
     const areaVal = document.getElementById('cust-filter-area')?.value || '';
-    const paketVal = document.getElementById('cust-filter-paket')?.value || '';
 
-    filteredCustomersList = customersList.filter(c => {
+    const baseFiltered = customersList.filter(c => {
+        const custSn = (c.sn_modem || c.snModem || c.serial_number || '').toLowerCase();
+        const custSecret = (c.pppoeSecret || c.pppoe_secret || '').toLowerCase();
+        const custAddr = (c.address || c.alamat || '').toLowerCase();
         const matchSearch = !searchVal || 
             (c.name && c.name.toLowerCase().includes(searchVal)) ||
             (c.phone && c.phone.toLowerCase().includes(searchVal)) ||
-            (c.username && c.username.toLowerCase().includes(searchVal));
+            (c.username && c.username.toLowerCase().includes(searchVal)) ||
+            (custSecret && custSecret.includes(searchVal)) ||
+            (custSn && custSn.includes(searchVal)) ||
+            (custAddr && custAddr.includes(searchVal));
 
-        const matchStatus = !statusVal || c.status === statusVal;
+        const custStatus = (c.status || '').toUpperCase();
+        const matchStatus = !statusVal || (statusVal === 'LUNAS' ? custStatus.includes('LUNAS') : custStatus === statusVal);
         const matchArea = !areaVal || c.area === areaVal;
-        const matchPaket = !paketVal || c.packageName === paketVal;
 
-        return matchSearch && matchStatus && matchArea && matchPaket;
+        return matchSearch && matchStatus && matchArea;
+    });
+
+    const regulerCount = baseFiltered.filter(c => !isCustomerDedicatedPackage(c)).length;
+    const dedicatedCount = baseFiltered.filter(c => isCustomerDedicatedPackage(c)).length;
+    const regEl = document.getElementById('cust-count-reguler');
+    const dedEl = document.getElementById('cust-count-dedicated');
+    if (regEl) regEl.innerText = String(regulerCount);
+    if (dedEl) dedEl.innerText = String(dedicatedCount);
+
+    filteredCustomersList = baseFiltered.filter(c => {
+        const isDedicated = isCustomerDedicatedPackage(c);
+        return currentCustomerPackageFilter === 'dedicated' ? isDedicated : !isDedicated;
     });
 
     customerPage = 1;
@@ -1833,26 +1893,42 @@ function renderCustomersTable() {
     const pagedItems = filteredCustomersList.slice(start, end);
 
     tbody.innerHTML = pagedItems.map(c => {
+        const custStatusUpper = (c.status || '').toUpperCase();
         let statusBadge = '';
-        if ((c.status || '').toUpperCase().includes('LUNAS')) {
-            statusBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">LUNAS</span>';
-        } else if ((c.status || '').toUpperCase().includes('ISOLIR')) {
+        if (custStatusUpper.includes('LUNAS')) {
+            statusBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">${c.status || 'LUNAS'}</span>`;
+        } else if (custStatusUpper.includes('ISOLIR')) {
             statusBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">ISOLIR</span>';
         } else {
             statusBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">BELUM BAYAR</span>';
         }
 
+        const custSecret = c.pppoeSecret || c.pppoe_secret || c.username || '-';
+        const custSn = c.sn_modem || c.snModem || c.serial_number || '';
+        const custAddr = c.address || c.alamat || '-';
+        const rawOdpId = c.odpId || c.odp_id;
+        const rawOdpPort = c.odpPort || c.odp_port || '';
+        const odpObj = rawOdpId ? (odpList || []).find(o => String(o.id) === String(rawOdpId)) : null;
+        const odpLabel = rawOdpId
+            ? `${odpObj ? odpObj.name : 'ODP #' + rawOdpId}${rawOdpPort ? ' • Port ' + rawOdpPort : ''}`
+            : '';
+
+        const rawBillDate = String(c.billingDate || c.billing_date || '1').trim();
+        const billDateLabel = /^\d{1,2}$/.test(rawBillDate) ? `Tgl ${rawBillDate}` : rawBillDate;
+        const regDate = c.registerDate || c.register_date || '';
+
         return `
             <tr class="hover:bg-slate-800/40 transition">
                 <td class="px-6 py-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300">
-                            ${(c.name || 'P').substring(0, 2).toUpperCase()}
+                        <div class="w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-[11px] font-bold text-cyan-400 shrink-0">
+                            ${c.id || '-'}
                         </div>
                         <div>
                             <p class="font-bold text-white cursor-pointer hover:text-emerald-400 transition" onclick="openCustomerDetailModal(${c.id})">${c.name}</p>
                             <p class="text-xs text-slate-400 font-mono">${c.phone || '-'}</p>
-                            <p class="text-[10px] text-slate-500 font-mono">User: ${c.username || '-'}</p>
+                            <p class="text-[10px] text-slate-500 font-mono">PPPoE: ${custSecret}</p>
+                            ${custSn ? `<p class="text-[10px] text-cyan-400 font-mono">SN: ${custSn}</p>` : ''}
                         </div>
                     </div>
                 </td>
@@ -1871,18 +1947,20 @@ function renderCustomersTable() {
                         }
                         return `
                             <span class="text-xs font-semibold text-emerald-400">${pkgName}</span>
-                            <div class="text-slate-300 text-xs mt-0.5">${priceDisplay}</div>
+                            <div class="text-slate-300 text-xs mt-0.5 font-semibold">${priceDisplay}</div>
                         `;
                     })()}
                 </td>
                 <td class="px-6 py-4 text-xs">
-                    <p class="text-slate-300">${c.area || 'Semua Area'}</p>
-                    <p class="text-slate-500 text-[11px] truncate max-w-xs">${c.address || '-'}</p>
+                    <p class="text-slate-300 font-medium">${c.area || 'Semua Area'}</p>
+                    <p class="text-slate-500 text-[11px] truncate max-w-xs">${custAddr}</p>
+                    ${odpLabel ? `<p class="text-blue-400 text-[10px] mt-0.5">${odpLabel}</p>` : ''}
                 </td>
                 <td class="px-6 py-4 text-center text-xs">
                     <span class="bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg text-slate-300 font-mono">
-                        Tgl ${c.billingDate || '5'}
+                        ${billDateLabel}
                     </span>
+                    ${regDate ? `<span class="block text-[10px] text-slate-500 mt-1">Reg: ${regDate}</span>` : ''}
                 </td>
                 <td class="px-6 py-4 text-center">
                     ${statusBadge}
@@ -1942,112 +2020,106 @@ async function openCustomerDetailModal(id) {
     const c = customersList.find(cust => cust.id == id);
     if (!c) return;
 
-    document.getElementById('det-cust-name').innerText = c.name;
+    const custAddr = c.address || c.alamat || '-';
+    const custSecret = c.pppoeSecret || c.pppoe_secret || c.username || '-';
+    const custSn = c.sn_modem || c.snModem || c.serial_number || c.sn || '';
+    const rawOdpId = c.odpId || c.odp_id;
+    const rawOdpPort = c.odpPort || c.odp_port || '-';
+    const odpObj = rawOdpId ? (odpList || []).find(o => String(o.id) === String(rawOdpId)) : null;
+    const regDate = c.registerDate || c.register_date || '-';
+    const billDate = c.billingDate || c.billing_date || '-';
+    const isoDate = c.isolateDate || c.isolate_date || '-';
+
+    document.getElementById('det-cust-name').innerText = `#${c.id} • ${c.name}`;
     document.getElementById('det-cust-phone').innerText = `No WA/HP: ${c.phone || '-'}`;
-    document.getElementById('det-cust-address').innerText = `Alamat: ${c.address || '-'}`;
-    document.getElementById('det-cust-username').innerText = c.pppoeSecret || c.username || '-';
+    document.getElementById('det-cust-address').innerText = `Alamat: ${custAddr}`;
+    document.getElementById('det-cust-username').innerText = custSecret;
+    const detSnEl = document.getElementById('det-cust-sn');
+    if (detSnEl) detSnEl.innerText = custSn || '-';
     document.getElementById('det-cust-package').innerText = `${c.packageName || c.package_name || '-'} (${formatRupiah(getCustomerBillAmount(c))})`;
     document.getElementById('det-cust-area').innerText = c.area || '-';
-    document.getElementById('det-cust-odp').innerText = c.odpId ? `ODP ID ${c.odpId} (Port ${c.odpPort || 1})` : 'Belum dihubungkan ke ODP';
+    document.getElementById('det-cust-odp').innerText = rawOdpId
+        ? `${odpObj ? odpObj.name : 'ODP #' + rawOdpId} (Port ${rawOdpPort})`
+        : 'Belum dihubungkan ke ODP';
+    const detDatesEl = document.getElementById('det-cust-dates');
+    if (detDatesEl) detDatesEl.innerText = `Tagihan: ${billDate} • Isolir: ${isoDate}`;
+    const detRegEl = document.getElementById('det-cust-register');
+    if (detRegEl) detRegEl.innerText = regDate;
+
+    // Rincian Biaya breakdown (matching Android CustomerDetailScreen)
+    let basePrice = parseMoney(c.price);
+    const pkgName = c.packageName || c.package_name || '';
+    if (!basePrice && pkgName && typeof packagesList !== 'undefined' && packagesList.length > 0) {
+        const pkg = packagesList.find(p => p.name === pkgName || (p.name && p.name.toLowerCase().trim() === pkgName.toLowerCase().trim()));
+        if (pkg) basePrice = parseMoney(pkg.price);
+    }
+    const discVal = parseMoney(c.discount || c.diskon);
+    const add1Val = parseMoney(c.add1 || c.additionalCost1 || c.additional_cost1);
+    const add2Val = parseMoney(c.add2 || c.additionalCost2 || c.additional_cost2);
+    const desc1 = c.additionalCostDesc1 || c.additional_cost_desc1 || c.add1Desc || '';
+    const desc2 = c.additionalCostDesc2 || c.additional_cost_desc2 || c.add2Desc || '';
+
+    const detCostPkg = document.getElementById('det-cost-package');
+    if (detCostPkg) detCostPkg.innerText = formatRupiah(basePrice);
+
+    const discRow = document.getElementById('det-cost-discount-row');
+    if (discRow) {
+        if (discVal > 0) {
+            discRow.classList.remove('hidden');
+            document.getElementById('det-cost-discount').innerText = `- ${formatRupiah(discVal)}`;
+        } else {
+            discRow.classList.add('hidden');
+        }
+    }
+
+    const add1Row = document.getElementById('det-cost-add1-row');
+    if (add1Row) {
+        if (add1Val > 0 || desc1) {
+            add1Row.classList.remove('hidden');
+            document.getElementById('det-cost-add1-label').innerText = desc1 ? `Biaya Tambahan 1 (${desc1})` : 'Biaya Tambahan 1';
+            document.getElementById('det-cost-add1').innerText = `+ ${formatRupiah(add1Val)}`;
+        } else {
+            add1Row.classList.add('hidden');
+        }
+    }
+
+    const add2Row = document.getElementById('det-cost-add2-row');
+    if (add2Row) {
+        if (add2Val > 0 || desc2) {
+            add2Row.classList.remove('hidden');
+            document.getElementById('det-cost-add2-label').innerText = desc2 ? `Biaya Tambahan 2 (${desc2})` : 'Biaya Tambahan 2';
+            document.getElementById('det-cost-add2').innerText = `+ ${formatRupiah(add2Val)}`;
+        } else {
+            add2Row.classList.add('hidden');
+        }
+    }
+
+    const detCostTotal = document.getElementById('det-cost-total');
+    if (detCostTotal) detCostTotal.innerText = formatRupiah(getCustomerBillAmount(c));
 
     const statusBadge = document.getElementById('det-cust-status');
     if (statusBadge) {
-        statusBadge.innerText = c.status || 'AKTIF';
-        statusBadge.className = c.status === 'LUNAS' 
+        const stUpper = (c.status || 'BELUM BAYAR').toUpperCase();
+        statusBadge.innerText = c.status || 'BELUM BAYAR';
+        statusBadge.className = stUpper.includes('LUNAS')
             ? 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-            : c.status === 'ISOLIR'
+            : stUpper.includes('ISOLIR')
             ? 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30'
             : 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30';
     }
 
-    // 1. Mikrotik Secret Status Lookup
-    const mktBadge = document.getElementById('det-mkt-status-badge');
-    const mktRouter = document.getElementById('det-mkt-router-name');
-    const mktProfile = document.getElementById('det-mkt-profile');
-    const mktIp = document.getElementById('det-mkt-ip');
-    const mktUptime = document.getElementById('det-mkt-uptime');
-
-    const secretKey = (c.pppoeSecret || c.username || '').toLowerCase().trim();
-    let foundSecret = mikrotikSecretsList.find(s => (s.name || s.username || '').toLowerCase().trim() === secretKey);
-
-    if (foundSecret) {
-        if (mktBadge) {
-            const isOnline = foundSecret.isOnline || foundSecret.online;
-            const isDisabled = foundSecret.disabled;
-            mktBadge.innerText = isDisabled ? 'DISABLED' : (isOnline ? 'ONLINE' : 'OFFLINE');
-            mktBadge.className = isDisabled 
-                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                : isOnline 
-                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
-        }
-        if (mktRouter) mktRouter.innerText = c.area || foundSecret.areaName || '-';
-        if (mktProfile) mktProfile.innerText = foundSecret.profile || foundSecret.service || c.packageName || '-';
-        if (mktIp) mktIp.innerText = foundSecret.remoteAddress || foundSecret.address || '-';
-        if (mktUptime) mktUptime.innerText = foundSecret.uptime || (foundSecret.isOnline ? 'Aktif Terhubung' : 'Sesi Terputus');
-    } else {
-        if (mktBadge) {
-            mktBadge.innerText = secretKey ? 'TIDAK TERKONEKSI' : 'BELUM ADA SECRET';
-            mktBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
-        }
-        if (mktRouter) mktRouter.innerText = c.area || '-';
-        if (mktProfile) mktProfile.innerText = c.packageName || '-';
-        if (mktIp) mktIp.innerText = '-';
-        if (mktUptime) mktUptime.innerText = '-';
+    // Bind action shortcuts immediately and open modal cleanly
+    const editBtn = document.getElementById('btn-det-edit');
+    if (editBtn) {
+        editBtn.onclick = () => {
+            closeModal('modal-customer-detail');
+            editCustomer(c.id);
+        };
     }
 
-    // 2. ACS TR-069 Device Lookup
-    const acsBadge = document.getElementById('det-acs-status-badge');
-    const acsSn = document.getElementById('det-acs-sn');
-    const acsRx = document.getElementById('det-acs-rx-power');
-    const acsSsid = document.getElementById('det-acs-ssid');
-    const acsModel = document.getElementById('det-acs-model');
-    const acsIpInform = document.getElementById('det-acs-ip-inform');
-
-    if (acsDevicesList.length === 0) {
-        try {
-            const acsRes = await fetch(`${API_BASE_URL}/api/acs/devices`);
-            if (acsRes.ok) {
-                acsDevicesList = await acsRes.json();
-            }
-        } catch(e) {}
-    }
-
-    let foundAcs = acsDevicesList.find(d => {
-        const dUser = (d.username || d.id || '').toLowerCase().trim();
-        const dSn = (d.serialNumber || '').toLowerCase().trim();
-        return (secretKey && dUser === secretKey) || (secretKey && dUser.includes(secretKey)) || (c.sn && dSn === c.sn.toLowerCase().trim());
-    });
-
-    if (foundAcs) {
-        if (acsBadge) {
-            const isOnline = foundAcs.isOnline;
-            acsBadge.innerText = isOnline ? 'ONLINE (TR-069)' : 'OFFLINE';
-            acsBadge.className = isOnline 
-                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
-        }
-        if (acsSn) acsSn.innerText = foundAcs.serialNumber || c.sn || '-';
-        if (acsRx) acsRx.innerText = foundAcs.rxPower ? `${foundAcs.rxPower} dBm` : '-';
-        if (acsSsid) acsSsid.innerText = foundAcs.ssid || '-';
-        if (acsModel) acsModel.innerText = `${foundAcs.manufacturer || ''} ${foundAcs.model || foundAcs.productClass || '-'}`.trim();
-        if (acsIpInform) acsIpInform.innerText = `${foundAcs.ipAddress || '-'} • ${foundAcs.lastInform ? new Date(foundAcs.lastInform).toLocaleTimeString('id-ID') : '-'}`;
-    } else {
-        if (acsBadge) {
-            acsBadge.innerText = 'TIDAK TERHUBUNG ACS';
-            acsBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-500 border border-slate-800';
-        }
-        if (acsSn) acsSn.innerText = c.sn || '-';
-        if (acsRx) acsRx.innerText = '-';
-        if (acsSsid) acsSsid.innerText = '-';
-        if (acsModel) acsModel.innerText = '-';
-        if (acsIpInform) acsIpInform.innerText = '-';
-    }
-
-    // Bind action shortcuts
     const isolateBtn = document.getElementById('btn-det-isolate');
     if (isolateBtn) {
-        const isCurrentlyIsolir = c.status === 'ISOLIR';
+        const isCurrentlyIsolir = (c.status || '').toUpperCase().includes('ISOLIR');
         isolateBtn.innerHTML = `<i data-lucide="${isCurrentlyIsolir ? 'unlock' : 'shield-alert'}" class="w-4 h-4"></i> ${isCurrentlyIsolir ? 'Buka Isolir' : 'Isolir Pelanggan'}`;
         isolateBtn.onclick = () => toggleCustomerIsolir(c.id, isCurrentlyIsolir);
     }
@@ -2058,8 +2130,282 @@ async function openCustomerDetailModal(id) {
     const waBtn = document.getElementById('btn-det-wa');
     if (waBtn) waBtn.onclick = () => sendWhatsAppInvoice(c.id);
 
+    // Default collapsed state for GenieACS card every time detail modal opens
+    if (typeof toggleCustomerAcsCard === 'function') {
+        toggleCustomerAcsCard(false);
+    }
+
     openModal('modal-customer-detail');
     if (window.lucide) lucide.createIcons();
+
+    // 1. Mikrotik Secret Status Lookup
+    const mktBadge = document.getElementById('det-mkt-status-badge');
+    const mktRouter = document.getElementById('det-mkt-router-name');
+    const mktProfile = document.getElementById('det-mkt-profile');
+    const mktIp = document.getElementById('det-mkt-ip');
+    const mktUptime = document.getElementById('det-mkt-uptime');
+
+    const secretKey = (c.pppoeSecret || c.pppoe_secret || c.username || '').toLowerCase().trim();
+    let areaSecrets = mikrotikSecretsList;
+    if (secretKey && c.area) {
+        const areaObj = (areasList || []).find(a => a.name === c.area);
+        if (areaObj) {
+            try {
+                const secRes = await fetch(`${API_BASE_URL}/api/mikrotik/secrets/${areaObj.id}`);
+                if (secRes.ok) {
+                    const fetched = await secRes.json();
+                    if (Array.isArray(fetched) && fetched.length > 0) areaSecrets = fetched;
+                }
+            } catch (_) {}
+        }
+    }
+    let foundSecret = areaSecrets.find(s => (s.name || s.username || '').toLowerCase().trim() === secretKey);
+
+    if (foundSecret) {
+        if (mktBadge) {
+            const st = (foundSecret.status || '').toLowerCase();
+            const isDisabled = foundSecret.disabled || st === 'disabled';
+            const isOnline = foundSecret.isOnline || foundSecret.online || st === 'online';
+            mktBadge.innerText = isDisabled ? 'DISABLED' : (isOnline ? 'ONLINE' : 'OFFLINE');
+            mktBadge.className = isDisabled 
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                : isOnline 
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
+        }
+        if (mktRouter) mktRouter.innerText = c.area || foundSecret.areaName || '-';
+        if (mktProfile) mktProfile.innerText = foundSecret.profile || foundSecret.service || c.packageName || c.package_name || '-';
+        if (mktIp) mktIp.innerText = foundSecret.ipAddress || foundSecret.remoteAddress || foundSecret.address || '-';
+        if (mktUptime) mktUptime.innerText = foundSecret.uptime || (foundSecret.isOnline ? 'Aktif Terhubung' : '-');
+    } else {
+        if (mktBadge) {
+            mktBadge.innerText = secretKey ? 'TIDAK TERKONEKSI' : 'BELUM ADA SECRET';
+            mktBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
+        }
+        if (mktRouter) mktRouter.innerText = c.area || '-';
+        if (mktProfile) mktProfile.innerText = c.packageName || c.package_name || '-';
+        if (mktIp) mktIp.innerText = '-';
+        if (mktUptime) mktUptime.innerText = '-';
+    }
+
+    // 2. Extended GenieACS TR-069 Device Lookup
+    window._currentDetailCustomer = c;
+    await populateCustomerDetailAcs(c, false);
+}
+
+function formatAcsUptimeDuration(rawUptime) {
+    if (rawUptime === null || rawUptime === undefined || rawUptime === '' || rawUptime === '-') return '-';
+    const totalSeconds = parseInt(rawUptime, 10);
+    if (isNaN(totalSeconds)) return String(rawUptime);
+    if (totalSeconds <= 0) return '0 detik';
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const parts = [];
+    if (days > 0) parts.push(`${days}h`);
+    if (hours > 0) parts.push(`${hours}j`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (parts.length === 0) parts.push(`${seconds}d`);
+    return parts.join(' ');
+}
+
+function findMatchingAcsDevice(c) {
+    const validDevices = (acsDevicesList || []).filter(d => !(d.id && String(d.id).startsWith('error_')));
+    const secretKey = (c.pppoeSecret || c.pppoe_secret || '').toLowerCase().trim();
+    const custUser = (c.username || '').toLowerCase().trim();
+    const custSn = (c.snModem || c.sn_modem || c.serialNumber || c.serial_number || '').toLowerCase().trim();
+
+    if (secretKey) {
+        const exactSecret = validDevices.find(d => (d.username || '').toLowerCase().trim() === secretKey);
+        if (exactSecret) return exactSecret;
+    }
+    if (custUser) {
+        const exactUser = validDevices.find(d => (d.username || '').toLowerCase().trim() === custUser);
+        if (exactUser) return exactUser;
+    }
+    if (custSn) {
+        const exactSn = validDevices.find(d => {
+            const dSn = (d.serialNumber || '').toLowerCase().trim();
+            const dId = (d.id || '').toLowerCase().trim();
+            return dSn === custSn || dId === custSn || dId.endsWith('-' + custSn);
+        });
+        if (exactSn) return exactSn;
+    }
+    if (secretKey) {
+        const partialMatch = validDevices.find(d => {
+            const dUser = (d.username || '').toLowerCase().trim();
+            const dId = (d.id || '').toLowerCase().trim();
+            return (dUser && dUser !== 'unknown' && dUser.includes(secretKey)) || (dId && dId.includes(secretKey));
+        });
+        if (partialMatch) return partialMatch;
+    }
+    return null;
+}
+
+async function summonCustomerDetailAcs(devId, areaName) {
+    if (!devId) return;
+    showLoading(true, 'Mengirim summon & menyegarkan telemetri ONT via GenieACS...');
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/acs/devices/${encodeURIComponent(devId)}/action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'summon', areaName: areaName || '' })
+        });
+        if (res.ok) {
+            showToast('Perintah summon berhasil dikirim! Memperbarui data...', 'success');
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Gagal mengirim summon ke ONT.', 'warning');
+        }
+        if (window._currentDetailCustomer) {
+            await populateCustomerDetailAcs(window._currentDetailCustomer, true);
+        }
+    } catch (e) {
+        showToast('Koneksi server gagal saat summon GenieACS.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function populateCustomerDetailAcs(c, forceRefresh = false) {
+    const acsBadge = document.getElementById('det-acs-status-badge');
+    const acsEmpty = document.getElementById('det-acs-empty');
+    const acsBody = document.getElementById('det-acs-body');
+    const acsActions = document.getElementById('det-acs-actions');
+    const acsRefreshBtn = document.getElementById('btn-det-acs-refresh');
+
+    const acsPppoe = document.getElementById('det-acs-pppoe');
+    const acsTag = document.getElementById('det-acs-tag');
+    const acsSn = document.getElementById('det-acs-sn');
+    const acsRx = document.getElementById('det-acs-rx-power');
+    const acsSsid = document.getElementById('det-acs-ssid');
+    const acsWifiPass = document.getElementById('det-acs-wifi-pass');
+    const acsUsers = document.getElementById('det-acs-users');
+    const acsModel = document.getElementById('det-acs-model');
+    const acsHwSw = document.getElementById('det-acs-hw-sw');
+    const acsUptime = document.getElementById('det-acs-uptime');
+    const acsIpInform = document.getElementById('det-acs-ip-inform');
+
+    const custSn = c.snModem || c.sn_modem || c.serialNumber || c.serial_number || '';
+
+    if (acsRefreshBtn) {
+        acsRefreshBtn.onclick = () => populateCustomerDetailAcs(c, true);
+    }
+
+    if (forceRefresh || !Array.isArray(acsDevicesList) || acsDevicesList.length === 0) {
+        if (acsBadge) {
+            acsBadge.innerText = 'Memuat...';
+            acsBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400';
+        }
+        try {
+            const acsRes = await fetch(`${API_BASE_URL}/api/acs/devices`);
+            if (acsRes.ok) {
+                acsDevicesList = await acsRes.json();
+            }
+        } catch (e) {}
+    }
+
+    const foundAcs = findMatchingAcsDevice(c);
+    window._currentDetailAcsDevice = foundAcs || null;
+
+    if (foundAcs) {
+        const isOnline = Boolean(foundAcs.isOnline);
+        if (acsBadge) {
+            acsBadge.innerText = isOnline ? 'ONLINE (TR-069)' : 'OFFLINE';
+            acsBadge.className = isOnline
+                ? 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        }
+        if (acsEmpty) acsEmpty.classList.add('hidden');
+        if (acsBody) acsBody.classList.remove('hidden');
+        if (acsActions) acsActions.classList.remove('hidden');
+
+        const serialNum = (foundAcs.serialNumber && foundAcs.serialNumber !== '-') ? foundAcs.serialNumber : (custSn || foundAcs.id || '-');
+        const tagText = (foundAcs.tag && foundAcs.tag !== '-') ? foundAcs.tag : (foundAcs.areaName || '-');
+        const vendorModel = [foundAcs.vendor, foundAcs.model].filter(v => v && v !== '-').join(' ') || '-';
+        const hwSw = [
+            foundAcs.hardwareVersion && foundAcs.hardwareVersion !== '-' ? foundAcs.hardwareVersion : '-',
+            foundAcs.softwareVersion && foundAcs.softwareVersion !== '-' ? foundAcs.softwareVersion : '-'
+        ].join(' / ');
+        const lastInf = foundAcs.lastInform ? new Date(foundAcs.lastInform).toLocaleString('id-ID') : '-';
+
+        if (acsPppoe) acsPppoe.innerText = (foundAcs.username && foundAcs.username !== 'Unknown') ? foundAcs.username : '-';
+        if (acsTag) acsTag.innerText = tagText;
+        if (acsSn) acsSn.innerText = serialNum;
+        if (acsRx) acsRx.innerHTML = typeof formatRxPowerBadge === 'function' ? formatRxPowerBadge(foundAcs.rxPower) : (foundAcs.rxPower ? `${foundAcs.rxPower} dBm` : '-');
+        if (acsSsid) acsSsid.innerText = (foundAcs.ssid && foundAcs.ssid !== 'Unknown') ? foundAcs.ssid : '-';
+        if (acsWifiPass) acsWifiPass.innerText = foundAcs.wifiPassword || '-';
+        if (acsUsers) acsUsers.innerText = `${foundAcs.connectedUsers || 0} Perangkat`;
+        if (acsModel) acsModel.innerText = vendorModel;
+        if (acsHwSw) acsHwSw.innerText = hwSw;
+        if (acsUptime) acsUptime.innerText = formatAcsUptimeDuration(foundAcs.uptime);
+        if (acsIpInform) acsIpInform.innerText = `${foundAcs.ipAddress || '-'} • ${lastInf}`;
+
+        const btnSsid = document.getElementById('btn-det-acs-ssid');
+        const btnPwd = document.getElementById('btn-det-acs-pwd');
+        const btnSummon = document.getElementById('btn-det-acs-summon');
+        const btnReboot = document.getElementById('btn-det-acs-reboot');
+
+        if (btnSsid) btnSsid.onclick = () => openChangeSsidModal(foundAcs.id, foundAcs.ssid, foundAcs.areaName, serialNum);
+        if (btnPwd) btnPwd.onclick = () => openChangeWifiPasswordModal(foundAcs.id, foundAcs.wifiPassword, foundAcs.areaName, serialNum);
+        if (btnSummon) btnSummon.onclick = () => summonCustomerDetailAcs(foundAcs.id, foundAcs.areaName || c.area);
+        if (btnReboot) btnReboot.onclick = () => rebootAcsDevice(foundAcs.id);
+    } else {
+        if (acsBadge) {
+            acsBadge.innerText = 'TIDAK TERHUBUNG ACS';
+            acsBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
+        }
+        if (acsEmpty) acsEmpty.classList.remove('hidden');
+        if (acsBody) acsBody.classList.add('hidden');
+        if (acsActions) acsActions.classList.add('hidden');
+        if (acsPppoe) acsPppoe.innerText = '-';
+        if (acsTag) acsTag.innerText = '-';
+        if (acsSn) acsSn.innerText = custSn || '-';
+        if (acsRx) acsRx.innerText = '-';
+        if (acsSsid) acsSsid.innerText = '-';
+        if (acsWifiPass) acsWifiPass.innerText = '-';
+        if (acsUsers) acsUsers.innerText = '0 Perangkat';
+        if (acsModel) acsModel.innerText = '-';
+        if (acsHwSw) acsHwSw.innerText = '-';
+        if (acsUptime) acsUptime.innerText = '-';
+        if (acsIpInform) acsIpInform.innerText = '-';
+    }
+
+    const hintEl = document.getElementById('det-acs-collapse-hint');
+    if (hintEl) {
+        if (foundAcs && foundAcs.rxPower && foundAcs.rxPower !== '-') {
+            hintEl.innerText = `Rx ${foundAcs.rxPower} dBm • Klik untuk ${isCustomerAcsExpanded ? 'tutup' : 'lihat detail'}`;
+        } else {
+            hintEl.innerText = isCustomerAcsExpanded ? 'Telemetri TR-069 ONT' : 'Klik untuk lihat detail telemetri ONT';
+        }
+    }
+
+    if (window.lucide) lucide.createIcons();
+}
+
+let isCustomerAcsExpanded = false;
+
+function toggleCustomerAcsCard(forceState) {
+    isCustomerAcsExpanded = typeof forceState === 'boolean' ? forceState : !isCustomerAcsExpanded;
+    const bodyEl = document.getElementById('det-acs-collapse-body');
+    const chevronEl = document.getElementById('det-acs-chevron');
+    const hintEl = document.getElementById('det-acs-collapse-hint');
+    if (bodyEl) {
+        if (isCustomerAcsExpanded) bodyEl.classList.remove('hidden');
+        else bodyEl.classList.add('hidden');
+    }
+    if (chevronEl) {
+        chevronEl.style.transform = isCustomerAcsExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
+    if (hintEl) {
+        const rx = window._currentDetailAcsDevice && window._currentDetailAcsDevice.rxPower;
+        if (rx && rx !== '-' && !isCustomerAcsExpanded) {
+            hintEl.innerText = `Rx ${rx} dBm • Klik untuk lihat detail`;
+        } else {
+            hintEl.innerText = isCustomerAcsExpanded ? 'Telemetri TR-069 ONT' : 'Klik untuk lihat detail telemetri ONT';
+        }
+    }
 }
 
 async function toggleCustomerIsolir(id, isCurrentlyIsolir) {
@@ -2298,7 +2644,10 @@ function renderWaModalPreview(templateId) {
                .replace(/{nominal}/g, formatRupiah(amt))
                .replace(/{bulan}/g, periodStr)
                .replace(/{periode}/g, periodStr)
-               .replace(/{jatuh_tempo}/g, selectedWaCust.billingDate || `20 ${periodStr}`)
+               .replace(/{jatuh_tempo}/g, selectedWaCust.billingDate || selectedWaCust.billing_date || `20 ${periodStr}`)
+               .replace(/{sn_modem}/g, selectedWaCust.sn_modem || selectedWaCust.snModem || '-')
+               .replace(/{modem}/g, selectedWaCust.sn_modem || selectedWaCust.snModem || '-')
+               .replace(/{pppoe}/g, selectedWaCust.pppoeSecret || selectedWaCust.pppoe_secret || selectedWaCust.username || '-')
                .replace(/{link_invoice}/g, "");
 
     const previewEl = document.getElementById('wa-modal-preview-text');
@@ -2332,7 +2681,19 @@ function openAddCustomerModal() {
     document.getElementById('modal-customer-title').innerText = 'Tambah Pelanggan Baru';
     document.getElementById('form-customer').reset();
     document.getElementById('cust-id').value = '';
-    document.getElementById('cust-username').readOnly = false;
+    const userEl = document.getElementById('cust-username');
+    if (userEl) userEl.readOnly = false;
+
+    const snEl = document.getElementById('cust-snModem');
+    if (snEl) snEl.value = '';
+    const regEl = document.getElementById('cust-registerDate');
+    if (regEl) regEl.value = '';
+    const isoEl = document.getElementById('cust-isolateDate');
+    if (isoEl) isoEl.value = '';
+    const billEl = document.getElementById('cust-billingDate');
+    if (billEl) billEl.value = '1';
+    const statusEl = document.getElementById('cust-status');
+    if (statusEl) statusEl.value = 'BELUM BAYAR';
 
     document.getElementById('cust-price').value = '';
     document.getElementById('cust-additionalCost1').value = '0';
@@ -2353,24 +2714,71 @@ async function editCustomer(id) {
     document.getElementById('cust-id').value = c.id;
     document.getElementById('cust-name').value = c.name || '';
     document.getElementById('cust-phone').value = c.phone || '';
-    document.getElementById('cust-area').value = c.area || '';
-    document.getElementById('cust-address').value = c.address || '';
-    document.getElementById('cust-username').value = c.username || '';
-    document.getElementById('cust-username').readOnly = true;
-    document.getElementById('cust-password').value = '';
-    document.getElementById('cust-packageName').value = c.packageName || c.package_name || '';
-    document.getElementById('cust-odpId').value = c.odpId || '';
-    document.getElementById('cust-odpPort').value = c.odpPort || '';
-    document.getElementById('cust-billingDate').value = c.billingDate || 5;
-    document.getElementById('cust-status').value = c.status || 'LUNAS';
 
-    document.getElementById('cust-price').value = c.price || '';
-    document.getElementById('cust-additionalCost1').value = c.additionalCost1 || c.additional_cost1 || '0';
-    document.getElementById('cust-additionalCostDesc1').value = c.additionalCostDesc1 || c.additional_cost_desc1 || '';
-    document.getElementById('cust-additionalCost2').value = c.additionalCost2 || c.additional_cost2 || '0';
-    document.getElementById('cust-additionalCostDesc2').value = c.additionalCostDesc2 || c.additional_cost_desc2 || '';
-    document.getElementById('cust-discount').value = c.discount || c.diskon || '0';
-    document.getElementById('cust-ppn').value = c.ppn || c.PPN || '0';
+    const areaSel = document.getElementById('cust-area');
+    if (areaSel) {
+        const areaVal = c.area || '';
+        if (areaVal && !Array.from(areaSel.options).some(o => o.value === areaVal)) {
+            const opt = document.createElement('option');
+            opt.value = areaVal;
+            opt.text = areaVal;
+            areaSel.appendChild(opt);
+        }
+        areaSel.value = areaVal;
+    }
+
+    document.getElementById('cust-address').value = c.address || c.alamat || '';
+    const snEl = document.getElementById('cust-snModem');
+    if (snEl) snEl.value = c.sn_modem || c.snModem || c.serial_number || '';
+
+    const userEl = document.getElementById('cust-username');
+    if (userEl) {
+        userEl.value = c.pppoeSecret || c.pppoe_secret || c.username || '';
+        userEl.readOnly = false;
+    }
+    document.getElementById('cust-password').value = '';
+
+    const pkgSel = document.getElementById('cust-packageName');
+    const pkgVal = c.packageName || c.package_name || '';
+    if (pkgSel) {
+        if (pkgVal && !Array.from(pkgSel.options).some(o => o.value === pkgVal)) {
+            const opt = document.createElement('option');
+            opt.value = pkgVal;
+            opt.text = pkgVal;
+            pkgSel.appendChild(opt);
+        }
+        pkgSel.value = pkgVal;
+    }
+
+    document.getElementById('cust-odpId').value = c.odpId || c.odp_id || '';
+    document.getElementById('cust-odpPort').value = c.odpPort || c.odp_port || '';
+
+    const regEl = document.getElementById('cust-registerDate');
+    if (regEl) regEl.value = c.registerDate || c.register_date || '';
+    document.getElementById('cust-billingDate').value = c.billingDate || c.billing_date || '1';
+    const isoEl = document.getElementById('cust-isolateDate');
+    if (isoEl) isoEl.value = c.isolateDate || c.isolate_date || '';
+
+    const statusSel = document.getElementById('cust-status');
+    if (statusSel) {
+        const stVal = c.status || 'BELUM BAYAR';
+        if (!Array.from(statusSel.options).some(o => o.value === stVal)) {
+            const opt = document.createElement('option');
+            opt.value = stVal;
+            opt.text = stVal;
+            statusSel.appendChild(opt);
+        }
+        statusSel.value = stVal;
+    }
+
+    const parsedPrice = parseMoney(c.price);
+    document.getElementById('cust-price').value = parsedPrice > 0 ? String(parsedPrice) : '';
+    document.getElementById('cust-additionalCost1').value = String(parseMoney(c.additionalCost1 || c.additional_cost1 || c.add1));
+    document.getElementById('cust-additionalCostDesc1').value = c.additionalCostDesc1 || c.additional_cost_desc1 || c.add1Desc || '';
+    document.getElementById('cust-additionalCost2').value = String(parseMoney(c.additionalCost2 || c.additional_cost2 || c.add2));
+    document.getElementById('cust-additionalCostDesc2').value = c.additionalCostDesc2 || c.additional_cost_desc2 || c.add2Desc || '';
+    document.getElementById('cust-discount').value = String(parseMoney(c.discount || c.diskon));
+    document.getElementById('cust-ppn').value = String(parseMoney(c.ppn || c.PPN));
 
     openModal('modal-customer');
 }
@@ -2378,22 +2786,51 @@ async function editCustomer(id) {
 async function saveCustomer(e) {
     e.preventDefault();
     const id = document.getElementById('cust-id').value;
+    const nameVal = document.getElementById('cust-name').value.trim();
+    const secretVal = document.getElementById('cust-username').value.trim();
+    const effectiveUser = secretVal || nameVal.toLowerCase().replace(/\s+/g, '');
+    const addrVal = document.getElementById('cust-address').value.trim();
+    const snVal = (document.getElementById('cust-snModem')?.value || '').trim();
+    const pkgName = document.getElementById('cust-packageName').value;
+    const regDate = (document.getElementById('cust-registerDate')?.value || '').trim();
+    const billDate = (document.getElementById('cust-billingDate').value || '').trim() || '1';
+    const isoDate = (document.getElementById('cust-isolateDate')?.value || '').trim();
+
     const add1 = document.getElementById('cust-additionalCost1').value.trim() || '0';
     const desc1 = document.getElementById('cust-additionalCostDesc1').value.trim();
     const add2 = document.getElementById('cust-additionalCost2').value.trim() || '0';
     const desc2 = document.getElementById('cust-additionalCostDesc2').value.trim();
-    const disc = document.getElementById('cust-discount').value.trim() || '0';
+    const discNum = parseMoney(document.getElementById('cust-discount').value.trim());
+    const discStr = discNum > 0 ? String(discNum) : '0';
     const ppnVal = document.getElementById('cust-ppn').value.trim() || '0';
-    const customPrice = document.getElementById('cust-price').value.trim();
+
+    let priceNum = parseMoney(document.getElementById('cust-price').value.trim());
+    if (!priceNum && pkgName && typeof packagesList !== 'undefined') {
+        const foundPkg = packagesList.find(p => p.name === pkgName);
+        if (foundPkg) {
+            const tax = Number(foundPkg.taxRate) || 0;
+            priceNum = tax > 0 ? Math.round((Number(foundPkg.price) || 0) * (1 + tax / 100)) : (Number(foundPkg.price) || 0);
+        }
+    }
+    const formattedPrice = priceNum > 0 ? ('Rp. ' + priceNum.toLocaleString('id-ID')) : 'Rp. 0';
+    const odpIdVal = document.getElementById('cust-odpId').value || null;
+    const odpPortVal = (document.getElementById('cust-odpPort').value || '').trim();
 
     const payload = {
-        name: document.getElementById('cust-name').value.trim(),
+        name: nameVal,
         phone: document.getElementById('cust-phone').value.trim(),
-        area: document.getElementById('cust-area').value,
-        address: document.getElementById('cust-address').value.trim(),
-        username: document.getElementById('cust-username').value.trim(),
-        packageName: document.getElementById('cust-packageName').value,
-        price: customPrice || null,
+        area: document.getElementById('cust-area').value || 'Semua',
+        address: addrVal,
+        alamat: addrVal,
+        sn_modem: snVal,
+        snModem: snVal,
+        serial_number: snVal,
+        username: effectiveUser,
+        pppoeSecret: secretVal,
+        pppoe_secret: secretVal,
+        packageName: pkgName,
+        package_name: pkgName,
+        price: formattedPrice,
         additionalCost1: add1,
         additional_cost1: add1,
         additionalCostDesc1: desc1,
@@ -2402,12 +2839,18 @@ async function saveCustomer(e) {
         additional_cost2: add2,
         additionalCostDesc2: desc2,
         additional_cost_desc2: desc2,
-        discount: disc,
-        diskon: disc,
+        discount: discStr,
+        diskon: discStr,
         ppn: ppnVal,
-        odpId: document.getElementById('cust-odpId').value || null,
-        odpPort: document.getElementById('cust-odpPort').value || null,
-        billingDate: Number(document.getElementById('cust-billingDate').value) || 5,
+        odpId: odpIdVal,
+        odp_id: odpIdVal,
+        odpPort: odpPortVal,
+        odp_port: odpPortVal,
+        registerDate: regDate,
+        register_date: regDate,
+        billingDate: billDate,
+        isolateDate: isoDate,
+        isolate_date: isoDate,
         status: document.getElementById('cust-status').value
     };
 
@@ -4051,6 +4494,10 @@ async function submitChangeSsid(e) {
             showToast(`Perintah ganti SSID '${newSsid}' berhasil dikirim ke ONT!`, 'success');
             closeModal('modal-change-ssid');
             await loadAcsDevices();
+            const custDetModal = document.getElementById('modal-customer-detail');
+            if (window._currentDetailCustomer && custDetModal && !custDetModal.classList.contains('hidden')) {
+                await populateCustomerDetailAcs(window._currentDetailCustomer, false);
+            }
         } else {
             const err = await res.json().catch(() => ({}));
             showToast(err.error || 'Gagal mengubah SSID pada ONT.', 'error');
@@ -4094,6 +4541,10 @@ async function submitChangeWifiPassword(e) {
             showToast('Sandi WiFi baru berhasil dikirim dan disimpan di ONT!', 'success');
             closeModal('modal-change-wifi-pwd');
             await loadAcsDevices();
+            const custDetModal = document.getElementById('modal-customer-detail');
+            if (window._currentDetailCustomer && custDetModal && !custDetModal.classList.contains('hidden')) {
+                await populateCustomerDetailAcs(window._currentDetailCustomer, false);
+            }
         } else {
             const err = await res.json().catch(() => ({}));
             showToast(err.error || 'Gagal mengubah sandi WiFi pada ONT.', 'error');
@@ -4960,6 +5411,9 @@ function populateAreasDropdowns() {
     const billFilterArea = document.getElementById('billing-filter-area');
     if (billFilterArea) billFilterArea.innerHTML = '<option value="">Semua Area</option>' + options;
 
+    const mapFilterArea = document.getElementById('map-filter-area');
+    if (mapFilterArea) mapFilterArea.innerHTML = '<option value="">Semua Area</option>' + options;
+
     const mktSecretArea = document.getElementById('mkt-secret-area');
     if (mktSecretArea) {
         mktSecretArea.innerHTML = optionsWithId;
@@ -5100,13 +5554,14 @@ function populatePackagesDropdowns() {
             const foundPkg = packagesList.find(p => p.name === pkgName);
             if (foundPkg) {
                 const priceInput = document.getElementById('cust-price');
-                if (priceInput) priceInput.value = foundPkg.price || '0';
+                if (priceInput) {
+                    const tax = Number(foundPkg.taxRate) || 0;
+                    const base = Number(foundPkg.price) || 0;
+                    priceInput.value = tax > 0 ? Math.round(base * (1 + tax / 100)) : base;
+                }
             }
         };
     }
-
-    const filterPkg = document.getElementById('cust-filter-paket');
-    if (filterPkg) filterPkg.innerHTML = '<option value="">Semua Paket</option>' + packagesList.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
 }
 
 function populateOdcDropdowns() {
@@ -5928,7 +6383,7 @@ const COLUMN_ALIAS_MAP = {
     // Mikrotik
     'mikrotik': 'Mikrotik', 'Mikrotik': 'Mikrotik', 'router': 'Mikrotik', 'router_ip': 'Mikrotik',
     // Modem
-    'modem': 'Modem', 'Modem': 'Modem', 'ont': 'Modem', 'sn_modem': 'Modem',
+    'modem': 'Modem', 'Modem': 'Modem', 'ont': 'Modem', 'sn_modem': 'Modem', 'snmodem': 'Modem', 'sn modem': 'Modem', 'serial_number': 'Modem', 'sn': 'Modem',
     // ODP
     'odp': 'ODP', 'ODP': 'ODP', 'odp_name': 'ODP', 'odp_port': 'ODP'
 };
@@ -5952,6 +6407,11 @@ function exportCustomersToExcel() {
             const add1Val = parseMoney(c.additionalCost1 || c.additional_cost1);
             const add2Val = parseMoney(c.additionalCost2 || c.additional_cost2);
             const totalBayar = Math.max(0, priceVal - discVal + add1Val + add2Val);
+
+            const rawOdpId = c.odpId || c.odp_id;
+            const odpObj = rawOdpId ? (odpList || []).find(o => String(o.id) === String(rawOdpId)) : null;
+            const odpName = c.odp_name || (odpObj ? odpObj.name : '');
+            const odpPortVal = c.odpPort || c.odp_port || '';
 
             return {
                 "nama": c.name || '',
@@ -5978,8 +6438,8 @@ function exportCustomersToExcel() {
                 "Via": c.via || '',
                 "Tanggal Register": c.register_date || c.registerDate || '',
                 "Mikrotik": c.mikrotik || c.router_ip || '',
-                "Modem": c.modem || c.modem_sn || '',
-                "ODP": c.odp_port ? `${c.odp_name || ''} / ${c.odp_port}` : (c.odp_name || c.odp || '')
+                "Modem": c.sn_modem || c.snModem || c.serial_number || c.modem || c.modem_sn || '',
+                "ODP": odpPortVal ? `${odpName} / ${odpPortVal}` : (odpName || c.odp || '')
             };
         });
 
@@ -6074,6 +6534,7 @@ function onImportFileSelected(event) {
                         else if (cleanKey.includes('diskon') || cleanKey.includes('discount')) targetCol = 'diskon';
                         else if (cleanKey.includes('area') || cleanKey.includes('wilayah')) targetCol = 'area';
                         else if (cleanKey.includes('odp')) targetCol = 'ODP';
+                        else if (cleanKey.includes('modem') || cleanKey === 'sn' || cleanKey.includes('serial')) targetCol = 'Modem';
                         else if (cleanKey.includes('nik') || cleanKey.includes('ktp')) targetCol = 'NIK';
                     }
 
@@ -6182,6 +6643,1228 @@ window.exportCustomersToExcel = exportCustomersToExcel;
 window.openImportCustomerModal = openImportCustomerModal;
 window.onImportFileSelected = onImportFileSelected;
 window.executeCustomerImport = executeCustomerImport;
+
+// ==========================================
+// PETA JARINGAN & PELANGGAN (GOOGLE MAPS + KMZ)
+// ==========================================
+
+let networkLeafletMap = null;
+let googleBaseTileLayer = null;
+let networkKmzLayer = null;
+let networkMarkersLayer = null;
+let networkLinesLayer = null;
+let currentGoogleMapType = 'y'; // y=Hybrid, s=Satellite, m=Roadmap, p=Terrain
+let currentMapLayerFilter = 'ALL';
+let mapMarkerLookup = {};
+let mapKmzBoundsLookup = {};
+let kmzLayersList = [];
+let mapHasAutoFittedOnce = false;
+let mapPickTarget = null;
+let mapLivePppoeMap = {};
+let mapLiveAcsMap = {};
+let isMapLiveAuto = true;
+let mapLivePollInterval = null;
+let mapResizeObserver = null;
+let mapLastLiveSyncText = '--:--:--';
+let mapIsLiveSyncing = false;
+let mapLiveCountdownSec = 15;
+let mapLastKmzRenderSig = '';
+let mapVisibilityBound = false;
+let myLocationLayerGroup = null;
+let myLocationAccCircle = null;
+let myLocationDotMarker = null;
+let myCurrentGeoLocation = null;
+let hasCenteredMyLocationOnOpen = false;
+let hasUserMovedWebMap = false;
+let myLocationWatchId = null;
+
+function parseLatLngCoords(rawLat, rawLng, fallbackText) {
+    const latNum = parseFloat(String(rawLat ?? '').trim().replace(',', '.'));
+    const lngNum = parseFloat(String(rawLng ?? '').trim().replace(',', '.'));
+    if (!isNaN(latNum) && !isNaN(lngNum) && latNum >= -90 && latNum <= 90 && lngNum >= -180 && lngNum <= 180 && !(latNum === 0 && lngNum === 0)) {
+        return { lat: latNum, lng: lngNum };
+    }
+    const text = String(fallbackText || '').trim();
+    if (!text) return null;
+    const gmapsAt = text.match(/@(-?\d{1,2}\.\d{3,}),(-?\d{1,3}\.\d{3,})/);
+    const gmapsQ = text.match(/[?&](?:q|ll|destination)=(-?\d{1,2}\.\d{3,}),(-?\d{1,3}\.\d{3,})/);
+    const plain = text.match(/(-?\d{1,2}\.\d{3,})\s*[,;\s]\s*(-?\d{1,3}\.\d{3,})/);
+    const m = gmapsAt || gmapsQ || plain;
+    if (m) {
+        const pLat = parseFloat(m[1]);
+        const pLng = parseFloat(m[2]);
+        if (!isNaN(pLat) && !isNaN(pLng) && pLat >= -90 && pLat <= 90 && pLng >= -180 && pLng <= 180 && !(pLat === 0 && pLng === 0)) {
+            return { lat: pLat, lng: pLng };
+        }
+    }
+    return null;
+}
+
+function buildAllNetworkMapNodes() {
+    const nodes = [];
+
+    (odcList || []).forEach(odc => {
+        const coords = parseLatLngCoords(odc.latitude, odc.longitude, odc.location);
+        nodes.push({
+            key: `ODC_${odc.id}`,
+            id: String(odc.id),
+            type: 'ODC',
+            name: odc.name || `ODC #${odc.id}`,
+            area: odc.area || '-',
+            subtitle: `${odc.portCount || 0} Port • In: ${odc.redaman_in || '-'} / Out: ${odc.redaman_out || '-'}`,
+            statusText: odc.location || 'ODC',
+            isAlert: false,
+            lat: coords ? coords.lat : null,
+            lng: coords ? coords.lng : null,
+            parentKey: null
+        });
+    });
+
+    (rasioList || []).forEach(r => {
+        const coords = parseLatLngCoords(r.latitude, r.longitude, r.location);
+        nodes.push({
+            key: `RASIO_${r.id}`,
+            id: String(r.id),
+            type: 'RASIO',
+            name: r.name || `Rasio #${r.id}`,
+            area: r.area || '-',
+            subtitle: `Size ${r.size || '-'} • In ${r.redaman_in || '-'}`,
+            statusText: `RASIO ${r.size || ''}`.trim(),
+            isAlert: false,
+            lat: coords ? coords.lat : null,
+            lng: coords ? coords.lng : null,
+            parentKey: null
+        });
+    });
+
+    (odpList || []).forEach(odp => {
+        const coords = parseLatLngCoords(odp.latitude, odp.longitude, null);
+        const parentOdc = (odcList || []).find(o => String(o.id) === String(odp.odcId));
+        const resolvedArea = (odp.area || (parentOdc ? parentOdc.area : '') || '-');
+        const rawOdcId = String(odp.odcId || '');
+        let parentKey = null;
+        if (rawOdcId.startsWith('-')) {
+            const absId = rawOdcId.slice(1);
+            parentKey = absId.startsWith('100000') ? `ODP_${absId.slice(6)}` : `RASIO_${absId}`;
+        } else if (rawOdcId && rawOdcId !== '0') {
+            parentKey = `ODC_${rawOdcId}`;
+        }
+        nodes.push({
+            key: `ODP_${odp.id}`,
+            id: String(odp.id),
+            type: 'ODP',
+            name: odp.name || `ODP #${odp.id}`,
+            area: resolvedArea,
+            subtitle: `${odp.portCount || 0} Port • In: ${odp.redaman_in || '-'} / Out: ${odp.redaman_out || '-'}`,
+            statusText: `ODP (${odp.portCount || 0} Port)`,
+            isAlert: false,
+            lat: coords ? coords.lat : null,
+            lng: coords ? coords.lng : null,
+            parentKey
+        });
+    });
+
+    (customersList || []).forEach(c => {
+        if ((c.status || '').toUpperCase() === 'TERHAPUS') return;
+        const coords = parseLatLngCoords(c.latitude, c.longitude, c.address || c.alamat);
+        const stUpper = (c.status || '').toUpperCase();
+        const isIsolir = stUpper.includes('ISOLIR');
+        const odpId = c.odpId || c.odp_id;
+        const odpObj = odpId ? (odpList || []).find(o => String(o.id) === String(odpId)) : null;
+
+        const secretKey = String(c.pppoeSecret || c.pppoe_secret || c.username || '').trim().toLowerCase();
+        const userKey = String(c.username || '').trim().toLowerCase();
+        const snKey = String(c.snModem || c.sn_modem || '').trim().toLowerCase();
+        const liveSec = mapLivePppoeMap[secretKey] || mapLivePppoeMap[userKey] || null;
+        const liveAcs = mapLiveAcsMap[secretKey] || mapLiveAcsMap[userKey] || (snKey ? mapLiveAcsMap[snKey] : null) || null;
+
+        const secStatus = liveSec ? String(liveSec.status || '').toLowerCase() : '';
+        let liveState = '';
+        if (isIsolir || secStatus === 'disabled') {
+            liveState = 'ISOLIR';
+        } else if (secStatus === 'online' || (liveAcs && liveAcs.isOnline === true)) {
+            liveState = 'ONLINE';
+        } else if (secStatus === 'offline' || (liveAcs && liveAcs.isOnline === false)) {
+            liveState = 'OFFLINE';
+        }
+
+        nodes.push({
+            key: `CUSTOMER_${c.id}`,
+            id: String(c.id),
+            type: 'CUSTOMER',
+            name: c.name || c.username || `Pelanggan #${c.id}`,
+            area: c.area || '-',
+            subtitle: `${c.packageName || c.package_name || '-'}${odpObj ? ' • ' + odpObj.name : ''}`,
+            statusText: stUpper || 'BELUM BAYAR',
+            isAlert: isIsolir || liveState === 'ISOLIR',
+            liveState,
+            liveIp: (liveSec && liveSec.ipAddress) || (liveAcs && liveAcs.ipAddress) || '',
+            liveUptime: (liveSec && liveSec.uptime) || (liveAcs && liveAcs.uptime) || '',
+            rxPower: (liveAcs && liveAcs.rxPower) || '',
+            lat: coords ? coords.lat : null,
+            lng: coords ? coords.lng : null,
+            parentKey: odpId ? `ODP_${odpId}` : null
+        });
+    });
+
+    return nodes;
+}
+
+function setMapLayerFilter(layer) {
+    currentMapLayerFilter = layer || 'ALL';
+    ['ALL', 'CUSTOMER', 'ODP', 'ODC', 'RASIO'].forEach(code => {
+        const btn = document.getElementById(`btn-map-layer-${code}`);
+        if (!btn) return;
+        btn.className = code === currentMapLayerFilter
+            ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition'
+            : 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 transition';
+    });
+    renderNetworkMapMarkers();
+}
+
+function setGoogleMapType(typeCode) {
+    currentGoogleMapType = typeCode || 'y';
+    ['y', 's', 'm', 'p'].forEach(code => {
+        const btn = document.getElementById(`btn-gmap-type-${code}`);
+        if (!btn) return;
+        btn.className = code === currentGoogleMapType
+            ? 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 transition'
+            : 'px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#111827] text-slate-400 border border-slate-800 hover:text-slate-200 transition';
+    });
+    if (networkLeafletMap) {
+        if (googleBaseTileLayer) networkLeafletMap.removeLayer(googleBaseTileLayer);
+        googleBaseTileLayer = L.tileLayer(`https://mt{s}.google.com/vt/lyrs=${currentGoogleMapType}&hl=id&x={x}&y={y}&z={z}`, {
+            subdomains: ['0', '1', '2', '3'],
+            maxZoom: 21,
+            attribution: 'Google Maps'
+        }).addTo(networkLeafletMap);
+    }
+}
+
+function parseKmlAbgrColor(raw) {
+    const clean = String(raw || '').trim().replace(/^#/, '');
+    if (clean.length !== 8) return null;
+    const aa = parseInt(clean.slice(0, 2), 16) / 255;
+    const bb = clean.slice(2, 4);
+    const gg = clean.slice(4, 6);
+    const rr = clean.slice(6, 8);
+    if (isNaN(aa)) return null;
+    return { hex: `#${rr}${gg}${bb}`, alpha: aa };
+}
+
+function parseKmlCoordString(rawText) {
+    const coords = [];
+    const tokens = String(rawText || '').trim().split(/\s+/);
+    for (const tok of tokens) {
+        const parts = tok.split(',');
+        if (parts.length >= 2) {
+            const lng = parseFloat(parts[0]);
+            const lat = parseFloat(parts[1]);
+            if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                coords.push([lat, lng]);
+            }
+        }
+    }
+    return coords;
+}
+
+function stripKmlHtml(raw) {
+    return String(raw || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|tr|div)>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+}
+
+function parseKmlXmlDocument(xmlText) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(String(xmlText || '').trim().replace(/^\uFEFF/, ''), 'text/xml');
+    const styleLookup = {};
+    const styleMapRefs = {};
+
+    const directChild = (parent, tagName) => {
+        for (const child of Array.from(parent.children || [])) {
+            if (child.localName === tagName || child.tagName === tagName) return child;
+        }
+        return null;
+    };
+    const directText = (parent, tagName) => (directChild(parent, tagName)?.textContent || '').trim();
+
+    const extractStyle = (styleEl, fallback = {}) => {
+        const s = {
+            lineColor: fallback.lineColor || '#38bdf8',
+            lineOpacity: fallback.lineOpacity ?? 0.9,
+            lineWidth: fallback.lineWidth ?? 3,
+            polyColor: fallback.polyColor || '#38bdf8',
+            polyOpacity: fallback.polyOpacity ?? 0.25,
+            iconColor: fallback.iconColor || '#f59e0b'
+        };
+        const ls = directChild(styleEl, 'LineStyle');
+        if (ls) {
+            const c = parseKmlAbgrColor(directText(ls, 'color'));
+            if (c) { s.lineColor = c.hex; s.lineOpacity = Math.max(0.25, Math.min(1, c.alpha)); }
+            const w = parseFloat(directText(ls, 'width'));
+            if (!isNaN(w) && w > 0) s.lineWidth = w;
+        }
+        const ps = directChild(styleEl, 'PolyStyle');
+        if (ps) {
+            const c = parseKmlAbgrColor(directText(ps, 'color'));
+            if (c) { s.polyColor = c.hex; s.polyOpacity = Math.max(0.1, Math.min(0.75, c.alpha)); }
+        }
+        const isEl = directChild(styleEl, 'IconStyle');
+        if (isEl) {
+            const c = parseKmlAbgrColor(directText(isEl, 'color'));
+            if (c) s.iconColor = c.hex;
+        }
+        return s;
+    };
+
+    Array.from(doc.getElementsByTagName('Style')).forEach(el => {
+        const id = (el.getAttribute('id') || '').trim();
+        if (id) {
+            const st = extractStyle(el);
+            styleLookup[`#${id}`] = st;
+            styleLookup[id] = st;
+        }
+    });
+
+    Array.from(doc.getElementsByTagName('StyleMap')).forEach(el => {
+        const id = (el.getAttribute('id') || '').trim();
+        if (!id) return;
+        let chosen = '';
+        Array.from(el.getElementsByTagName('Pair')).forEach(pairEl => {
+            const key = directText(pairEl, 'key').toLowerCase();
+            const url = directText(pairEl, 'styleUrl');
+            if (key === 'normal' && url) chosen = url;
+            else if (!chosen && url) chosen = url;
+        });
+        if (chosen) {
+            styleMapRefs[`#${id}`] = chosen;
+            styleMapRefs[id] = chosen;
+        }
+    });
+
+    const docEl = doc.getElementsByTagName('Document')[0];
+    const docTitle = docEl ? directText(docEl, 'name') : '';
+    const features = [];
+
+    const extractGeom = (container, name, desc, folder, style) => {
+        Array.from(container.children || []).forEach(el => {
+            const tag = el.localName || el.tagName;
+            if (tag === 'Point') {
+                const coordEl = el.getElementsByTagName('coordinates')[0];
+                const pts = parseKmlCoordString(coordEl?.textContent);
+                if (pts.length > 0) {
+                    features.push({
+                        kind: 'point',
+                        name,
+                        description: desc,
+                        folder,
+                        color: style.iconColor,
+                        coords: pts[0]
+                    });
+                }
+            } else if (tag === 'LineString') {
+                const coordEl = el.getElementsByTagName('coordinates')[0];
+                const pts = parseKmlCoordString(coordEl?.textContent);
+                if (pts.length >= 2) {
+                    features.push({
+                        kind: 'line',
+                        name,
+                        description: desc,
+                        folder,
+                        color: style.lineColor,
+                        opacity: style.lineOpacity,
+                        weight: Math.max(1.5, Math.min(8, style.lineWidth || 3)),
+                        coords: pts
+                    });
+                }
+            } else if (tag === 'Polygon') {
+                const outer = directChild(el, 'outerBoundaryIs') || el;
+                const coordEl = outer.getElementsByTagName('coordinates')[0];
+                const pts = parseKmlCoordString(coordEl?.textContent);
+                if (pts.length >= 3) {
+                    features.push({
+                        kind: 'polygon',
+                        name,
+                        description: desc,
+                        folder,
+                        color: style.lineColor,
+                        fillColor: style.polyColor,
+                        fillOpacity: style.polyOpacity,
+                        weight: Math.max(1, Math.min(6, style.lineWidth || 2)),
+                        coords: pts
+                    });
+                }
+            } else if (tag === 'MultiGeometry') {
+                extractGeom(el, name, desc, folder, style);
+            }
+        });
+    };
+
+    const walk = (el, folder) => {
+        const tag = el.localName || el.tagName;
+        let nextFolder = folder;
+        if (tag === 'Folder' || tag === 'Document') {
+            const fn = directText(el, 'name');
+            if (fn) nextFolder = (folder && tag === 'Folder') ? `${folder} / ${fn}` : fn;
+        }
+        if (tag === 'Placemark') {
+            const pName = directText(el, 'name') || 'Titik KMZ';
+            const pDesc = stripKmlHtml(directText(el, 'description'));
+            const styleUrl = directText(el, 'styleUrl');
+            const resolvedUrl = styleMapRefs[styleUrl] || styleUrl;
+            const baseStyle = styleLookup[resolvedUrl] || styleLookup[resolvedUrl.replace(/^#/, '')] || extractStyle({ children: [] });
+            const inlineStyle = directChild(el, 'Style');
+            const finalStyle = inlineStyle ? extractStyle(inlineStyle, baseStyle) : baseStyle;
+            extractGeom(el, pName, pDesc, folder, finalStyle);
+            return;
+        }
+        Array.from(el.children || []).forEach(child => walk(child, nextFolder));
+    };
+
+    if (doc.documentElement) walk(doc.documentElement, '');
+    return { documentName: docTitle, features };
+}
+
+async function loadKmzLayers() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/map/kmz`);
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                kmzLayersList = data.map(item => {
+                    let parsedFeatures = [];
+                    try {
+                        parsedFeatures = typeof item.featuresJson === 'string'
+                            ? JSON.parse(item.featuresJson)
+                            : (Array.isArray(item.features) ? item.features : []);
+                    } catch (_) {}
+                    return {
+                        id: String(item.id),
+                        name: item.name || item.fileName || `Layer #${item.id}`,
+                        fileName: item.fileName || '',
+                        isVisible: item.isVisible !== false,
+                        featureCount: Number(item.featureCount || parsedFeatures.length || 0),
+                        features: Array.isArray(parsedFeatures) ? parsedFeatures : []
+                    };
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('KMZ load error:', e);
+    }
+    renderKmzLayersPanel();
+    renderKmzLayersOnMap();
+}
+
+function renderKmzLayersPanel() {
+    const summaryEl = document.getElementById('map-kmz-summary');
+    if (summaryEl) summaryEl.innerText = `Layer KMZ: ${kmzLayersList.length} file`;
+
+    const listEl = document.getElementById('map-kmz-layers-list');
+    if (!listEl) return;
+    if (kmzLayersList.length === 0) {
+        listEl.innerHTML = '<p class="text-[11px] text-slate-500 text-center py-2">Belum ada file .kmz / .kml diunggah.</p>';
+        return;
+    }
+    listEl.innerHTML = kmzLayersList.map(layer => {
+        const safeName = String(layer.name || layer.fileName).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `
+            <div class="p-2 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2">
+                <label class="flex items-center gap-2 min-w-0 flex-1 cursor-pointer">
+                    <input type="checkbox" ${layer.isVisible ? 'checked' : ''} onchange="toggleKmzLayerVisibility('${layer.id}', this.checked)" class="accent-amber-500 rounded shrink-0">
+                    <div class="min-w-0 flex-1" onclick="event.preventDefault(); focusKmzLayer('${layer.id}')">
+                        <p class="text-xs font-bold text-white truncate">${safeName}</p>
+                        <p class="text-[10px] text-slate-400 truncate">${layer.featureCount} objek • ${layer.fileName || 'KMZ'}</p>
+                    </div>
+                </label>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" onclick="focusKmzLayer('${layer.id}')" title="Zoom ke Layer" class="p-1 rounded-lg bg-slate-800 hover:bg-cyan-500/20 text-cyan-400">
+                        <i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button type="button" onclick="deleteKmzLayer('${layer.id}')" title="Hapus Layer KMZ" class="p-1 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    if (window.lucide) lucide.createIcons();
+}
+
+function renderKmzLayersOnMap(focusLayerId) {
+    if (!networkLeafletMap || !networkKmzLayer) return [];
+    const visibleLayers = kmzLayersList.filter(l => l.isVisible);
+    const sig = visibleLayers.map(l => `${l.id}:${l.featureCount || (l.features || []).length}`).join('|');
+
+    if (sig !== mapLastKmzRenderSig || focusLayerId) {
+        mapLastKmzRenderSig = sig;
+        networkKmzLayer.clearLayers();
+        mapKmzBoundsLookup = {};
+
+        visibleLayers.forEach(layer => {
+            const layerPts = [];
+            (layer.features || []).forEach(f => {
+                const fName = f.name || 'Titik KMZ';
+                const fDesc = f.description ? `<div style="font-size:11px;color:#334155;margin-bottom:4px;white-space:pre-line;">${f.description.replace(/</g, '&lt;')}</div>` : '';
+                const fFolder = f.folder ? `<div style="font-size:10px;color:#64748b;">${layer.name} • ${f.folder}</div>` : `<div style="font-size:10px;color:#64748b;">${layer.name}</div>`;
+
+                if (f.kind === 'point' && Array.isArray(f.coords) && f.coords.length >= 2) {
+                    const [lat, lng] = f.coords;
+                    const m = L.circleMarker([lat, lng], {
+                        radius: 6,
+                        fillColor: f.color || '#f59e0b',
+                        color: '#ffffff',
+                        weight: 1.8,
+                        opacity: 1,
+                        fillOpacity: 0.95
+                    }).addTo(networkKmzLayer);
+                    m.bindPopup(`
+                        <div style="min-width:190px;font-family:sans-serif;">
+                            <div style="font-size:10px;font-weight:700;color:#d97706;">KMZ POINT</div>
+                            <div style="font-size:13px;font-weight:700;margin:2px 0;">${fName}</div>
+                            ${fFolder}
+                            ${fDesc}
+                            <div style="font-size:11px;font-family:monospace;color:#0f172a;">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+                            <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" style="display:inline-block;margin-top:6px;padding:4px 8px;background:#0284c7;color:#fff;border-radius:6px;font-size:11px;text-decoration:none;">Buka di Google Maps</a>
+                        </div>
+                    `);
+                    m.on('click', () => {
+                        if (mapPickTarget) {
+                            const target = mapPickTarget;
+                            cancelMapPickMode();
+                            saveMapCoordinatesToServer(target.type, target.id, lat.toFixed(6), lng.toFixed(6), target.name);
+                        }
+                    });
+                    layerPts.push([lat, lng]);
+                } else if (f.kind === 'line' && Array.isArray(f.coords) && f.coords.length >= 2) {
+                    const line = L.polyline(f.coords, {
+                        color: f.color || '#38bdf8',
+                        weight: f.weight || 3,
+                        opacity: f.opacity || 0.9
+                    }).addTo(networkKmzLayer);
+                    line.bindPopup(`
+                        <div style="min-width:180px;font-family:sans-serif;">
+                            <div style="font-size:10px;font-weight:700;color:#0284c7;">KMZ JALUR</div>
+                            <div style="font-size:13px;font-weight:700;margin:2px 0;">${fName}</div>
+                            ${fFolder}
+                            ${fDesc}
+                        </div>
+                    `);
+                    f.coords.forEach(pt => { layerPts.push(pt); });
+                } else if (f.kind === 'polygon' && Array.isArray(f.coords) && f.coords.length >= 3) {
+                    const poly = L.polygon(f.coords, {
+                        color: f.color || '#38bdf8',
+                        fillColor: f.fillColor || f.color || '#38bdf8',
+                        fillOpacity: f.fillOpacity || 0.25,
+                        weight: f.weight || 2
+                    }).addTo(networkKmzLayer);
+                    poly.bindPopup(`
+                        <div style="min-width:180px;font-family:sans-serif;">
+                            <div style="font-size:10px;font-weight:700;color:#7c3aed;">KMZ AREA</div>
+                            <div style="font-size:13px;font-weight:700;margin:2px 0;">${fName}</div>
+                            ${fFolder}
+                            ${fDesc}
+                        </div>
+                    `);
+                    f.coords.forEach(pt => { layerPts.push(pt); });
+                }
+            });
+            if (layerPts.length > 0) mapKmzBoundsLookup[layer.id] = layerPts;
+        });
+
+        if (focusLayerId && mapKmzBoundsLookup[focusLayerId]) {
+            const pts = mapKmzBoundsLookup[focusLayerId];
+            if (pts.length === 1) networkLeafletMap.setView(pts[0], 17);
+            else networkLeafletMap.fitBounds(pts, { padding: [36, 36], maxZoom: 18 });
+        }
+    }
+
+    const allKmzPts = [];
+    Object.values(mapKmzBoundsLookup).forEach(arr => arr.forEach(pt => allKmzPts.push(pt)));
+    return allKmzPts;
+}
+
+async function handleKmzFileImport(event) {
+    const file = event?.target?.files?.[0];
+    if (event?.target) event.target.value = '';
+    if (!file) return;
+
+    showLoading(true, `Memproses ${file.name}...`);
+    try {
+        const lower = file.name.toLowerCase();
+        const kmlTexts = [];
+        if (lower.endsWith('.kmz')) {
+            if (!window.JSZip) throw new Error('Library JSZip belum siap dimuat');
+            const zip = await JSZip.loadAsync(file);
+            for (const entryName of Object.keys(zip.files)) {
+                const entry = zip.files[entryName];
+                if (!entry.dir && entryName.toLowerCase().endsWith('.kml')) {
+                    kmlTexts.push(await entry.async('string'));
+                }
+            }
+        } else {
+            kmlTexts.push(await file.text());
+        }
+
+        if (kmlTexts.length === 0) {
+            throw new Error('File KMZ tidak berisi dokumen KML yang valid.');
+        }
+
+        let layerName = file.name.replace(/\.(kmz|kml)$/i, '');
+        const mergedFeatures = [];
+        kmlTexts.forEach((xml, idx) => {
+            const parsed = parseKmlXmlDocument(xml);
+            if (idx === 0 && parsed.documentName) layerName = parsed.documentName;
+            mergedFeatures.push(...parsed.features);
+        });
+
+        if (mergedFeatures.length === 0) {
+            showToast(`Tidak ada titik/jalur ditemukan dalam ${file.name}`, 'warning');
+            return;
+        }
+
+        let newLayer = {
+            id: `local_${Date.now()}`,
+            name: layerName,
+            fileName: file.name,
+            isVisible: true,
+            featureCount: mergedFeatures.length,
+            features: mergedFeatures
+        };
+
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/map/kmz`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: layerName,
+                    fileName: file.name,
+                    features: mergedFeatures,
+                    featureCount: mergedFeatures.length,
+                    isVisible: true
+                })
+            });
+            if (res.ok) {
+                const saved = await res.json();
+                newLayer.id = String(saved.id || newLayer.id);
+            }
+        } catch (err) {
+            console.warn('Simpan KMZ ke server gagal, menggunakan tampilan lokal:', err);
+        }
+
+        kmzLayersList = [newLayer, ...kmzLayersList.filter(l => l.id !== newLayer.id)];
+        renderKmzLayersPanel();
+        renderKmzLayersOnMap(newLayer.id);
+        showToast(`Berhasil import ${layerName} (${mergedFeatures.length} objek)`, 'success');
+    } catch (e) {
+        showToast('Gagal mengimpor file KMZ/KML: ' + e.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function toggleKmzLayerVisibility(id, checked) {
+    kmzLayersList = kmzLayersList.map(l => l.id === String(id) ? { ...l, isVisible: Boolean(checked) } : l);
+    renderKmzLayersOnMap();
+    if (!String(id).startsWith('local_')) {
+        try {
+            await fetch(`${API_BASE_URL}/api/map/kmz/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isVisible: Boolean(checked) })
+            });
+        } catch (_) {}
+    }
+}
+
+function focusKmzLayer(id) {
+    const target = kmzLayersList.find(l => l.id === String(id));
+    if (target && !target.isVisible) {
+        toggleKmzLayerVisibility(id, true);
+        renderKmzLayersPanel();
+    } else {
+        renderKmzLayersOnMap(String(id));
+    }
+}
+
+async function deleteKmzLayer(id) {
+    if (!confirm('Hapus layer KMZ/KML ini dari peta?')) return;
+    kmzLayersList = kmzLayersList.filter(l => l.id !== String(id));
+    renderKmzLayersPanel();
+    renderKmzLayersOnMap();
+    if (!String(id).startsWith('local_')) {
+        try {
+            await fetch(`${API_BASE_URL}/api/map/kmz/${id}`, { method: 'DELETE' });
+        } catch (_) {}
+    }
+    showToast('Layer KMZ dihapus', 'info');
+}
+
+function updateMapLiveControlsUi() {
+    const btn = document.getElementById('btn-map-live-toggle');
+    const dot = document.getElementById('map-live-dot');
+    if (btn) {
+        btn.innerText = isMapLiveAuto ? (mapIsLiveSyncing ? 'Sync...' : `Auto ${mapLiveCountdownSec}d`) : 'Manual';
+        btn.className = isMapLiveAuto
+            ? 'text-[10px] font-bold text-emerald-400 border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 rounded'
+            : 'text-[10px] font-bold text-slate-400 border border-slate-700 bg-slate-800 px-1.5 py-0.5 rounded';
+    }
+    if (dot) {
+        dot.className = mapIsLiveSyncing
+            ? 'w-2 h-2 rounded-full bg-cyan-400 animate-ping'
+            : (isMapLiveAuto ? 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse' : 'w-2 h-2 rounded-full bg-slate-500');
+    }
+}
+
+async function loadMapRealtimeTelemetry() {
+    if (mapIsLiveSyncing) return;
+    mapIsLiveSyncing = true;
+    updateMapLiveControlsUi();
+    try {
+        const targetAreas = (areasList || []).slice(0, 8);
+        const secretFetches = targetAreas.map(a =>
+            fetch(`${API_BASE_URL}/api/mikrotik/secrets/${encodeURIComponent(a.id)}`)
+                .then(r => (r.ok ? r.json() : []))
+                .catch(() => [])
+        );
+        const acsFetch = fetch(`${API_BASE_URL}/api/acs/devices`)
+            .then(r => (r.ok ? r.json() : []))
+            .catch(() => []);
+        const custFetch = fetch(`${API_BASE_URL}/api/customers`)
+            .then(r => (r.ok ? r.json() : null))
+            .catch(() => null);
+
+        const [secretResults, acsList, freshCustomers] = await Promise.all([
+            Promise.allSettled(secretFetches),
+            acsFetch,
+            custFetch
+        ]);
+
+        const nextSecretMap = {};
+        secretResults.forEach(res => {
+            if (res.status === 'fulfilled' && Array.isArray(res.value)) {
+                res.value.forEach(sec => {
+                    const key = String(sec.name || '').trim().toLowerCase();
+                    if (key) nextSecretMap[key] = sec;
+                });
+            }
+        });
+        if (Object.keys(nextSecretMap).length > 0) {
+            mapLivePppoeMap = nextSecretMap;
+        }
+
+        if (Array.isArray(acsList) && acsList.length > 0) {
+            const validAcs = acsList.filter(d => !(d.id && String(d.id).startsWith('error_')));
+            if (validAcs.length > 0) {
+                acsDevicesList = validAcs;
+                const nextAcsMap = {};
+                validAcs.forEach(dev => {
+                    const uKey = String(dev.username || '').trim().toLowerCase();
+                    const sKey = String(dev.serialNumber || '').trim().toLowerCase();
+                    if (uKey) nextAcsMap[uKey] = dev;
+                    if (sKey) nextAcsMap[sKey] = dev;
+                });
+                mapLiveAcsMap = nextAcsMap;
+            }
+        }
+
+        if (Array.isArray(freshCustomers)) {
+            customersList = freshCustomers;
+        }
+
+        mapLastLiveSyncText = new Date().toLocaleTimeString('id-ID', { hour12: false });
+        mapLiveCountdownSec = 15;
+        if (currentTab === 'map') {
+            renderNetworkMapMarkers();
+        }
+    } catch (e) {
+        console.warn('Map telemetry sync error:', e);
+    } finally {
+        mapIsLiveSyncing = false;
+        updateMapLiveControlsUi();
+    }
+}
+
+function stopMapLivePolling() {
+    if (mapLivePollInterval) {
+        clearInterval(mapLivePollInterval);
+        mapLivePollInterval = null;
+    }
+}
+
+function startMapLivePolling() {
+    stopMapLivePolling();
+    if (!mapVisibilityBound) {
+        mapVisibilityBound = true;
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && currentTab === 'map' && isMapLiveAuto) {
+                mapLiveCountdownSec = 15;
+                loadMapRealtimeTelemetry();
+            }
+        });
+    }
+    if (!isMapLiveAuto || currentTab !== 'map') {
+        updateMapLiveControlsUi();
+        return;
+    }
+    mapLiveCountdownSec = 15;
+    updateMapLiveControlsUi();
+    mapLivePollInterval = setInterval(() => {
+        if (currentTab !== 'map' || !isMapLiveAuto || document.hidden) return;
+        if (mapLiveCountdownSec > 1) {
+            mapLiveCountdownSec -= 1;
+            updateMapLiveControlsUi();
+        } else {
+            mapLiveCountdownSec = 15;
+            loadMapRealtimeTelemetry();
+        }
+    }, 1000);
+}
+
+function toggleMapLiveAuto() {
+    isMapLiveAuto = !isMapLiveAuto;
+    updateMapLiveControlsUi();
+    if (isMapLiveAuto) {
+        loadMapRealtimeTelemetry();
+        startMapLivePolling();
+    } else {
+        stopMapLivePolling();
+    }
+}
+
+function renderWebMyLocationBlueDot(lat, lng, accuracy) {
+    if (!networkLeafletMap || !myLocationLayerGroup) return;
+    const latLng = [lat, lng];
+    const accRadius = Math.max(Number(accuracy || 20), 10);
+    if (myLocationAccCircle && myLocationDotMarker) {
+        myLocationAccCircle.setLatLng(latLng);
+        myLocationAccCircle.setRadius(accRadius);
+        myLocationDotMarker.setLatLng(latLng);
+    } else {
+        myLocationLayerGroup.clearLayers();
+        myLocationAccCircle = L.circle(latLng, {
+            radius: accRadius,
+            color: '#3b82f6',
+            weight: 1,
+            opacity: 0.45,
+            fillColor: '#3b82f6',
+            fillOpacity: 0.14,
+            interactive: false
+        }).addTo(myLocationLayerGroup);
+
+        const blueIcon = L.divIcon({
+            className: '',
+            html: '<div style="width:24px;height:24px;border-radius:50%;background:rgba(37,99,235,0.28);display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(37,99,235,0.65);"><div style="width:14px;height:14px;border-radius:50%;background:#2563eb;border:2.5px solid #ffffff;"></div></div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+        myLocationDotMarker = L.marker(latLng, { icon: blueIcon, zIndexOffset: 1000 }).addTo(myLocationLayerGroup);
+        myLocationDotMarker.bindPopup(`
+            <div style="min-width:170px;font-family:sans-serif;">
+                <div style="font-size:10px;font-weight:700;color:#2563eb;">LOKASI SAYA</div>
+                <div style="font-size:12px;font-weight:700;margin:2px 0;">Posisi GPS Anda Sekarang</div>
+                <div style="font-size:11px;font-family:monospace;color:#0f172a;">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+            </div>
+        `);
+    }
+}
+
+function requestMyGeoLocation(centerMap) {
+    if (!navigator.geolocation) {
+        if (centerMap) showToast('Browser tidak mendukung GPS/Geolocation.', 'warning');
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            myCurrentGeoLocation = { lat: latitude, lng: longitude, accuracy: accuracy || 20 };
+            renderWebMyLocationBlueDot(latitude, longitude, accuracy);
+            if (networkLeafletMap && (centerMap || (!hasCenteredMyLocationOnOpen && !hasUserMovedWebMap))) {
+                hasCenteredMyLocationOnOpen = true;
+                mapHasAutoFittedOnce = true;
+                networkLeafletMap.setView([latitude, longitude], 16);
+            }
+        },
+        (err) => {
+            if (centerMap) {
+                showToast('Izin lokasi belum aktif atau GPS tidak tersedia.', 'warning');
+            }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
+    );
+
+    if (myLocationWatchId === null) {
+        myLocationWatchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                const { latitude, longitude, accuracy } = pos.coords;
+                myCurrentGeoLocation = { lat: latitude, lng: longitude, accuracy: accuracy || 20 };
+                renderWebMyLocationBlueDot(latitude, longitude, accuracy);
+                if (networkLeafletMap && !hasCenteredMyLocationOnOpen && !hasUserMovedWebMap) {
+                    hasCenteredMyLocationOnOpen = true;
+                    mapHasAutoFittedOnce = true;
+                    networkLeafletMap.setView([latitude, longitude], 16);
+                }
+            },
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 10000 }
+        );
+    }
+}
+
+function focusMyLocationOnMap() {
+    if (myCurrentGeoLocation && networkLeafletMap) {
+        renderWebMyLocationBlueDot(myCurrentGeoLocation.lat, myCurrentGeoLocation.lng, myCurrentGeoLocation.accuracy);
+        hasCenteredMyLocationOnOpen = true;
+        mapHasAutoFittedOnce = true;
+        networkLeafletMap.setView([myCurrentGeoLocation.lat, myCurrentGeoLocation.lng], 16);
+        if (myLocationDotMarker) myLocationDotMarker.openPopup();
+    } else {
+        requestMyGeoLocation(true);
+    }
+}
+
+function initAndRenderNetworkMap() {
+    const mapContainer = document.getElementById('network-map-canvas');
+    if (!mapContainer) return;
+
+    if (!window.L) {
+        mapContainer.innerHTML = '<div class="h-full flex items-center justify-center text-xs text-rose-400 p-6 text-center">Engine peta gagal dimuat. Pastikan koneksi internet aktif untuk membuka Google Maps.</div>';
+        renderNetworkMapMarkers();
+        return;
+    }
+
+    if (!networkLeafletMap) {
+        networkLeafletMap = L.map('network-map-canvas', { zoomControl: true }).setView([-7.55, 110.82], 13);
+        googleBaseTileLayer = L.tileLayer(`https://mt{s}.google.com/vt/lyrs=${currentGoogleMapType}&hl=id&x={x}&y={y}&z={z}`, {
+            subdomains: ['0', '1', '2', '3'],
+            maxZoom: 21,
+            attribution: 'Google Maps'
+        }).addTo(networkLeafletMap);
+        networkKmzLayer = L.layerGroup().addTo(networkLeafletMap);
+        networkLinesLayer = L.layerGroup().addTo(networkLeafletMap);
+        networkMarkersLayer = L.layerGroup().addTo(networkLeafletMap);
+        myLocationLayerGroup = L.layerGroup().addTo(networkLeafletMap);
+
+        networkLeafletMap.on('dragstart zoomstart', () => {
+            hasUserMovedWebMap = true;
+        });
+
+        networkLeafletMap.on('click', async (e) => {
+            if (!mapPickTarget) return;
+            const target = mapPickTarget;
+            mapPickTarget = null;
+            const banner = document.getElementById('map-pick-banner');
+            if (banner) banner.classList.add('hidden');
+            await saveMapCoordinatesToServer(target.type, target.id, e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6), target.name);
+        });
+
+        if (window.ResizeObserver && !mapResizeObserver) {
+            mapResizeObserver = new ResizeObserver(() => {
+                if (networkLeafletMap && currentTab === 'map') {
+                    networkLeafletMap.invalidateSize(true);
+                }
+            });
+            mapResizeObserver.observe(mapContainer);
+        }
+    }
+
+    [50, 250, 600].forEach(ms => {
+        setTimeout(() => {
+            if (networkLeafletMap) networkLeafletMap.invalidateSize(true);
+        }, ms);
+    });
+
+    requestMyGeoLocation(!hasCenteredMyLocationOnOpen);
+    loadKmzLayers();
+    renderNetworkMapMarkers();
+    loadMapRealtimeTelemetry();
+    startMapLivePolling();
+}
+
+async function refreshNetworkMapData() {
+    showLoading(true, 'Menyegarkan Google Maps, status live PPPoE & layer KMZ...');
+    try {
+        await Promise.all([loadAllData(), loadKmzLayers()]);
+        await loadMapRealtimeTelemetry();
+        renderNetworkMapMarkers();
+        showToast('Data peta & status live berhasil diperbarui', 'success');
+    } catch (e) {
+        showToast('Gagal menyegarkan data peta', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function renderNetworkMapMarkers() {
+    const searchVal = (document.getElementById('map-search')?.value || '').toLowerCase().trim();
+    const areaVal = document.getElementById('map-filter-area')?.value || '';
+    const pinStatus = document.getElementById('map-pin-status-filter')?.value || 'ALL';
+    const liveStatusFilter = document.getElementById('map-live-status-filter')?.value || 'ALL';
+    const showLines = document.getElementById('map-show-lines')?.checked !== false;
+
+    const allNodes = buildAllNetworkMapNodes();
+
+    const customerNodes = allNodes.filter(n => n.type === 'CUSTOMER' && (!areaVal || n.area === areaVal));
+    const liveOnlineCount = customerNodes.filter(n => n.liveState === 'ONLINE').length;
+    const liveOfflineCount = customerNodes.filter(n => n.liveState === 'OFFLINE').length;
+    const liveIsolirCount = customerNodes.filter(n => n.liveState === 'ISOLIR' || n.isAlert).length;
+    const liveSummaryEl = document.getElementById('map-live-summary');
+    if (liveSummaryEl) {
+        liveSummaryEl.innerText = `LIVE • Online: ${liveOnlineCount} • Offline: ${liveOfflineCount} • Isolir: ${liveIsolirCount} • ${mapLastLiveSyncText}`;
+    }
+
+    const filtered = allNodes.filter(n => {
+        const matchLayer = currentMapLayerFilter === 'ALL' || n.type === currentMapLayerFilter;
+        const matchArea = !areaVal || n.area === areaVal;
+        const matchLive = liveStatusFilter === 'ALL'
+            || (liveStatusFilter === 'ONLINE' && (n.type !== 'CUSTOMER' || n.liveState === 'ONLINE'))
+            || (liveStatusFilter === 'OFFLINE' && n.type === 'CUSTOMER' && n.liveState === 'OFFLINE')
+            || (liveStatusFilter === 'ISOLIR' && n.type === 'CUSTOMER' && (n.liveState === 'ISOLIR' || n.isAlert));
+        const matchSearch = !searchVal ||
+            n.name.toLowerCase().includes(searchVal) ||
+            n.subtitle.toLowerCase().includes(searchVal) ||
+            n.area.toLowerCase().includes(searchVal);
+        return matchLayer && matchArea && matchLive && matchSearch;
+    });
+
+    const pinned = filtered.filter(n => n.lat !== null && n.lng !== null);
+    const unpinnedCount = filtered.length - pinned.length;
+
+    const summaryEl = document.getElementById('map-pinned-summary');
+    if (summaryEl) summaryEl.innerText = `Terpetakan: ${pinned.length} • Belum Pin: ${unpinnedCount}`;
+
+    if (networkLeafletMap && networkMarkersLayer && networkLinesLayer) {
+        let openPopupKey = null;
+        Object.entries(mapMarkerLookup).forEach(([k, m]) => {
+            if (m && typeof m.isPopupOpen === 'function' && m.isPopupOpen()) {
+                openPopupKey = k;
+            }
+        });
+
+        networkMarkersLayer.clearLayers();
+        networkLinesLayer.clearLayers();
+        mapMarkerLookup = {};
+
+        const nodeByKey = {};
+        pinned.forEach(n => { nodeByKey[n.key] = n; });
+
+        if (showLines) {
+            pinned.forEach(n => {
+                if (n.parentKey && nodeByKey[n.parentKey]) {
+                    const p = nodeByKey[n.parentKey];
+                    const lineColor = n.type === 'CUSTOMER'
+                        ? (n.liveState === 'OFFLINE' ? '#f97316' : (n.liveState === 'ISOLIR' || n.isAlert) ? '#ef4444' : '#10b981')
+                        : '#38bdf8';
+                    L.polyline([[p.lat, p.lng], [n.lat, n.lng]], {
+                        color: lineColor,
+                        weight: 2,
+                        opacity: 0.72,
+                        dashArray: n.type === 'CUSTOMER' ? '4, 6' : null
+                    }).addTo(networkLinesLayer);
+                }
+            });
+        }
+
+        const bounds = [];
+        pinned.forEach(n => {
+            let color = '#10b981';
+            let radius = 7;
+            if (n.type === 'ODC') { color = '#a855f7'; radius = 10; }
+            else if (n.type === 'RASIO') { color = '#f59e0b'; radius = 9; }
+            else if (n.type === 'ODP') { color = '#3b82f6'; radius = 8; }
+            else if (n.liveState === 'ISOLIR' || n.isAlert) { color = '#ef4444'; radius = 7; }
+            else if (n.liveState === 'OFFLINE') { color = '#f97316'; radius = 7; }
+
+            const marker = L.circleMarker([n.lat, n.lng], {
+                radius,
+                fillColor: color,
+                color: '#ffffff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.92
+            }).addTo(networkMarkersLayer);
+
+            const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${n.lat},${n.lng}`;
+            const detailBtnHtml = n.type === 'CUSTOMER'
+                ? `<button onclick="openCustomerDetailModal(${n.id})" style="margin-top:6px;padding:4px 8px;background:#10b981;color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer;margin-right:4px;">Detail</button>`
+                : '';
+
+            const liveBadgeHtml = n.type === 'CUSTOMER' && (n.liveState || n.liveIp || n.liveUptime || n.rxPower)
+                ? `<div style="font-size:10px;margin:4px 0;padding:3px 6px;border-radius:4px;background:#0f172a;color:#e2e8f0;font-weight:600;">PPPoE ${n.liveState || n.statusText}${n.liveIp ? ' • ' + n.liveIp : ''}${n.liveUptime ? ' • ' + n.liveUptime : ''}${n.rxPower ? ' • Rx ' + n.rxPower : ''}</div>`
+                : '';
+
+            marker.bindPopup(`
+                <div style="min-width:205px;font-family:sans-serif;">
+                    <div style="font-size:10px;font-weight:700;color:${color};">${n.type} • ${n.area}</div>
+                    <div style="font-size:13px;font-weight:700;margin:2px 0;">${n.name}</div>
+                    <div style="font-size:11px;color:#475569;margin-bottom:4px;">${n.subtitle}</div>
+                    ${liveBadgeHtml}
+                    <div style="font-size:11px;font-family:monospace;color:#0f172a;">${n.lat.toFixed(6)}, ${n.lng.toFixed(6)}</div>
+                    <div style="margin-top:6px;">
+                        ${detailBtnHtml}
+                        <a href="${gmapsUrl}" target="_blank" style="display:inline-block;padding:4px 8px;background:#0284c7;color:#fff;border-radius:6px;font-size:11px;text-decoration:none;">Google Maps</a>
+                    </div>
+                </div>
+            `);
+            mapMarkerLookup[n.key] = marker;
+            bounds.push([n.lat, n.lng]);
+        });
+
+        if (openPopupKey && mapMarkerLookup[openPopupKey]) {
+            mapMarkerLookup[openPopupKey].openPopup();
+        }
+
+        const kmzPts = renderKmzLayersOnMap();
+        const fitBoundsList = [...bounds, ...kmzPts];
+        if (!mapHasAutoFittedOnce && !myCurrentGeoLocation && !hasCenteredMyLocationOnOpen && fitBoundsList.length > 0) {
+            if (fitBoundsList.length === 1) {
+                networkLeafletMap.setView(fitBoundsList[0], 16);
+            } else {
+                networkLeafletMap.fitBounds(fitBoundsList, { padding: [36, 36], maxZoom: 17 });
+            }
+            mapHasAutoFittedOnce = true;
+        }
+    }
+
+    const listEl = document.getElementById('map-points-list');
+    if (listEl) {
+        const listItems = filtered.filter(n => {
+            if (pinStatus === 'PINNED') return n.lat !== null && n.lng !== null;
+            if (pinStatus === 'UNPINNED') return n.lat === null || n.lng === null;
+            return true;
+        });
+
+        if (listItems.length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-10">Tidak ada titik yang cocok dengan filter.</p>';
+        } else {
+            listEl.innerHTML = listItems.slice(0, 200).map(n => {
+                const badgeCls = n.type === 'ODC'
+                    ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                    : n.type === 'ODP'
+                    ? 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                    : n.type === 'RASIO'
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : (n.liveState === 'ISOLIR' || n.isAlert)
+                    ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                    : n.liveState === 'OFFLINE'
+                    ? 'bg-orange-500/15 text-orange-400 border-orange-500/30'
+                    : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+                const liveChipHtml = n.type === 'CUSTOMER' && n.liveState
+                    ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold border ${badgeCls}">${n.liveState}</span>`
+                    : '';
+                const hasPin = n.lat !== null && n.lng !== null;
+                const safeName = n.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                return `
+                    <div class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-emerald-500/40 transition flex items-start justify-between gap-2">
+                        <div class="min-w-0 flex-1 ${hasPin ? 'cursor-pointer' : ''}" ${hasPin ? `onclick="focusMapNode('${n.key}')"` : ''}>
+                            <div class="flex items-center gap-1.5 mb-0.5">
+                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold border ${badgeCls}">${n.type}</span>
+                                <span class="text-xs font-bold text-white truncate">${n.name}</span>
+                                ${liveChipHtml}
+                            </div>
+                            <p class="text-[10px] text-slate-400 truncate">${n.area} • ${n.subtitle}</p>
+                            <p class="text-[10px] font-mono mt-0.5 ${hasPin ? 'text-cyan-400' : 'text-amber-400'}">
+                                ${hasPin ? `${n.lat.toFixed(6)}, ${n.lng.toFixed(6)}` : 'Belum ada koordinat GPS'}
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button type="button" onclick="startMapPickMode('${n.type}','${n.id}','${safeName}')" title="Klik di Peta" class="p-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 text-cyan-400 border border-slate-700 text-[10px]">
+                                <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button type="button" onclick="promptSetMapCoordinates('${n.type}','${n.id}','${safeName}','${hasPin ? n.lat + ', ' + n.lng : ''}')" title="Input Manual Koordinat" class="p-1.5 rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-emerald-400 border border-slate-700 text-[10px]">
+                                <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function focusMapNode(key) {
+    const m = mapMarkerLookup[key];
+    if (m && networkLeafletMap) {
+        networkLeafletMap.setView(m.getLatLng(), 17);
+        m.openPopup();
+    }
+}
+
+function startMapPickMode(type, id, name) {
+    mapPickTarget = { type, id, name };
+    const banner = document.getElementById('map-pick-banner');
+    const nameEl = document.getElementById('map-pick-target-name');
+    if (nameEl) nameEl.innerText = name;
+    if (banner) banner.classList.remove('hidden');
+    showToast(`Klik langsung pada peta untuk menentukan lokasi ${name}`, 'info');
+}
+
+function cancelMapPickMode() {
+    mapPickTarget = null;
+    const banner = document.getElementById('map-pick-banner');
+    if (banner) banner.classList.add('hidden');
+}
+
+async function promptSetMapCoordinates(type, id, name, currentCoord) {
+    const raw = prompt(`Masukkan koordinat GPS (Lat, Lng) atau tautan Google Maps untuk ${name}:`, currentCoord || '');
+    if (raw === null) return;
+    const parsed = parseLatLngCoords(null, null, raw);
+    if (!parsed) {
+        showToast('Format koordinat tidak valid. Contoh: -7.562140, 110.824310', 'error');
+        return;
+    }
+    await saveMapCoordinatesToServer(type, id, parsed.lat.toFixed(6), parsed.lng.toFixed(6), name);
+}
+
+async function saveMapCoordinatesToServer(entityType, id, latitude, longitude, labelName) {
+    showLoading(true, `Menyimpan koordinat ${labelName || entityType}...`);
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/map/coordinates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entityType, id, latitude, longitude })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.error || 'Gagal menyimpan koordinat ke server.', 'error');
+            return;
+        }
+        showToast(`Koordinat ${labelName || entityType} berhasil disimpan!`, 'success');
+        await loadAllData();
+        renderNetworkMapMarkers();
+    } catch (e) {
+        showToast('Koneksi gagal saat menyimpan koordinat.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+window.toggleCustomerAcsCard = toggleCustomerAcsCard;
+window.switchCustomerPackageFilter = switchCustomerPackageFilter;
+window.setMapLayerFilter = setMapLayerFilter;
+window.setGoogleMapType = setGoogleMapType;
+window.handleKmzFileImport = handleKmzFileImport;
+window.toggleKmzLayerVisibility = toggleKmzLayerVisibility;
+window.focusKmzLayer = focusKmzLayer;
+window.deleteKmzLayer = deleteKmzLayer;
+window.refreshNetworkMapData = refreshNetworkMapData;
+window.renderNetworkMapMarkers = renderNetworkMapMarkers;
+window.focusMapNode = focusMapNode;
+window.startMapPickMode = startMapPickMode;
+window.cancelMapPickMode = cancelMapPickMode;
+window.promptSetMapCoordinates = promptSetMapCoordinates;
+window.toggleMapLiveAuto = toggleMapLiveAuto;
+window.focusMyLocationOnMap = focusMyLocationOnMap;
+
 
 
 

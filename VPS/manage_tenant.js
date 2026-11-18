@@ -181,7 +181,8 @@ async function updateTenantDatabase(conn, dbName) {
         "additionalCostDesc1 VARCHAR(255) DEFAULT ''",
         "additionalCostDesc2 VARCHAR(255) DEFAULT ''",
         "additional_cost_desc1 VARCHAR(255) DEFAULT ''",
-        "additional_cost_desc2 VARCHAR(255) DEFAULT ''"
+        "additional_cost_desc2 VARCHAR(255) DEFAULT ''",
+        "sn_modem VARCHAR(100) DEFAULT ''"
     ];
 
     for (const col of customerColumns) {

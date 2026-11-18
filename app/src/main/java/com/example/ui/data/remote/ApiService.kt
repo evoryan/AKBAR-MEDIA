@@ -497,6 +497,21 @@ interface ApiService {
     @PUT("api/odp/{id}")
     suspend fun updateOdp(@Path("id") id: String, @Body item: com.example.ui.data.OdpItem): ApiResponse
 
+    @POST("api/map/coordinates")
+    suspend fun updateMapCoordinates(@Body request: MapCoordinatesRequest): ApiResponse
+
+    @GET("api/map/kmz")
+    suspend fun getKmzLayers(): List<KmzLayerDto>
+
+    @POST("api/map/kmz")
+    suspend fun saveKmzLayer(@Body request: SaveKmzLayerRequest): KmzLayerDto
+
+    @PUT("api/map/kmz/{id}")
+    suspend fun updateKmzLayer(@Path("id") id: String, @Body request: UpdateKmzLayerRequest): ApiResponse
+
+    @DELETE("api/map/kmz/{id}")
+    suspend fun deleteKmzLayer(@Path("id") id: String): ApiResponse
+
     @POST("api/inventory")
     suspend fun addInventory(@Body item: com.example.ui.data.InventoryItem): ApiResponse
 
@@ -834,5 +849,37 @@ data class BroadcastRequest(
     val priority: String = "PENTING",
     val title: String = "PENGUMUMAN PUSAT (MASTER)"
 )
+
+@kotlinx.serialization.Serializable
+data class MapCoordinatesRequest(
+    val entityType: String,
+    val id: String,
+    val latitude: String,
+    val longitude: String
+)
+
+data class KmzLayerDto(
+    val id: String = "",
+    val name: String = "",
+    val fileName: String = "",
+    val featuresJson: String = "[]",
+    val featureCount: Int = 0,
+    val isVisible: Boolean = true,
+    val createdAt: String = ""
+)
+
+data class SaveKmzLayerRequest(
+    val name: String,
+    val fileName: String,
+    val featuresJson: String,
+    val featureCount: Int,
+    val isVisible: Boolean = true
+)
+
+data class UpdateKmzLayerRequest(
+    val name: String? = null,
+    val isVisible: Boolean? = null
+)
+
 
 

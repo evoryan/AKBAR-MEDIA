@@ -1027,7 +1027,38 @@ fun AddCustomerScreen(
                                         val newCust = Customer(
                                             id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput, snModem = snModem.trim(), serialNumber = snModem.trim()
                                         )
-                                        ApiClient.apiService.addCustomer(newCust)
+                                        val addRes = ApiClient.apiService.addCustomer(newCust)
+                                        try {
+                                            val newIdInt = addRes.id?.toIntOrNull()
+                                            if (newIdInt != null && newIdInt > 0) {
+                                                com.example.ui.data.local.AppDatabase.getDatabase(context).pelangganDao().insert(
+                                                    com.example.ui.data.local.PelangganEntity(
+                                                        id = newIdInt,
+                                                        name = newCust.name,
+                                                        phone = newCust.phone,
+                                                        area = newCust.area,
+                                                        address = newCust.address,
+                                                        alamat = newCust.alamat,
+                                                        username = newCust.username,
+                                                        billingDate = newCust.billingDate,
+                                                        status = newCust.status,
+                                                        price = newCust.price,
+                                                        discount = newCust.discount,
+                                                        register_date = newCust.registerDate,
+                                                        isolate_date = newCust.isolateDate,
+                                                        package_name = newCust.packageName,
+                                                        pppoe_secret = newCust.pppoeSecret,
+                                                        odp_id = newCust.odpId?.toIntOrNull(),
+                                                        odp_port = newCust.odpPort,
+                                                        additionalCost1 = newCust.additionalCost1,
+                                                        additionalCost2 = newCust.additionalCost2,
+                                                        additionalCostDesc1 = newCust.additionalCostDesc1,
+                                                        additionalCostDesc2 = newCust.additionalCostDesc2,
+                                                        sn_modem = newCust.snModem
+                                                    )
+                                                )
+                                            }
+                                        } catch (_: Exception) {}
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
                                         onBack()
                                     } catch(e: retrofit2.HttpException) {
@@ -1115,7 +1146,38 @@ fun AddCustomerScreen(
                                         val newCust = Customer(
                                             id = "", name = name.trim(), phone = phone.trim(), area = selectedArea?.name ?: "Semua", address = cleanAddress.ifEmpty { null }, alamat = cleanAddress.ifEmpty { null }, username = if (secretInput.isNotBlank()) secretInput else name.lowercase().replace(" ", ""), billingDate = billingDate.ifEmpty { "1" }, registerDate = registerDate, isolateDate = isolateDate, packageName = selectedPackage?.name ?: "", status = "BELUM BAYAR", price = basePriceString, discount = "- Dskn : Rp. 0", additionalCost1 = additionalCost1.trim(), additionalCost2 = additionalCost2.trim(), additionalCostDesc1 = additionalCostDesc1.trim(), additionalCostDesc2 = additionalCostDesc2.trim(), additional_cost_desc1 = additionalCostDesc1.trim(), additional_cost_desc2 = additionalCostDesc2.trim(), pppoeSecret = secretInput, odpId = selectedOdp?.id ?: "", odpPort = selectedPort, snModem = snModem.trim(), serialNumber = snModem.trim()
                                         )
-                                        ApiClient.apiService.addCustomer(newCust)
+                                        val addRes = ApiClient.apiService.addCustomer(newCust)
+                                        try {
+                                            val newIdInt = addRes.id?.toIntOrNull()
+                                            if (newIdInt != null && newIdInt > 0) {
+                                                com.example.ui.data.local.AppDatabase.getDatabase(context).pelangganDao().insert(
+                                                    com.example.ui.data.local.PelangganEntity(
+                                                        id = newIdInt,
+                                                        name = newCust.name,
+                                                        phone = newCust.phone,
+                                                        area = newCust.area,
+                                                        address = newCust.address,
+                                                        alamat = newCust.alamat,
+                                                        username = newCust.username,
+                                                        billingDate = newCust.billingDate,
+                                                        status = newCust.status,
+                                                        price = newCust.price,
+                                                        discount = newCust.discount,
+                                                        register_date = newCust.registerDate,
+                                                        isolate_date = newCust.isolateDate,
+                                                        package_name = newCust.packageName,
+                                                        pppoe_secret = newCust.pppoeSecret,
+                                                        odp_id = newCust.odpId?.toIntOrNull(),
+                                                        odp_port = newCust.odpPort,
+                                                        additionalCost1 = newCust.additionalCost1,
+                                                        additionalCost2 = newCust.additionalCost2,
+                                                        additionalCostDesc1 = newCust.additionalCostDesc1,
+                                                        additionalCostDesc2 = newCust.additionalCostDesc2,
+                                                        sn_modem = newCust.snModem
+                                                    )
+                                                )
+                                            }
+                                        } catch (_: Exception) {}
                                         Toast.makeText(context, "Pelanggan berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
                                         onBack()
                                     } catch(e: retrofit2.HttpException) {

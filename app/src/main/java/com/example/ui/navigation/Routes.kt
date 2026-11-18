@@ -142,3 +142,5 @@ object SinkronisasiRoute
 object CollectorDashboardRoute
 @Serializable
 object ManageTenantRoute
+@Serializable
+object MapRoute
